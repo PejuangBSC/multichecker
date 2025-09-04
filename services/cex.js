@@ -585,19 +585,23 @@
           }
       } catch(_) {}
 
-      let selectedCexes = Object.keys(CONFIG_CEX || {});
+      // Hanya CEX yang dicentang pada filter (tanpa fallback ke semua)
+      let selectedCexes = [];
       try {
           const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
           if (m.type === 'multi' && typeof getFilterMulti === 'function') {
               const fm = getFilterMulti();
-              if (fm && Array.isArray(fm.cex) && fm.cex.length) selectedCexes = fm.cex.map(String);
+              selectedCexes = (fm?.cex || []).map(x => String(x).toUpperCase());
           } else if (m.type === 'single' && typeof getFilterChain === 'function') {
               const fc = getFilterChain(m.chain || '');
-              if (fc && Array.isArray(fc.cex) && fc.cex.length) selectedCexes = fc.cex.map(String);
+              selectedCexes = (fc?.cex || []).map(x => String(x).toUpperCase());
           }
       } catch(_) {}
+      // Filter hanya yang valid di CONFIG_CEX
+      selectedCexes = selectedCexes.filter(cx => !!CONFIG_CEX?.[cx]);
       if (!selectedCexes.length) {
-          infoSet('⚠ Tidak ada CEX yang dikonfigurasi.');
+          infoSet('⚠ Pilih minimal 1 CEX pada filter.');
+          try { UIkit.notification({ message: 'Pilih minimal 1 CEX pada filter (chip CEX).', status: 'warning' }); } catch(_) {}
           $('#loadingOverlay').fadeOut(150);
           return;
       }
@@ -688,8 +692,8 @@
 
       setLastAction("UPDATE WALLET EXCHANGER");
       try {
-          UIkit.notification({ message: '✅ Data wallet & fee diperbarui (parsial jika ada yang gagal).', status: 'success' });
-      } catch(_) { alert('✅ BERHASIL (parsial jika ada yang gagal)'); }
+          UIkit.notification({ message: '✅ BERHASIL UPDATE WALLET EXCHANGER', status: 'success' });
+      } catch(_) { alert('✅ SEBAGIAN BERHASIL UPDATE WALLET EXCHANGER,SILAKAN CEK STATUS DEPOSIT & WITHDRAW, EXCHANGER YANG GAGAL UPDATE'); }
 
       if ($('#single-chain-view').is(':visible')) {
           if (typeof loadAndDisplaySingleChainTokens === 'function') loadAndDisplaySingleChainTokens();

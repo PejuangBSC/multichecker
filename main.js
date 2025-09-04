@@ -3,7 +3,7 @@
 // =================================================================================
 
 // --- Global Variables ---
-const storagePrefix = "MULTISCANNER_";
+const storagePrefix = "MULTICHECKER_";
 const REQUIRED_KEYS = {
     SETTINGS: 'SETTING_SCANNER'
 };
@@ -220,7 +220,7 @@ function loadAndDisplaySingleChainTokens() {
 
 
 /**
- * Checks if essential settings and token data are present in localStorage.
+ * Checks if essential settings and token data are present in storage.
  * @returns {string} The readiness state of the application.
  */
 function computeAppReadiness() {
@@ -257,7 +257,7 @@ function hasValidTokens() {
 
 /**
  * Renders the Settings form: generates CEX/DEX delay inputs and API key fields,
- * and preloads saved values from localStorage.
+ * and preloads saved values from storage.
  */
 function renderSettingsForm() {
     // Generate CEX delay inputs
@@ -695,22 +695,7 @@ async function deferredInit() {
 
     // --- Event Listeners ---
 
-    window.addEventListener('storage', function (event) {
-        if (event.key !== 'MULTISCANNER_APP_STATE') return;
-        const config = JSON.parse(event.newValue || '{}');
-        const $start = $('#startSCAN');
-        const $stop  = $('#stopSCAN');
-
-        if (config.run === 'NO') {
-            $start.prop('disabled', false).text('START').removeClass('uk-button-disabled').show();
-            $stop.hide();
-            try { if (typeof setScanUIGating === 'function') setScanUIGating(false); } catch(_) {}
-        } else if (config.run === 'YES') {
-            $start.prop('disabled', true).text('Running...').addClass('uk-button-disabled').show();
-            $stop.prop('disabled', false).show();
-            try { if (typeof setScanUIGating === 'function') setScanUIGating(true); } catch(_) {}
-        }
-    });
+    // Removed localStorage 'storage' event listener; app state is now IDB-only.
 
     $('#darkModeToggle').on('click', function() {
         const body = $('body');
@@ -989,6 +974,25 @@ async function deferredInit() {
     });
 
     $('#UpdateWalletCEX').on('click', () => {
+        // Pre-check: require at least 1 CEX selected in filter chips
+        try {
+            const m = getAppMode();
+            let selected = [];
+            if (m.type === 'single') {
+                const fc = getFilterChain(m.chain || '');
+                selected = (fc && Array.isArray(fc.cex)) ? fc.cex : [];
+            } else {
+                const fm = getFilterMulti();
+                selected = (fm && Array.isArray(fm.cex)) ? fm.cex : [];
+            }
+            const cfg = (typeof window !== 'undefined' ? (window.CONFIG_CEX || {}) : (CONFIG_CEX || {}));
+            const valid = (selected || []).map(x => String(x).toUpperCase()).filter(cx => !!cfg[cx]);
+            if (!valid.length) {
+                alert('Pilih minimal 1 CEX pada filter sebelum update wallet.');
+                return;
+            }
+        } catch(_) { /* fallthrough to confirm */ }
+
         if (confirm("APAKAH ANDA INGIN UPDATE WALLET EXCHANGER?")) {
             checkAllCEXWallets();
         }
@@ -1324,6 +1328,8 @@ async function deferredInit() {
         UIkit.modal('#sync-modal').show();
 
         try {
+            // Progress info to user
+            try { toastr.info('Mengambil data koin dari server...'); } catch(_) {}
             const remoteTokens = await $.getJSON(chainConfig.DATAJSON);
             const savedTokens = getTokensChain(activeSingleChainKey);
 
@@ -1333,7 +1339,10 @@ async function deferredInit() {
             let raw = [];
             if (Array.isArray(remoteTokens)) raw = remoteTokens;
             else if (remoteTokens && Array.isArray(remoteTokens.token)) raw = remoteTokens.token;
-            else raw = [];
+            else {
+                raw = [];
+                toastr.warning('Struktur JSON tidak sesuai: array token tidak ditemukan.');
+            }
 
             raw.forEach((t,i) => { try { t._idx = i; } catch(_){} });
             $('#sync-modal').data('remote-raw', raw);
@@ -1345,14 +1354,23 @@ async function deferredInit() {
             // Initial render
             renderSyncTable(activeSingleChainKey);
 
+            try { toastr.success(`Berhasil memuat ${raw.length} koin dari server`); } catch(_) {}
+
         } catch (error) {
             modalBody.html('<tr><td colspan="4">Failed to fetch token data.</td></tr>');
             console.error("Error fetching token JSON:", error);
+            let reason = '';
+            try {
+                const status = error?.status;
+                const text = error?.statusText || error?.message || '';
+                if (status) reason = `HTTP ${status}${text?` - ${text}`:''}`;
+            } catch(_) {}
+            toastr.error(`Gagal mengambil data dari server${reason?`: ${reason}`:''}. Cek koneksi atau URL DATAJSON.`);
         }
     });
 
     // Save synced tokens
-    $(document).on('click', '#sync-save-btn', function() {
+    $(document).on('click', '#sync-save-btn', async function() {
         if (!activeSingleChainKey) return toastr.error("No active chain selected.");
 
         const $modal = $('#sync-modal');
@@ -1468,17 +1486,34 @@ async function deferredInit() {
             String(a.symbol_out).toUpperCase() === String(b.symbol_out).toUpperCase();
 
         const merged = [...existingList];
+        let replaced = 0; let added = 0;
         selectedTokens.forEach(newTok => {
             const idx = merged.findIndex(oldTok => sameEntry(oldTok, newTok));
-            if (idx !== -1) merged[idx] = newTok; else merged.push(newTok);
+            if (idx !== -1) { merged[idx] = newTok; replaced += 1; } else { merged.push(newTok); added += 1; }
         });
 
-        setTokensChain(activeSingleChainKey, merged);
-        try { setLastAction(`SINKRONISASI KOIN ${chainKey.toUpperCase()}`); } catch(_) {}
-        toastr.success(`Saved ${selectedTokens.length} tokens for ${activeSingleChainKey}.`);
-        UIkit.modal('#sync-modal').hide();
-        // Full reload to ensure a clean state and updated filters
-        location.reload();
+        // Disable save button while saving
+        const $btn = $('#sync-save-btn');
+        const prevLabel = $btn.text();
+        try { $btn.prop('disabled', true).text('Saving...'); } catch(_) {}
+        let ok = true;
+        if (typeof setTokensChainAsync === 'function') {
+            ok = await setTokensChainAsync(activeSingleChainKey, merged);
+        } else {
+            try { setTokensChain(activeSingleChainKey, merged); ok = true; } catch(_) { ok = false; }
+        }
+
+        if (ok) {
+            try { setLastAction(`SINKRONISASI KOIN ${chainKey.toUpperCase()}`); } catch(_) {}
+            toastr.success(`Disimpan: ${selectedTokens.length} koin (${added} baru, ${replaced} diperbarui) untuk ${activeSingleChainKey}.`);
+            UIkit.modal('#sync-modal').hide();
+            // Full reload to ensure a clean state and updated filters
+            location.reload();
+        } else {
+            const reason = (window.LAST_STORAGE_ERROR ? `: ${window.LAST_STORAGE_ERROR}` : '');
+            toastr.error(`Gagal menyimpan ke penyimpanan lokal${reason}`);
+            try { $btn.prop('disabled', false).text(prevLabel); } catch(_) {}
+        }
     });
 
     // Sync modal search + filter handlers
@@ -1527,7 +1562,7 @@ $(document).ready(function() {
         $('body').removeClass('dark-mode uk-dark');
     }
 
-    // $('#namachain').text("MULTISCANNER");
+    // $('#namachain').text("MULTICHECKER");
     $('#sinyal-container').css('color', 'black');
     $('h4#daftar,h4#judulmanajemenkoin').css({ 'color': 'white', 'background': `linear-gradient(to right, #5c9513, #ffffff)`, 'padding-left': '7px', 'border-radius': '5px' });
 

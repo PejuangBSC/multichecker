@@ -14,7 +14,7 @@
  */
 
 /**
- * Fetch USDT/IDR rate from Tokocrypto and cache to localStorage.
+ * Fetch USDT/IDR rate from Tokocrypto and cache to storage (IndexedDB).
  * Stores 'PRICE_RATE_USDT' for IDR conversions (e.g., INDODAX display).
  */
 function getRateUSDT() {
@@ -139,7 +139,7 @@ function getRandomApiKeyOKX(keys) {
  * Send a compact status message to Telegram (startup/online, etc.).
  */
 function sendStatusTELE(user, status) {
-    const message = `<b>#MULTISCANNER</b>\n<b>USER:</b> ${user ? user.toUpperCase() : '-'}[<b>${status ? status.toUpperCase() : '-'}]</b>`;
+    const message = `<b>#MULTISCHECKER</b>\n<b>USER:</b> ${user ? user.toUpperCase() : '-'}[<b>${status ? status.toUpperCase() : '-'}]</b>`;
     const url = `https://api.telegram.org/bot${CONFIG_TELEGRAM.BOT_TOKEN}/sendMessage`;
     const payload = { chat_id: CONFIG_TELEGRAM.CHAT_ID, text: message, parse_mode: "HTML", disable_web_page_preview: true };
     $.post(url, payload);
@@ -186,7 +186,7 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
     } catch(_) {}
     const f = (v) => (v===true ? '✅' : (v===false ? '❌' : '❓'));
 
-    const message = `<b>#MULTISCANNER #${chainConfig.Nama_Chain.toUpperCase()}</b>\n`+
+    const message = `<b>#MULTISCHECKER #${chainConfig.Nama_Chain.toUpperCase()}</b>\n`+
     `<b>USER:</b> ~ ${nickname||'-'}\n`+
     `-----------------------------------------\n`+
     `<b>MARKET:</b> ${linkCEX} VS ${dexTradeLink}\n`+

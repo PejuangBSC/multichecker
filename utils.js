@@ -155,6 +155,13 @@ function setTokensMulti(list){
     } catch(_) {}
 }
 
+// Async variants for explicit success/failure reporting (non-breaking: new helpers)
+async function setTokensMultiAsync(list){
+    const arr = Array.isArray(list) ? list : [];
+    const { ok } = await (window.saveToLocalStorageAsync ? window.saveToLocalStorageAsync('TOKEN_MULTICHAIN', arr) : Promise.resolve({ ok: true }));
+    return ok;
+}
+
 function getTokensChain(chain){
     const key = `TOKEN_${String(chain).toUpperCase()}`;
     const t = getFromLocalStorage(key, []);
@@ -182,6 +189,13 @@ function setTokensChain(chain, list){
             }
         }
     } catch(_) {}
+}
+
+async function setTokensChainAsync(chain, list){
+    const key = `TOKEN_${String(chain).toUpperCase()}`;
+    const arr = Array.isArray(list) ? list : [];
+    const { ok } = await (window.saveToLocalStorageAsync ? window.saveToLocalStorageAsync(key, arr) : Promise.resolve({ ok: true }));
+    return ok;
 }
 
 // =================================================================================
@@ -580,7 +594,7 @@ function getDexData(dexName) {
 
 /**
  * Flattens the token data from TOKEN_SCANNER, creating a separate entry for each selected CEX.
- * @param {Array} dataTokens - The array of token objects from localStorage.
+ * @param {Array} dataTokens - The array of token objects from storage.
  * @returns {Array} A flattened array of token objects, ready for scanning.
  */
 function flattenDataKoin(dataTokens) {

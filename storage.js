@@ -56,8 +56,7 @@
             });
         }
 
-        // Mirror some keys to localStorage to preserve cross-tab events (e.g., APP_STATE)
-        const MIRROR_KEYS = new Set(['APP_STATE']);
+        // Note: LocalStorage mirroring removed. All state persisted in IndexedDB only.
 
         // Warm all cache entries early (best-effort)
         function warmCacheAll(){
@@ -86,22 +85,7 @@
                 const nsKey = String((window.storagePrefix||'') + key);
                 if (Object.prototype.hasOwnProperty.call(cache, nsKey)) return cache[nsKey];
                 // Lazy load from IDB; return fallback synchronously
-                idbGet(nsKey).then(val => {
-                    if (val !== undefined) cache[nsKey] = val;
-                    else {
-                        // migrate from localStorage if exists
-                        try{
-                            const raw = localStorage.getItem(nsKey);
-                            if (raw != null){
-                                const parsed = JSON.parse(raw);
-                                cache[nsKey] = parsed;
-                                idbSet(nsKey, parsed);
-                                // Optional: clean old
-                                // localStorage.removeItem(nsKey);
-                            }
-                        }catch(_){ /* ignore */ }
-                    }
-                });
+                idbGet(nsKey).then(val => { if (val !== undefined) cache[nsKey] = val; });
                 return defaultValue;
             }catch(e){ return defaultValue; }
         };
@@ -111,10 +95,27 @@
                 const nsKey = String((window.storagePrefix||'') + key);
                 cache[nsKey] = value;
                 idbSet(nsKey, value);
-                if (MIRROR_KEYS.has(key)) {
-                    try { localStorage.setItem(nsKey, JSON.stringify(value)); } catch(_){}
-                }
+                // no localStorage mirror
             }catch(_){ /* ignore */ }
+        };
+
+        // Async variant with explicit success/failure result for better UX
+        window.saveToLocalStorageAsync = async function(key, value){
+            const nsKey = String((window.storagePrefix||'') + key);
+            try {
+                cache[nsKey] = value;
+                const ok = await idbSet(nsKey, value);
+                // no localStorage mirror
+                if (!ok) {
+                    try {
+                        window.LAST_STORAGE_ERROR = 'IndexedDB transaction failed (possibly quota or permissions).';
+                    } catch(_) {}
+                }
+                return { ok };
+            } catch (e) {
+                try { window.LAST_STORAGE_ERROR = (e && e.message) ? e.message : String(e); } catch(_) {}
+                return { ok: false, error: e };
+            }
         };
 
         window.removeFromLocalStorage = function(key){
@@ -122,9 +123,7 @@
                 const nsKey = String((window.storagePrefix||'') + key);
                 delete cache[nsKey];
                 idbDel(nsKey);
-                if (MIRROR_KEYS.has(key)) {
-                    try { localStorage.removeItem(nsKey); } catch(_){}
-                }
+                // no localStorage mirror
             }catch(_){ /* ignore */ }
         };
     })();
@@ -186,7 +185,7 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `KOIN_MULTISCANNER_${chainLabel}.csv`;
+        a.download = `KOIN_MULTICHECKER_${chainLabel}.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
