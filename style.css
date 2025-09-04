@@ -100,12 +100,18 @@ a:hover, .uk-link:hover {
   font-size: 12px;
   line-height: 1.2;
   padding: 4px 6px;
+  
 }
 
 #main-table, #single-chain-table {
   table-layout: fixed; /* enforce column widths */
   width: 100%;
 }
+
+/* Spacing for per-line data in DEX/detail cells */
+.monitor-line { display: block; }
+.detail-line { display: block; margin: 3px 0 }
+.dex-price-link { text-decoration: none; }
 
 /* Compact cell padding for tables */
 #main-table td, #main-table th,

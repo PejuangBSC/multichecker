@@ -119,11 +119,10 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
 
         rowHtml += `
             <td id="${idPrefix}${rowId}" class="uk-text-center uk-background td-detail" style="text-align: center; border:1px solid black; width:10%; padding:10px;">
-                [${index + 1}] <span style="color: ${warnaCex}; font-weight:bolder;">${data.cex} </span>
+                <span class="detail-line">[${index + 1}] <span style="color: ${warnaCex}; font-weight:bolder;">${data.cex} </span>
                 on <span style="color: ${warnaChain}; font-weight:bolder;">${chainShort} </span>
-                <span id="${idPrefix}EditMulti-${data.id}" data-id="${data.id}" title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span>
-                <br/>
-                <span style="color: ${warnaChain}; font-weight:bolder;">${linkToken} </span>
+                <span id="${idPrefix}EditMulti-${data.id}" data-id="${data.id}" title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span></span>
+                <span class="detail-line"><span style="color: ${warnaChain}; font-weight:bolder;">${linkToken} </span>
                 ⇄ <span style="color: ${warnaChain}; font-weight:bolder;">${linkPair} </span>
                 <span id="${idPrefix}DelMulti-${data.id}"
                       data-id="${data.id}"
@@ -134,13 +133,12 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
                       title="HAPUS DATA KOIN"
                       uk-icon="icon: trash; ratio: 0.6"
                       class="uk-text-danger uk-text-bolder delete-token-button"
-                      style="cursor:pointer;"></span><br/>
+                      style="cursor:pointer;"></span></span>
                
-                <span class="uk-text-bolder">${WD_TOKEN} ~ ${DP_TOKEN}</span> |
-                <span class="uk-text-bolder">${WD_PAIR} ~ ${DP_PAIR}</span><br/>
-                <span class="uk-text-primary uk-text-bolder">${(data.symbol_in||'').toUpperCase()}</span> ${linkSCtoken} : ${linkStokToken} <br/>
-                <span class="uk-text-primary uk-text-bolder">${(data.symbol_out||'').toUpperCase()}</span> ${linkSCpair} : ${linkStokPair}<br/>
-                 ${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}
+                <span class="detail-line uk-text-bolder">${WD_TOKEN} ~ ${DP_TOKEN} | ${WD_PAIR} ~ ${DP_PAIR}</span>
+                <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_in||'').toUpperCase()}</span> ${linkSCtoken} : ${linkStokToken}</span>
+                <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_out||'').toUpperCase()}</span> ${linkSCpair} : ${linkStokPair}</span>
+                <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}</span>
             </td>`;
 
         // DEX -> CEX (Right)
@@ -508,7 +506,7 @@ function DisplayPNL(data) {
         priceBuyToken_CEX, priceSellToken_CEX, priceBuyPair_CEX, priceSellPair_CEX,
         FeeSwap, FeeWD, sc_input, sc_output, Name_out, totalValue, totalModal,
         nameChain, codeChain, trx, profitLossPercent, vol,
-        idPrefix, baseId, swapHtml
+        idPrefix, baseId, swapHtml, linkDEX, dexUsdRate
     } = data;
 
     const mainCell = document.getElementById(idPrefix + baseId);
@@ -522,47 +520,24 @@ function DisplayPNL(data) {
     const dpTokenUrl = urlsCEXToken.depositTokenUrl  || urlsCEXToken.depositUrl;
     const dpPairUrl  = urlsCEXToken.depositPairUrl   || urlsCEXToken.depositUrl;
 
-    // === Harga BUY/SELL (pakai class uikit) ===
-    let buyHtml, sellHtml;
-    const buildTitle = (action, base, quote, priceUSDT) => {
-        const idr = (typeof formatIDRfromUSDT === 'function') ? formatIDRfromUSDT(priceUSDT) : 'N/A';
-        const usdStr = `${formatPrice(parseFloat(priceUSDT)||0)}`;
-        return `${cex} ${action}: ${base}->${quote} | ${usdStr} | ${idr}`;
-    };
+    // === Komponen baris sesuai spesifikasi ===
+    const toUsd = (v) => formatPrice(parseFloat(v)||0);
+    const buyPriceTokentoPair = priceBuyToken_CEX;        // BUY di CEX
+    const sellPriceTokentoPair = dexUsdRate;              // SELL di DEX
+    const buyPricePairtoToken = dexUsdRate;               // BUY di DEX
+    const sellPricePairtoToken = priceSellToken_CEX;      // SELL di CEX
 
-    if (trx === 'TokentoPair') {
-        buyHtml  = `<a href="${buyLink}" target="_blank" rel="noopener noreferrer">
-                      <label class="uk-text-success" title="${buildTitle('BUY', 'USDT', Name_in, priceBuyToken_CEX)}">
-                        ${formatPrice(priceBuyToken_CEX)}
-                      </label>
-                    </a>`;
-        // SELL for Token->Pair should show lowest ask of PAIR
-        sellHtml = `<a href="${sellLink}" target="_blank" rel="noopener noreferrer">
-                      <label class="uk-text-danger" title="${buildTitle('SELL', Name_out, 'USDT', priceBuyPair_CEX)}">
-                        ${formatPrice(priceBuyPair_CEX)}
-                      </label>
-                    </a>`;
-    } else {
-        // PairtoToken: BUY should show highest bid of TOKEN
-        buyHtml  = `<a href="${buyLink}" target="_blank" rel="noopener noreferrer">
-                      <label class="uk-text-success" title="${buildTitle('BUY', 'USDT', Name_in, priceSellToken_CEX)}">
-                        ${formatPrice(priceSellToken_CEX)}
-                      </label>
-                    </a>`;
-        sellHtml = `<a href="${sellLink}" target="_blank" rel="noopener noreferrer">
-                      <label class="uk-text-danger" title="${buildTitle('SELL', Name_in, 'USDT', priceSellToken_CEX)}">
-                        ${formatPrice(priceSellToken_CEX)}
-                      </label>
-                    </a>`;
-    }
+    // WD/DP links
+    const wdLine = `<a class="uk-text-primary" href="${wdTokenUrl||'#'}" target="_blank" rel="noopener">🈳 WD: ${FeeWD.toFixed(4)}$</a>`;
+    const dpLine = `<a class="uk-text-primary" href="${dpTokenUrl||'#'}" target="_blank" rel="noopener">🈷️ DP[${(trx==='PairtoToken'?Name_out:Name_in)}]</a>`;
 
-    // === Swap pakai warna primer UIkit ===
-    const swapHtmlColored = `<span class="uk-text-primary uk-text-bold">${swapHtml}</span>`;
+    // FeeSwap line
+    const swapFeeLine = `<span class="uk-text-danger">💸 SW: ${FeeSwap.toFixed(4)}$</span>`;
 
     const filterPNLValue = (typeof getPNLFilter === 'function') ? getPNLFilter() : (parseFloat(SavedSettingData?.filterPNL) || 0);
     const nickname = SavedSettingData?.nickname || '';
     const checkVol = $('#checkVOL').is(':checked');
-    const totalGet = parseFloat(totalValue) - parseFloat(Modal);
+    const totalGet = parseFloat(totalValue) - parseFloat(Modal); // PNL BRUTO
     const pnl = parseFloat(profitLoss);
     const feeAll = parseFloat(totalFee);
     const volOK = parseFloat(vol) >= parseFloat(Modal);
@@ -619,16 +594,27 @@ function DisplayPNL(data) {
             ? linkifyStatus(!!depositFlag, 'DP', dpPairUrl, 'green')
             : createLink(dpPairUrl, 'DP');
 
-        let htmlFee = (trx === "TokentoPair")
-            ? `<span class="uk-text-danger">FeeWD: ${FeeWD.toFixed(2)}$</span> | ${wdLabel}<br/>`
-            : `<span class="uk-text-danger">FeeWD: ${FeeWD.toFixed(2)}$</span> | ${dpLabelToken}<br/>`;
-
-        resultHtml =
-            `${htmlFee}
-             <span class="uk-text-danger">All: ${feeAll.toFixed(2)}$</span>
-             <span class="uk-text-danger">SW: ${FeeSwap.toFixed(2)}$</span><br/>
-             <span class="uk-text-success">GT: ${totalGet.toFixed(2)}$</span>
-             <span class="uk-text-dark">PNL: ${pnl.toFixed(2)}$</span><br/>`;
+        // Tampilkan layout harga yang sama dengan non-highlight (hanya beda styling sel)
+        const netClassHL = pnl >= 0 ? 'uk-text-success' : 'uk-text-danger';
+        const bracketHL = `[${totalGet.toFixed(2)} ~ ${feeAll.toFixed(2)}]`;
+        if (trx === 'TokentoPair') {
+            // Highlight + links
+            resultHtml = `
+             <a class="monitor-line uk-text-success dex-price-link" href="${buyLink||'#'}" target="_blank" rel="noopener">⬆ ${toUsd(priceBuyToken_CEX)}</a>
+             <a class="monitor-line uk-text-danger dex-price-link" href="${linkDEX||'#'}" target="_blank" rel="noopener">⬇ ${toUsd(dexUsdRate)}</a>
+             <span class="monitor-line">${wdLine}</span>
+             <span class="monitor-line">${swapFeeLine}</span>
+             <span class="monitor-line uk-text-dark">${bracketHL}</span>
+             <span class="monitor-line ${netClassHL}">💰 NET: ${pnl.toFixed(2)}</span>`;
+        } else {
+            resultHtml = `
+             <a class="monitor-line uk-text-success dex-price-link" href="${linkDEX||'#'}" target="_blank" rel="noopener">⬆ ${toUsd(dexUsdRate)}</a>
+             <a class="monitor-line uk-text-danger dex-price-link" href="${buyLink||'#'}" target="_blank" rel="noopener">⬇ ${toUsd(priceSellToken_CEX)}</a>
+             <span class="monitor-line">${dpLine}</span>
+             <span class="monitor-line">${swapFeeLine}</span>
+             <span class="monitor-line uk-text-dark">${bracketHL}</span>
+             <span class="monitor-line ${netClassHL}">💰 NET: ${pnl.toFixed(2)}</span>`;
+        }
         // Tampilkan sinyal di panel sinyal
         try { InfoSinyal(dextype.toLowerCase(), NameX, pnl, feeAll, cex.toUpperCase(), Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix); } catch(_) {}
 
@@ -658,12 +644,27 @@ function DisplayPNL(data) {
             ? `<span class="uk-text-dark" title="GET NETTO / PNL">${pnl.toFixed(2)}$</span>`
             : `<span class="uk-text-dark" title="GET NETTO / PNL">${pnl.toFixed(2)}$</span>`;
 
-        resultHtml =
-            `<span class="uk-text-danger" title="FEE WD CEX">FeeWD : ${FeeWD.toFixed(2)}$</span><br/>
-             <span class="uk-text-danger" title="FEE ALL">ALL:${feeAll.toFixed(2)}$</span>
-             <span class="uk-text-danger" title="FEE SWAP"> ${FeeSwap.toFixed(2)}$</span><br/>
-             <span class="uk-text-success" title="GET BRUTO">GT:${totalGet.toFixed(2)}$</span>
-             ${pnlSpan}`;
+        const netClass = pnl >= 0 ? 'uk-text-success' : 'uk-text-danger';
+        const bracket = `[${totalGet.toFixed(2)} ~ ${feeAll.toFixed(2)}]`;
+    if (trx === 'TokentoPair') {
+        // BUY: CEX (link ke trade token), SELL: DEX (link ke linkDEX)
+        resultHtml = `
+         <a class="monitor-line uk-text-success dex-price-link" href="${buyLink||'#'}" target="_blank" rel="noopener">⬆ ${toUsd(buyPriceTokentoPair)}</a>
+         <a class="monitor-line uk-text-danger dex-price-link" href="${linkDEX||'#'}" target="_blank" rel="noopener">⬇ ${toUsd(sellPriceTokentoPair)}</a>
+         <span class="monitor-line">${wdLine}</span>
+         <span class="monitor-line">${swapFeeLine}</span>
+         <span class="monitor-line uk-text-dark">${bracket}</span>
+         <span class="monitor-line ${netClass}">💰 NET: ${pnl.toFixed(2)}</span>`;
+    } else {
+        // BUY: DEX (link ke linkDEX), SELL: CEX (link ke trade token/USDT)
+        resultHtml = `
+         <a class="monitor-line uk-text-success dex-price-link" href="${linkDEX||'#'}" target="_blank" rel="noopener">⬆ ${toUsd(buyPricePairtoToken)}</a>
+         <a class="monitor-line uk-text-danger dex-price-link" href="${buyLink||'#'}" target="_blank" rel="noopener">⬇ ${toUsd(sellPricePairtoToken)}</a>
+         <span class="monitor-line">${dpLine}</span>
+         <span class="monitor-line">${swapFeeLine}</span>
+         <span class="monitor-line uk-text-dark">${bracket}</span>
+         <span class="monitor-line ${netClass}">💰 NET: ${pnl.toFixed(2)}</span>`;
+    }
 
         // Non-highlight: tampilkan sinyal minimal jika profit > feeAll
         if (pnl > feeAll) {
@@ -695,14 +696,14 @@ function DisplayPNL(data) {
     const modeNow3 = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
     const isSingleMode3 = String(modeNow3.type).toLowerCase() === 'single';
     const resultWrapClass = isSingleMode3 ? 'uk-text-dark' : 'uk-text-primary';
-
+    // Force highlight style when PNL > total fee (bold + green bg)
+    if (parseFloat(profitLoss) > parseFloat(totalFee)) {
+        mainCell.style.cssText = "border:1px solid black;background-color:#94fa95!important;font-weight:bolder!important;color:black!important;vertical-align:middle!important;text-align:center!important;";
+    }
+    const boldStyle = (parseFloat(profitLoss) > parseFloat(totalFee)) ? 'font-weight:bolder;' : '';
     mainCell.innerHTML = `
         ${dexNameAndModal}<br>
-        <span class="buy">${buyHtml}</span><br>
-        ${swapHtmlColored}<br>
-        <span class="sell">${sellHtml}</span><br>
-        <hr class="uk-divider-small uk-margin-remove">
-        <span class="${resultWrapClass}">${resultHtml}</span>`;
+        <span class="${resultWrapClass}" style="${boldStyle}">${resultHtml}</span>`;
 }
 
 /** Append a compact item to the DEX signal panel and play audio. */
@@ -830,6 +831,8 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
         idPrefix: idPrefix,
         baseId: baseId,
         swapHtml: swapHtml,
+        linkDEX: linkDEX,
+        dexUsdRate: displayRate,
         profitLoss, cex, Name_in, NameX, totalFee, Modal, dextype,
         priceBuyToken_CEX, priceSellToken_CEX, priceBuyPair_CEX, priceSellPair_CEX,
         FeeSwap, FeeWD, sc_input, sc_output, Name_out, totalValue, totalModal,

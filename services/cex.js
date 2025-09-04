@@ -16,7 +16,7 @@
 
   // ====== Fungsi Universal untuk Orderbook CEX ======
   /** Normalize standard CEX orderbook payload into top N levels. */
-  function processOrderBook(data, limit = 3) {
+  function processOrderBook(data, limit = 4) {
     if (!data?.bids || !data?.asks) {
         console.error("Invalid orderbook data:", data);
         return { priceBuy: [], priceSell: [] };
@@ -42,7 +42,7 @@
     return { priceBuy, priceSell };
 }
 
-  function processOrderBookLAMA(data, limit = 3) {
+  function processOrderBookLAMA(data, limit = 4) {
       if (!data?.bids || !data?.asks) {
           console.error("Invalid orderbook data:", data);
           return { priceBuy: [], priceSell: [] };
@@ -68,7 +68,7 @@
 
   // ====== Fungsi Khusus untuk INDODAX ======
   /** Normalize INDODAX orderbook (IDR) to USDT using cached rate. */
-  function processIndodaxOrderBook(data, limit = 3) {
+  function processIndodaxOrderBook(data, limit = 4) {
       if (!data?.buy || !data?.sell) {
           console.error("Invalid INDODAX response structure:", data);
           return { priceBuy: [], priceSell: [] };
@@ -117,15 +117,15 @@
         if (typeof ob.parser === 'function') parserFn = ob.parser;
         else if (typeof ob.parserToken === 'string') {
           const tok = ob.parserToken.toLowerCase();
-          if (tok === 'standard') parserFn = (data) => processOrderBook(data, 3);
-          else if (tok === 'indodax') parserFn = (data) => processIndodaxOrderBook(data, 3);
-          else if (tok === 'kucoin') parserFn = (data) => processOrderBook(data?.data || {}, 3);
-          else if (tok === 'bitget') parserFn = (data) => processOrderBook(data?.data || {}, 3);
+          if (tok === 'standard') parserFn = (data) => processOrderBook(data, 4);
+          else if (tok === 'indodax') parserFn = (data) => processIndodaxOrderBook(data, 4);
+          else if (tok === 'kucoin') parserFn = (data) => processOrderBook(data?.data || {}, 4);
+          else if (tok === 'bitget') parserFn = (data) => processOrderBook(data?.data || {}, 4);
           else if (tok === 'bybit') parserFn = (data) => {
             try {
               const a = (data?.result?.a || []).map(([p,v]) => [p, v]);
               const b = (data?.result?.b || []).map(([p,v]) => [p, v]);
-              return processOrderBook({ asks: a, bids: b }, 3);
+              return processOrderBook({ asks: a, bids: b }, 4);
             } catch(_) { return { priceBuy: [], priceSell: [] }; }
           };
         }
@@ -148,15 +148,15 @@
       if (typeof ob.urlTpl !== 'function') return;
       let parserFn = null;
       const tok = String(ob.parser || '').toLowerCase();
-      if (tok === 'standard') parserFn = (data) => processOrderBook(data, 3);
-      else if (tok === 'indodax') parserFn = (data) => processIndodaxOrderBook(data, 3);
-      else if (tok === 'kucoin') parserFn = (data) => processOrderBook(data?.data || {}, 3);
-      else if (tok === 'bitget') parserFn = (data) => processOrderBook(data?.data || {}, 3);
+      if (tok === 'standard') parserFn = (data) => processOrderBook(data, 4);
+      else if (tok === 'indodax') parserFn = (data) => processIndodaxOrderBook(data, 4);
+      else if (tok === 'kucoin') parserFn = (data) => processOrderBook(data?.data || {}, 4);
+      else if (tok === 'bitget') parserFn = (data) => processOrderBook(data?.data || {}, 4);
       else if (tok === 'bybit') parserFn = (data) => {
         try {
           const a = (data?.result?.a || []).map(([p,v]) => [p, v]);
           const b = (data?.result?.b || []).map(([p,v]) => [p, v]);
-          return processOrderBook({ asks: a, bids: b }, 3);
+          return processOrderBook({ asks: a, bids: b }, 4);
         } catch(_) { return { priceBuy: [], priceSell: [] }; }
       };
       if (parserFn) exchangeConfig[up] = { url: ob.urlTpl, processData: parserFn };
@@ -189,15 +189,15 @@
                       if (typeof ob.urlTpl === 'function') {
                           const tok = String(ob.parser || '').toLowerCase();
                           let parserFn = null;
-                      if (tok === 'standard') parserFn = (data) => processOrderBook(data, 3);
-                      else if (tok === 'indodax') parserFn = (data) => processIndodaxOrderBook(data, 3);
-                      else if (tok === 'kucoin') parserFn = (data) => processOrderBook(data?.data || {}, 3);
-                      else if (tok === 'bitget') parserFn = (data) => processOrderBook(data?.data || {}, 3);
+                      if (tok === 'standard') parserFn = (data) => processOrderBook(data, 4);
+                      else if (tok === 'indodax') parserFn = (data) => processIndodaxOrderBook(data, 4);
+                      else if (tok === 'kucoin') parserFn = (data) => processOrderBook(data?.data || {}, 4);
+                      else if (tok === 'bitget') parserFn = (data) => processOrderBook(data?.data || {}, 4);
                       else if (tok === 'bybit') parserFn = (data) => {
                         try {
                           const a = (data?.result?.a || []).map(([p,v]) => [p, v]);
                           const b = (data?.result?.b || []).map(([p,v]) => [p, v]);
-                          return processOrderBook({ asks: a, bids: b }, 3);
+                          return processOrderBook({ asks: a, bids: b }, 4);
                         } catch(_) { return { priceBuy: [], priceSell: [] }; }
                       };
                       if (parserFn) {
@@ -228,8 +228,8 @@
                       tokenName: tokenName,
                       price_sell: 1,
                       price_buy: 1,
-                      volumes_sell: Array(3).fill({ price: 1, volume: 10000 }),
-                      volumes_buy: Array(3).fill({ price: 1, volume: 10000 })
+                      volumes_sell: Array(4).fill({ price: 1, volume: 10000 }),
+                      volumes_buy: Array(4).fill({ price: 1, volume: 10000 })
                   });
               }
               if (url) {
