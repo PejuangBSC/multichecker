@@ -877,6 +877,8 @@ function setScanUIGating(isRunning) {
             $('#filter-card').find('input, select, button, textarea').prop('disabled', true);
             // Some extra clickable items in page
             $('.sort-toggle, .edit-token-button, #chain-links-container a').css({ pointerEvents: 'none', opacity: 0.4 });
+            // Keep delete buttons active during scanning as requested
+            $('.delete-token-button').css({ pointerEvents: 'auto', opacity: 1 });
             // Lock token management & edit modal during scan
             $('#token-management').find('input, select, button, textarea').prop('disabled', true).css({ pointerEvents: 'none', opacity: 0.6 });
             $('#FormEditKoinModal').find('input, select, button, textarea').prop('disabled', true).css({ pointerEvents: 'none', opacity: 0.6 });
@@ -891,6 +893,7 @@ function setScanUIGating(isRunning) {
             $('#scanner-config').find('input, select, button, textarea').prop('disabled', false);
             $('#filter-card').find('input, select, button, textarea').prop('disabled', false);
             $('.sort-toggle, .edit-token-button, #chain-links-container a').css({ pointerEvents: '', opacity: '' });
+            $('.delete-token-button').css({ pointerEvents: '', opacity: '' });
             $('#token-management, #FormEditKoinModal').find('input, select, button, textarea').prop('disabled', false).css({ pointerEvents: '', opacity: '' });
         }
     } catch (_) { /* noop */ }

@@ -174,6 +174,19 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
     async function processRequest(token, tableBodyId) {
         if (!allowedChains.includes(String(token.chain).toLowerCase())) return;
+        // Skip processing if token has been deleted during scanning
+        try {
+            const modeNow = getAppMode();
+            let stillExists = false;
+            if (modeNow.type === 'single') {
+                const list = getTokensChain(modeNow.chain);
+                stillExists = Array.isArray(list) && list.some(t => String(t.id) === String(token.id));
+            } else {
+                const list = getTokensMulti();
+                stillExists = Array.isArray(list) && list.some(t => String(t.id) === String(token.id));
+            }
+            if (!stillExists) return; // token removed; do not fetch
+        } catch(_) {}
         try {
             const DataCEX = await getPriceCEX(token, token.symbol_in, token.symbol_out, token.cex, tableBodyId);
 
