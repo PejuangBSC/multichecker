@@ -423,11 +423,12 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         isScanRunning = true;
         animationFrameId = requestAnimationFrame(processUiUpdates);
 
-        let startTime = Date.now();
-        let tokenGroups = [];
+        const startTime = Date.now();
+        const tokenGroups = [];
         for (let i = 0; i < tokensToProcess.length; i += scanPerKoin) {
             tokenGroups.push(tokensToProcess.slice(i, i + scanPerKoin));
         }
+        let processed = 0; // track tokens completed across groups
 
         // Inform user that app is checking GAS/GWEI per active chains
         try {
@@ -469,17 +470,23 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 });
             }
 
-            for (let tokenIndex = 0; tokenIndex < groupTokens.length; tokenIndex++) {
-                if (!isScanRunning) break;
-                const token = groupTokens[tokenIndex];
-                await processRequest(token, tableBodyId);
-                const processed = groupIndex * scanPerKoin + tokenIndex + 1;
-                updateProgress(processed, tokensToProcess.length, startTime, `${token.symbol_in}_${token.symbol_out}`);
-            }
+            // Run this group's tokens in parallel, staggered by jedaKoin per index
+            const jobs = groupTokens.map((token, tokenIndex) => (async () => {
+                if (!isScanRunning) return;
+                // Stagger start per token within the group
+                try { await delay(tokenIndex * Math.max(jedaKoin, 0)); } catch(_) {}
+                if (!isScanRunning) return;
+                try { await processRequest(token, tableBodyId); } catch(e) { console.error(`Err token ${token.symbol_in}_${token.symbol_out}`, e); }
+                // Update progress as each token finishes
+                try {
+                    processed += 1;
+                    updateProgress(processed, tokensToProcess.length, startTime, `${token.symbol_in}_${token.symbol_out}`);
+                } catch(_) {}
+            })());
 
-            if (groupIndex < tokenGroups.length - 1) {
-                await delay(jedaTimeGroup);
-            }
+            await Promise.allSettled(jobs);
+            if (!isScanRunning) break;
+            if (groupIndex < tokenGroups.length - 1) { await delay(jedaTimeGroup); }
         }
 
         updateProgress(tokensToProcess.length, tokensToProcess.length, startTime, 'SELESAI');
