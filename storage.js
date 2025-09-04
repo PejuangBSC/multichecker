@@ -21,6 +21,26 @@
             });
         }
 
+        async function idbGetAll(){
+            await openDB();
+            return new Promise((resolve)=>{
+                const out = [];
+                try{
+                    const tx = db.transaction([STORE_KV], 'readonly');
+                    const st = tx.objectStore(STORE_KV);
+                    const req = st.openCursor();
+                    req.onsuccess = function(e){
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            try { out.push({ key: cursor.key, val: cursor.value?.val }); } catch(_){}
+                            cursor.continue();
+                        } else { resolve(out); }
+                    };
+                    req.onerror = function(){ resolve(out); };
+                }catch(_){ resolve(out); }
+            });
+        }
+
         function idbGet(nsKey){
             return new Promise(async (resolve)=>{
                 try{
@@ -125,6 +145,53 @@
                 idbDel(nsKey);
                 // no localStorage mirror
             }catch(_){ /* ignore */ }
+        };
+
+        // ============================
+        // BACKUP & RESTORE HELPERS
+        // ============================
+        window.exportIDB = async function(){
+            try {
+                const items = await idbGetAll();
+                return {
+                    schema: 'kv-v1',
+                    db: DB_NAME,
+                    store: STORE_KV,
+                    prefix: (window.storagePrefix||''),
+                    exportedAt: new Date().toISOString(),
+                    count: items.length,
+                    items
+                };
+            } catch(e){ return { schema:'kv-v1', error: String(e) }; }
+        };
+
+        window.restoreIDB = async function(payload, opts){
+            const options = Object.assign({ overwrite: true }, opts||{});
+            let ok = 0, fail = 0;
+            if (!payload || !Array.isArray(payload.items)) return { ok, fail, error: 'Invalid payload' };
+            for (const it of payload.items){
+                try {
+                    if (!it || !it.key) { fail++; continue; }
+                    // Optional: honor prefix if provided; else write as-is
+                    const key = String(it.key);
+                    const res = await idbSet(key, it.val);
+                    if (res) { cache[key] = it.val; ok++; } else { fail++; }
+                } catch(_) { fail++; }
+            }
+            return { ok, fail };
+        };
+
+        window.downloadJSON = function(filename, obj){
+            try {
+                const dataStr = JSON.stringify(obj, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = filename || 'backup.json';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                return true;
+            } catch(_) { return false; }
         };
     })();
 

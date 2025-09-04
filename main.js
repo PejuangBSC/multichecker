@@ -124,8 +124,8 @@ function refreshTokensTable() {
     const chainsSel = (fm.chains || []).map(c => String(c).toLowerCase());
     const cexSel = (fm.cex || []).map(c => String(c).toUpperCase());
 
-    const allTokens = getTokensMulti();
-    const flatTokens = flattenDataKoin(allTokens);
+    // Ambil data ter-flatten dan terurut dari IndexedDB berdasarkan symbol_in (ASC/DESC)
+    let flatTokens = (typeof getFlattenedSortedMulti === 'function') ? getFlattenedSortedMulti() : flattenDataKoin(getTokensMulti());
 
     let filteredByChain = [];
     if (!filtersActive) {
@@ -140,21 +140,7 @@ function refreshTokensTable() {
         filteredByChain = [];
     }
 
-    // Apply multi-chain sort preference (persisted in FILTER_MULTICHAIN.sort)
-    try {
-        const rawFilter = getFromLocalStorage('FILTER_MULTICHAIN', null);
-        const sortPref = (rawFilter && (rawFilter.sort === 'A' || rawFilter.sort === 'Z')) ? rawFilter.sort : 'A';
-        filteredByChain = filteredByChain
-            .sort((a, b) => {
-                const A = (a.symbol_in || '').toUpperCase();
-                const B = (b.symbol_in || '').toUpperCase();
-                if (A < B) return sortPref === 'A' ? -1 : 1;
-                if (A > B) return sortPref === 'A' ?  1 : -1;
-                return 0;
-            });
-    } catch(_) {
-        filteredByChain = filteredByChain.sort((a,b)=> (a.symbol_in||'').localeCompare(b.symbol_in||'', undefined, { sensitivity: 'base' }));
-    }
+    // Tidak perlu sort ulang di sini; sumber sudah sorted berdasarkan preferensi
 
     filteredTokens = [...filteredByChain];
     originalTokens = [...filteredByChain];
@@ -174,8 +160,8 @@ function loadAndDisplaySingleChainTokens() {
     // Prefer new key; fallback to old if present (one-time migration semantics)
     let tokens = getTokensChain(activeSingleChainKey);
 
-    // We need to flatten the data just like the main scanner does
-    let flatTokens = flattenDataKoin(tokens);
+    // Ambil data ter-flatten dan terurut dari IDB
+    let flatTokens = (typeof getFlattenedSortedChain === 'function') ? getFlattenedSortedChain(activeSingleChainKey) : flattenDataKoin(tokens);
 
     // Apply single-chain filters: CEX, PAIR (persisted in unified settings, fallback legacy)
     try {
@@ -199,16 +185,7 @@ function loadAndDisplaySingleChainTokens() {
         } else {
             flatTokens = [];
         }
-        // Apply sort preference
-        const rawSavedSort = getFromLocalStorage(`FILTER_${String(activeSingleChainKey).toUpperCase()}`, null);
-        const sortPref = (rawSavedSort && (rawSavedSort.sort === 'A' || rawSavedSort.sort === 'Z')) ? rawSavedSort.sort : 'A';
-        flatTokens = flatTokens.sort((a,b) => {
-            const A = (a.symbol_in||'').toUpperCase();
-            const B = (b.symbol_in||'').toUpperCase();
-            if (A<B) return sortPref==='A' ? -1 : 1;
-            if (A>B) return sortPref==='A' ? 1 : -1;
-            return 0;
-        });
+        // Tidak perlu sort ulang; sudah terurut dari sumber
     } catch(e) { console.warn('single filter apply err', e); }
 
     // Expose current list for search-aware scanning (keep sorted order)
@@ -531,7 +508,12 @@ async function deferredInit() {
             const byCex = flat.reduce((a,t)=>{const k=String(t.cex||'').toUpperCase(); a[k]=(a[k]||0)+1; return a;},{});
             const pairDefs = (CONFIG_CHAINS[chain]||{}).PAIRDEXS||{};
             const flatPair = (cexSel.length? flat.filter(t=>cexSel.includes(String(t.cex||'').toUpperCase())): flat);
-            const byPair = flatPair.reduce((a,t)=>{const p=String(t.symbol_out||'').toUpperCase(); const k=pairDefs[p]?p:'NON'; a[k]=(a[k]||0)+1; return a;},{});
+            const byPair = flatPair.reduce((a,t)=>{
+                const p = String(t.symbol_out||'').toUpperCase().trim();
+                const k = pairDefs[p] ? p : 'NON';
+                a[k] = (a[k]||0)+1;
+                return a;
+            },{});
             const $secCex=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>EXCH:</b></div>');
             const relevantCexs = (CONFIG_CHAINS[chain] && CONFIG_CHAINS[chain].WALLET_CEX) ? Object.keys(CONFIG_CHAINS[chain].WALLET_CEX) : [];
             relevantCexs.forEach(cx=>{
@@ -725,16 +707,8 @@ async function deferredInit() {
                 obj.sort = pref;
                 saveToLocalStorage(key, obj);
                 // Re-sort current multi data
-                const sortedData = [...originalTokens].sort((a, b) => {
-                    const A = (a.symbol_in || "").toUpperCase();
-                    const B = (b.symbol_in || "").toUpperCase();
-                    if (A < B) return pref === 'A' ? -1 : 1;
-                    if (A > B) return pref === 'A' ?  1 : -1;
-                    return 0;
-                });
-                window.filteredTokens = sortedData;
-                try { window.currentListOrderMulti = [...sortedData]; } catch(_) {}
-                loadKointoTable(window.filteredTokens, 'dataTableBody');
+                // Re-fetch sorted from source to reflect new preference
+                refreshTokensTable();
             }
         } catch(_) {}
     });
@@ -1356,6 +1330,30 @@ async function deferredInit() {
 
             try { toastr.success(`Berhasil memuat ${raw.length} koin dari server`); } catch(_) {}
 
+            // Debug logs for fetch result
+            try {
+                const chainKey = String(activeSingleChainKey).toLowerCase();
+                const countBy = (arr, pick)=> arr.reduce((a,t)=>{ const k = pick(t)||'-'; a[k]=(a[k]||0)+1; return a; },{});
+                const byCex  = countBy(raw, t => String(t.cex||'').toUpperCase());
+                const byPair = countBy(raw, t => String(t.symbol_out||'').toUpperCase());
+                console.groupCollapsed(`SYNC FETCH • chain=${chainKey} • total=${raw.length}`);
+                console.info('DATAJSON URL:', chainConfig.DATAJSON);
+                console.info('Saved tokens existing:', Array.isArray(savedTokens) ? savedTokens.length : 0);
+                console.info('Count by CEX:'); console.table(Object.entries(byCex).map(([k,v])=>({ cex:k, count:v })));
+                console.info('Count by Pair:'); console.table(Object.entries(byPair).map(([k,v])=>({ pair:k, count:v })));
+                console.info('Sample tokens (up to 10):');
+                console.table((raw||[]).slice(0,10).map(t=>({
+                    cex: String(t.cex||'').toUpperCase(),
+                    symbol_in: String(t.symbol_in||'').toUpperCase(),
+                    symbol_out: String(t.symbol_out||'').toUpperCase(),
+                    sc_in: t.sc_in || t.contract_in || '',
+                    sc_out: t.sc_out || t.contract_out || '',
+                    des_in: t.des_in || t.decimals_in || '',
+                    des_out: t.des_out || t.decimals_out || ''
+                })));
+                console.groupEnd();
+            } catch(e){ console.warn('SYNC FETCH debug log error', e); }
+
         } catch (error) {
             modalBody.html('<tr><td colspan="4">Failed to fetch token data.</td></tr>');
             console.error("Error fetching token JSON:", error);
@@ -1403,6 +1401,19 @@ async function deferredInit() {
             return;
         }
 
+        // Debug: log currently chosen filters in modal
+        try {
+            const selCex = $('#sync-filter-cex input:checked').map(function(){ return $(this).val().toUpperCase(); }).get();
+            const selPair = $('#sync-filter-pair input:checked').map(function(){ return $(this).val().toUpperCase(); }).get();
+            console.groupCollapsed('SYNC SAVE • selections');
+            console.info('Chain:', String(activeSingleChainKey).toUpperCase());
+            console.info('Selected CEX:', selCex);
+            console.info('Selected Pair:', selPair);
+            console.info('Selected DEX (global):', selectedDexsGlobal);
+            console.info('DEX modal config (L/R):', dataDexsGlobal);
+            console.groupEnd();
+        } catch(_) {}
+
         const selectedTokens = [];
         $('#sync-modal-tbody tr').each(function() {
             const $row = $(this);
@@ -1412,9 +1423,9 @@ async function deferredInit() {
             const tok = remoteTokens[idx];
             if (!tok) return;
 
-            const cexUpper = String(tok.cex || '').toUpperCase();
-            const symbolIn = String(tok.symbol_in || '').toUpperCase();
-            const symbolOut = String(tok.symbol_out || '').toUpperCase();
+            const cexUpper = String(tok.cex || '').toUpperCase().trim();
+            const symbolIn = String(tok.symbol_in || '').toUpperCase().trim();
+            const symbolOut = String(tok.symbol_out || '').toUpperCase().trim();
             const scIn = tok.sc_in || tok.contract_in || '';
             const scOutRaw = tok.sc_out || tok.contract_out || '';
             const desIn = Number(tok.des_in || tok.decimals_in || 0);
@@ -1468,6 +1479,21 @@ async function deferredInit() {
                 dataCexs
             };
             selectedTokens.push(tokenObj);
+            // Per-token debug log
+            try {
+                console.log('SYNC SAVE • token:', {
+                    id: tokenObj.id,
+                    chain: tokenObj.chain,
+                    cex: cexUpper,
+                    symbol_in: symbolIn,
+                    symbol_out: symbolOut,
+                    sc_in: scIn,
+                    sc_out: scOut,
+                    des_in: desIn,
+                    des_out: desOut,
+                    selectedDexs: selectedDexs,
+                });
+            } catch(_) {}
         });
 
         // Validate at least 1 token selected
@@ -1496,6 +1522,12 @@ async function deferredInit() {
         const $btn = $('#sync-save-btn');
         const prevLabel = $btn.text();
         try { $btn.prop('disabled', true).text('Saving...'); } catch(_) {}
+        // Debug: summary before save
+        console.groupCollapsed('SYNC SAVE • summary');
+        console.info('Existing count:', existingList.length);
+        console.info('Selected to save:', selectedTokens.length);
+        console.info('Added:', added, 'Replaced:', replaced, 'Next total:', merged.length);
+        console.time('SYNC_SAVE_WRITE');
         let ok = true;
         if (typeof setTokensChainAsync === 'function') {
             ok = await setTokensChainAsync(activeSingleChainKey, merged);
@@ -1514,6 +1546,9 @@ async function deferredInit() {
             toastr.error(`Gagal menyimpan ke penyimpanan lokal${reason}`);
             try { $btn.prop('disabled', false).text(prevLabel); } catch(_) {}
         }
+        console.timeEnd('SYNC_SAVE_WRITE');
+        console.info('Write OK:', ok, 'Reason:', window.LAST_STORAGE_ERROR || '-');
+        console.groupEnd();
     });
 
     // Sync modal search + filter handlers
@@ -1848,3 +1883,48 @@ function setLastAction(action) {
  * Calculates the result of a swap and returns a data object for the UI queue.
  */
 // calculateResult is implemented in dom-renderer.js (deduplicated)
+    // Backup/Restore modal
+    $(document).on('click', '#openBackupModal', function(e){ e.preventDefault(); try { UIkit.modal('#backup-modal').show(); } catch(_) {} });
+    $(document).on('click', '#btnBackupDb', async function(){
+        try {
+            const payload = await (window.exportIDB ? window.exportIDB() : Promise.resolve(null));
+            if (!payload || !payload.items) { toastr.error('Gagal membuat backup.'); return; }
+            const filename = `MULTICHECKER_BACKUP_${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+            const ok = window.downloadJSON ? window.downloadJSON(filename, payload) : false;
+            if (ok) {
+                toastr.success(`Backup berhasil. ${payload.count||payload.items.length} item disalin.`);
+                try { setLastAction('BACKUP DATABASE'); } catch(_) {}
+                try { $('#backupSummary').text(`Backup: ${payload.items.length} item pada ${new Date().toLocaleString('id-ID',{hour12:false})}`); } catch(_) {}
+            } else {
+                toastr.error('Gagal mengunduh file backup.');
+            }
+        } catch(e) {
+            console.error('Backup error:', e);
+            toastr.error('Terjadi kesalahan saat backup.');
+        }
+    });
+    $(document).on('click', '#btnRestoreDb', function(){ $('#restoreFileInput').trigger('click'); });
+    $(document).on('change', '#restoreFileInput', function(ev){
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async function(e){
+            try{
+                const text = String(e.target.result||'').trim();
+                const json = JSON.parse(text);
+                const res = await (window.restoreIDB ? window.restoreIDB(json) : Promise.resolve({ ok:0, fail:0 }));
+                toastr.success(`Restore selesai. OK: ${res.ok}, Fail: ${res.fail}`);
+                try { setLastAction('RESTORE DATABASE'); } catch(_) {}
+                try { $('#backupSummary').text(`Restore OK: ${res.ok}, Fail: ${res.fail}`); } catch(_) {}
+                // Refresh UI data views
+                try { refreshTokensTable(); } catch(_) {}
+                try { if (typeof renderFilterCard === 'function') renderFilterCard(); } catch(_) {}
+            } catch(err){
+                console.error('Restore parse error:', err);
+                toastr.error('File tidak valid. Pastikan format JSON benar.');
+            } finally {
+                try { ev.target.value = ''; } catch(_) {}
+            }
+        };
+        reader.readAsText(file);
+    });

@@ -78,6 +78,7 @@
                         <img class="icon" id="reload" data-feature="reload" title="RESET PROSES" width="24px" src="https://cdn-icons-png.flaticon.com/256/10264/10264169.png" />
 
                          <a href="modal.html" class="iframe-modal-trigger" data-feature="assets"><img class="icon" title="MANAJEMEN ASSET" width="24px" src="https://cdn-icons-png.flaticon.com/512/4626/4626344.png" /></a>
+                         <a href="#" id="openBackupModal" title="Backup/Restore Database"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/1431/1431463.png" /></a>
                        
                          <a href="https://cors-anywhere.herokuapp.com/corsdemo" class="iframe-modal-trigger" data-feature="proxy"><img class="icon" title="BUKA AKSES" width="24px"  src="https://cdn-icons-png.flaticon.com/512/890/890162.png" /></a>
                         <!-- Memory management removed (no localStorage) -->
@@ -86,8 +87,8 @@
                     
                 </div>
 
-        </div>
-    </div>
+</div>
+</div>
 
     <!-- Unified Filter Card -->
     <div id="filter-card" class="uk-card uk-card-default uk-margin-small header-card uk-card-hover">
@@ -529,6 +530,27 @@
   </div>
 </div>
 
+<!-- Modal: Backup & Restore Database -->
+<div id="backup-modal" uk-modal>
+  <div class="uk-modal-dialog">
+    <div class="uk-modal-header uk-padding-small">
+      <h4 class="uk-modal-title uk-margin-remove"><span uk-icon="database"></span> Backup & Restore Database</h4>
+    </div>
+    <div class="uk-modal-body uk-padding-small">
+      <p class="uk-text-small">Gunakan fitur ini untuk mencadangkan seluruh data aplikasi (IndexedDB) ke file JSON dan memulihkannya kembali.</p>
+      <div class="uk-margin-small">
+        <button id="btnBackupDb" class="uk-button uk-button-primary uk-button-small"><span uk-icon="download"></span> Backup (Download)</button>
+        <button id="btnRestoreDb" class="uk-button uk-button-danger uk-button-small"><span uk-icon="upload"></span> Restore (Upload)</button>
+        <input type="file" id="restoreFileInput" accept="application/json,.json" style="display:none;">
+      </div>
+      <div id="backupSummary" class="uk-text-meta"></div>
+    </div>
+    <div class="uk-modal-footer uk-text-right uk-padding-small">
+      <button class="uk-button uk-button-default uk-modal-close uk-button-small" type="button">Close</button>
+    </div>
+  </div>
+  
+</div>
 
 
 

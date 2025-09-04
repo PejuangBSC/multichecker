@@ -111,8 +111,23 @@ function setFilterMulti(val){
 }
 
 function getFilterChain(chain){
-    const key = `FILTER_${String(chain).toUpperCase()}`;
-    const f = getFromLocalStorage(key, null);
+    const chainKey = String(chain).toLowerCase();
+    const key = `FILTER_${String(chainKey).toUpperCase()}`;
+    let f = getFromLocalStorage(key, null);
+    if (!f || typeof f !== 'object'){
+        try {
+            const legacyName = (window.CONFIG_CHAINS?.[chainKey]?.Nama_Chain || '').toString().toUpperCase();
+            if (legacyName) {
+                const legacyKey = `FILTER_${legacyName}`;
+                const lf = getFromLocalStorage(legacyKey, null);
+                if (lf && typeof lf === 'object') {
+                    // migrate
+                    saveToLocalStorage(key, lf);
+                    f = lf;
+                }
+            }
+        } catch(_) {}
+    }
     if (f && typeof f==='object') return { cex: (f.cex||[]).map(String), pair: (f.pair||[]).map(x=>String(x).toUpperCase()) };
     return { cex: [], pair: [] };
 }
@@ -128,6 +143,41 @@ function setFilterChain(chain, val){
         next.pair = (val.pair || []).map(x => String(x).toUpperCase());
     }
     saveToLocalStorage(key, next);
+}
+
+// =================================================================================
+// SORTING HELPERS (symbol_in ASC/DESC) BASED ON IDB DATA
+// =================================================================================
+function sortBySymbolIn(list, pref){
+    const dir = (pref === 'Z') ? -1 : 1; // default ASC
+    return (Array.isArray(list) ? [...list] : []).sort((a,b)=>{
+        const A = String(a.symbol_in||'').toUpperCase();
+        const B = String(b.symbol_in||'').toUpperCase();
+        if (A < B) return -1 * dir;
+        if (A > B) return  1 * dir;
+        return 0;
+    });
+}
+
+function getSortPrefForMulti(){
+    try { const f = getFromLocalStorage('FILTER_MULTICHAIN', null); return (f && (f.sort==='A'||f.sort==='Z')) ? f.sort : 'A'; } catch(_) { return 'A'; }
+}
+function getSortPrefForChain(chain){
+    try { const key = `FILTER_${String(chain).toUpperCase()}`; const f = getFromLocalStorage(key, null); return (f && (f.sort==='A'||f.sort==='Z')) ? f.sort : 'A'; } catch(_) { return 'A'; }
+}
+
+function getFlattenedSortedMulti(){
+    const pref = getSortPrefForMulti();
+    const tokens = getTokensMulti();
+    const flat = flattenDataKoin(tokens);
+    return sortBySymbolIn(flat, pref);
+}
+
+function getFlattenedSortedChain(chain){
+    const pref = getSortPrefForChain(chain);
+    const tokens = getTokensChain(chain);
+    const flat = flattenDataKoin(tokens);
+    return sortBySymbolIn(flat, pref);
 }
 
 function getTokensMulti(){
@@ -163,13 +213,29 @@ async function setTokensMultiAsync(list){
 }
 
 function getTokensChain(chain){
-    const key = `TOKEN_${String(chain).toUpperCase()}`;
-    const t = getFromLocalStorage(key, []);
+    const chainKey = String(chain).toLowerCase();
+    const primaryKey = `TOKEN_${String(chainKey).toUpperCase()}`;
+    let t = getFromLocalStorage(primaryKey, []);
+    if (Array.isArray(t) && t.length) return t;
+    // Fallback to legacy naming using Nama_Chain (e.g., ETHEREUM) if present in backup
+    try {
+        const legacyName = (window.CONFIG_CHAINS?.[chainKey]?.Nama_Chain || '').toString().toUpperCase();
+        if (legacyName) {
+            const legacyKey = `TOKEN_${legacyName}`;
+            const legacy = getFromLocalStorage(legacyKey, []);
+            if (Array.isArray(legacy) && legacy.length) {
+                // Migrate into primary for consistency
+                saveToLocalStorage(primaryKey, legacy);
+                return legacy;
+            }
+        }
+    } catch(_) {}
     return Array.isArray(t) ? t : [];
 }
 
 function setTokensChain(chain, list){
-    const key = `TOKEN_${String(chain).toUpperCase()}`;
+    const chainKey = String(chain).toLowerCase();
+    const key = `TOKEN_${String(chainKey).toUpperCase()}`;
     const prev = getFromLocalStorage(key, []);
     const arr = Array.isArray(list) ? list : [];
     saveToLocalStorage(key, arr);
@@ -178,10 +244,10 @@ function setTokensChain(chain, list){
         const nowHas = Array.isArray(arr) && arr.length > 0;
         if (nowHas && hadNoneBefore) {
             // Initialize default FILTER_<CHAIN> to select all relevant CEX and PAIR
-            const cfg = (window.CONFIG_CHAINS || {})[String(chain).toLowerCase()] || {};
+            const cfg = (window.CONFIG_CHAINS || {})[chainKey] || {};
             const cex = Object.keys(cfg.WALLET_CEX || window.CONFIG_CEX || {}).map(k => String(k));
             const pairs = Array.from(new Set([...(Object.keys(cfg.PAIRDEXS || {})), 'NON'])).map(x => String(x).toUpperCase());
-            const fkey = `FILTER_${String(chain).toUpperCase()}`;
+            const fkey = `FILTER_${String(chainKey).toUpperCase()}`;
             const existing = getFromLocalStorage(fkey, null);
             const empty = !existing || ((existing.cex||[]).length===0 && (existing.pair||[]).length===0);
             if (empty) {
@@ -192,7 +258,7 @@ function setTokensChain(chain, list){
 }
 
 async function setTokensChainAsync(chain, list){
-    const key = `TOKEN_${String(chain).toUpperCase()}`;
+    const key = `TOKEN_${String(chain).toLowerCase().toUpperCase()}`; // keep current primary
     const arr = Array.isArray(list) ? list : [];
     const { ok } = await (window.saveToLocalStorageAsync ? window.saveToLocalStorageAsync(key, arr) : Promise.resolve({ ok: true }));
     return ok;
