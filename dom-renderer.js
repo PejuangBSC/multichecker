@@ -7,6 +7,11 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         RenderCardSignal();
     }
     const tableBody = document.getElementById(tableBodyId);
+    // Manage concurrent renders per table body
+    try { window.__TABLE_RENDER_JOBS = window.__TABLE_RENDER_JOBS || new Map(); } catch(_) {}
+    const __jobKey = String(tableBodyId);
+    const __prevJob = window.__TABLE_RENDER_JOBS.get(__jobKey);
+    if (__prevJob && typeof __prevJob.cancel === 'function') { try { __prevJob.cancel(); } catch(_){} }
 
     if (!Array.isArray(filteredData) || filteredData.length === 0) {
         // Disable the correct start button based on the table being rendered
@@ -17,9 +22,24 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
     }
 
     const maxSlots = 4;
-    let tableHtml = '';
 
-    filteredData.forEach((data, index) => {
+    // Incremental chunked rendering to avoid blocking on large datasets
+    if (tableBody) tableBody.innerHTML = '';
+    const total = filteredData.length;
+    const CHUNK = 200; // rows per batch
+    let cursor = 0;
+    let __cancelled = false;
+    window.__TABLE_RENDER_JOBS.set(__jobKey, { cancel: () => { __cancelled = true; } });
+
+    function renderChunk(){
+        if (__cancelled) return;
+        if (!tableBody) return;
+        let chunkHtml = '';
+        const start = cursor;
+        const end = Math.min(start + CHUNK, total);
+        for (let i = start; i < end; i++) {
+            const data = filteredData[i];
+            const index = i;
         // CEX and Chain specific data
         const warnaCex = (CONFIG_CEX[data.cex] && CONFIG_CEX[data.cex].WARNA) || '#000';
         const chainLower = data.chain?.toLowerCase();
@@ -33,7 +53,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
 
         // Orderbook Left (Token -> Pair)
         rowHtml += `
-            <td style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
+            <td class="td-orderbook" style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
                 <span id="${idPrefix}LEFT_${data.cex}_${data.symbol_in}_${data.symbol_out}_${data.chain.toUpperCase()}">
                     <b>${(data.symbol_in||'').toUpperCase()} → ${(data.symbol_out||'').toUpperCase()}<br>${data.cex}</b> 🔒
                 </span>
@@ -98,7 +118,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         const chainShort = (data.chain || '').substring(0,3).toUpperCase();
 
         rowHtml += `
-            <td id="${idPrefix}${rowId}" class="uk-text-center uk-background uk-text-nowrap" style="text-align: center; border:1px solid black;">
+            <td id="${idPrefix}${rowId}" class="uk-text-center uk-background td-detail" style="text-align: center; border:1px solid black;">
                 [${index + 1}] <span style="color: ${warnaCex}; font-weight:bolder;">${data.cex} </span>
                 on <span style="color: ${warnaChain}; font-weight:bolder;">${chainShort} </span>
                 <span id="${idPrefix}EditMulti-${data.id}" data-id="${data.id}" title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span>
@@ -141,7 +161,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
 
         // Orderbook Right (Pair -> Token)
         rowHtml += `
-            <td style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
+            <td class="td-orderbook" style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
                 <span id="${idPrefix}RIGHT_${data.cex}_${data.symbol_in}_${data.symbol_out}_${data.chain.toUpperCase()}">
                    <b>${(data.symbol_out||'').toUpperCase()} → ${(data.symbol_in||'').toUpperCase()}<br>${data.cex}</b> 🔒
                 </span>
@@ -149,11 +169,25 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
 
         // End row
         rowHtml += '</tr>';
-        tableHtml += rowHtml;
-    });
-
-    if (tableBody) tableBody.innerHTML = tableHtml;
-    $('#startSCAN').prop('disabled', false);
+        chunkHtml += rowHtml;
+        }
+        if (chunkHtml) tableBody.insertAdjacentHTML('beforeend', chunkHtml);
+        try {
+            const pct = Math.floor(((end) / Math.max(total,1)) * 100);
+            const label = `Rendering table: ${end}/${total} (${pct}%)`;
+            const p = document.getElementById('progress'); if (p) p.textContent = label;
+        } catch(_) {}
+        cursor = end;
+        if (cursor < total) {
+            // Yield back to UI; schedule next batch
+            requestAnimationFrame(renderChunk);
+        } else {
+            $('#startSCAN').prop('disabled', false);
+            // clear job when done
+            window.__TABLE_RENDER_JOBS.delete(__jobKey);
+        }
+    }
+    renderChunk();
 }
 
 function renderTokenManagementList() {

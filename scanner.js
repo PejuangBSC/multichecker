@@ -288,9 +288,32 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         const routeLine = `${String(token.cex).toUpperCase()}->${String(via).toUpperCase()} [OK]`;
                                         const modalVal = isKiri ? modalKiri : modalKanan;
                                         const modalLine = `modal ${Number(modalVal||0)}$`;
-                                        // Mapping to match table logic
-                                        const buyPrice = isKiri ? DataCEX.priceBuyToken : DataCEX.priceSellToken; // PairtoToken BUY = token best bid
-                                        const sellPrice = isKiri ? DataCEX.priceBuyPair : DataCEX.priceSellToken; // TokentoPair SELL = pair lowest ask
+                                        // Compute DEX USD rate based on direction
+                                        const amtIn = isKiri ? amount_in_token : amount_in_pair;
+                                        const rate = (Number(finalDexRes.amount_out)||0) / (Number(amtIn)||1);
+                                        let dexUsd = null;
+                                        try {
+                                            const stable = (typeof getStableSymbols === 'function') ? getStableSymbols() : ['USDT','USDC','DAI'];
+                                            const baseSym = (typeof getBaseTokenSymbol === 'function') ? getBaseTokenSymbol(token.chain) : '';
+                                            const baseUsd = (typeof getBaseTokenUSD === 'function') ? getBaseTokenUSD(token.chain) : 0;
+                                            const inSym  = String(isKiri ? token.symbol_in  : token.symbol_out).toUpperCase();
+                                            const outSym = String(isKiri ? token.symbol_out : token.symbol_in ).toUpperCase();
+                                            if (isKiri) {
+                                                // token -> pair: USD per 1 token
+                                                if (stable.includes(outSym)) dexUsd = rate;
+                                                else if (baseSym && outSym === baseSym && baseUsd > 0) dexUsd = rate * baseUsd;
+                                                else dexUsd = rate * (Number(DataCEX.priceBuyPair)||0); // fallback via CEX
+                                            } else {
+                                                // pair -> token: USD per 1 token
+                                                if (stable.includes(inSym) && rate > 0) dexUsd = 1 / rate;
+                                                else if (baseSym && inSym === baseSym && baseUsd > 0 && rate > 0) dexUsd = baseUsd / rate;
+                                                else dexUsd = Number(DataCEX.priceSellToken)||0; // fallback via CEX
+                                            }
+                                        } catch(_) { dexUsd = null; }
+
+                                        // Directional buy/sell mapping (all in USD rate)
+                                        const buyPrice  = isKiri ? (Number(DataCEX.priceBuyToken)||0) : (Number(dexUsd)||0); // TokentoPair: buy CEX, PairtoToken: buy DEX
+                                        const sellPrice = isKiri ? (Number(dexUsd)||0)             : (Number(DataCEX.priceSellToken)||0); // TokentoPair: sell DEX, PairtoToken: sell CEX
                                         const buyLine = `buy : ${Number(buyPrice||0)}$`;
                                         const sellLine = `sell : ${Number(sellPrice||0)}$`;
                                         const pnlLine = `PNL : ${Number(update.profitLoss||0).toFixed(2)}$`;
@@ -329,8 +352,23 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                 const modalVal = isKiri ? modalKiri : modalKanan;
                                                 const modalLine = `modal ${Number(modalVal||0)}$`;
                                                 // Align console info with requested orderbook logic
-                                                const buyPrice = isKiri ? DataCEX.priceBuyToken : DataCEX.priceSellToken;
-                                                const sellPrice = isKiri ? DataCEX.priceBuyPair : DataCEX.priceSellToken;
+                                                const amtIn = isKiri ? amount_in_token : amount_in_pair;
+                                                const rate = Number(amtIn) ? (Number(fallbackRes?.amount_out||0) / Number(amtIn)) : 0;
+                                                let dexUsd = null;
+                                                try {
+                                                    const stable = (typeof getStableSymbols === 'function') ? getStableSymbols() : ['USDT','USDC','DAI'];
+                                                    const baseSym = (typeof getBaseTokenSymbol === 'function') ? getBaseTokenSymbol(token.chain) : '';
+                                                    const baseUsd = (typeof getBaseTokenUSD === 'function') ? getBaseTokenUSD(token.chain) : 0;
+                                                    const inSym  = String(isKiri ? token.symbol_in  : token.symbol_out).toUpperCase();
+                                                    const outSym = String(isKiri ? token.symbol_out : token.symbol_in ).toUpperCase();
+                                                    if (isKiri) {
+                                                        if (stable.includes(outSym)) dexUsd = rate; else if (baseSym && outSym === baseSym && baseUsd > 0) dexUsd = rate * baseUsd; else dexUsd = rate * (Number(DataCEX.priceBuyPair)||0);
+                                                    } else {
+                                                        if (stable.includes(inSym) && rate>0) dexUsd = 1 / rate; else if (baseSym && inSym === baseSym && baseUsd>0 && rate>0) dexUsd = baseUsd / rate; else dexUsd = Number(DataCEX.priceSellToken)||0;
+                                                    }
+                                                } catch(_) { dexUsd = null; }
+                                                const buyPrice = isKiri ? (Number(DataCEX.priceBuyToken)||0) : (Number(dexUsd)||0);
+                                                const sellPrice = isKiri ? (Number(dexUsd)||0)             : (Number(DataCEX.priceSellToken)||0);
                                                 const buyLine = `buy : ${Number(buyPrice||0)}$`;
                                                 const sellLine = `sell : ${Number(sellPrice||0)}$`;
                                                 const pnlLine = `PNL : N/A (DEX error)`;
@@ -504,4 +542,17 @@ function stopScanner() {
     window.__autoRunInterval = null;
     form_on();
     location.reload(); // The original stop logic reloads the page.
+}
+
+/**
+ * Soft-stop scanner without reloading the page.
+ * Useful before running long operations (e.g., Update Wallet CEX).
+ */
+function stopScannerSoft() {
+    try { isScanRunning = false; } catch(_) {}
+    try { cancelAnimationFrame(animationFrameId); } catch(_) {}
+    try { setAppState({ run: 'NO' }); } catch(_) {}
+    try { clearInterval(window.__autoRunInterval); } catch(_) {}
+    window.__autoRunInterval = null;
+    try { form_on(); } catch(_) {}
 }

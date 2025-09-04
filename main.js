@@ -947,7 +947,7 @@ async function deferredInit() {
       if (window.UIkit?.modal) UIkit.modal('#FormEditKoinModal').show();
     });
 
-    $('#UpdateWalletCEX').on('click', () => {
+    $('#UpdateWalletCEX').on('click', async () => {
         // Pre-check: require at least 1 CEX selected in filter chips
         try {
             const m = getAppMode();
@@ -967,12 +967,34 @@ async function deferredInit() {
             }
         } catch(_) { /* fallthrough to confirm */ }
 
-        if (confirm("APAKAH ANDA INGIN UPDATE WALLET EXCHANGER?")) {
-            checkAllCEXWallets();
-        }
+        if (!confirm("APAKAH ANDA INGIN UPDATE WALLET EXCHANGER?")) return;
+
+        // Ensure any running scan stops before updating wallets
+        try {
+            const st = getAppState();
+            if (st && st.run === 'YES') {
+                if (typeof stopScannerSoft === 'function') stopScannerSoft();
+                // Small delay to let UI settle
+                await new Promise(r => setTimeout(r, 200));
+            }
+        } catch(_) {}
+
+        // Run wallet update; page will reload after success in the service layer
+        try { checkAllCEXWallets(); } catch(e) { console.error(e); }
     });
 
-    $("#startSCAN").click(function () {
+$("#startSCAN").click(function () {
+        // Prevent starting if app state indicates a run is already active
+        try {
+            const stClick = getAppState();
+            if (stClick && stClick.run === 'YES') {
+                $('#startSCAN').prop('disabled', true).attr('aria-busy','true').text('Running...').addClass('uk-button-disabled');
+                $('#stopSCAN').show().prop('disabled', false);
+                try { if (typeof setScanUIGating === 'function') setScanUIGating(true); } catch(_) {}
+                return; // do not start twice
+            }
+        } catch(_) {}
+
         const settings = getFromLocalStorage('SETTING_SCANNER', {}) || {};
 
         const mode = getAppMode();
@@ -1575,20 +1597,50 @@ async function deferredInit() {
 $(document).ready(function() {
     // --- Critical Initializations (Immediate) ---
     // Initialize app state from localStorage
-    const appStateInit = getAppState();
-    const config = appStateInit;
-    if (config.run === "YES") {
-        form_off();
-        $('#startSCAN').prop('disabled', true).text('Running...').addClass('uk-button-disabled');
-        $('#stopSCAN').show().prop('disabled', false); // Ensure stop is usable
-        $('#reload').prop('disabled', false); // Ensure reload is usable
-        $('#infoAPP').html('⚠️ Proses sebelumnya tidak selesai. Tekan tombol <b>RESET PROSES</b> untuk memulai ulang.').show();
-        try { if (typeof setScanUIGating === 'function') setScanUIGating(true); } catch(_) {}
-    } else {
-        $('#startSCAN').prop('disabled', false).text('Start').removeClass('uk-button-disabled');
-        $('#stopSCAN').hide();
-        try { if (typeof setScanUIGating === 'function') setScanUIGating(false); } catch(_) {}
+    function applyRunUI(isRunning){
+        if (isRunning) {
+            try { form_off(); } catch(_) {}
+            $('#startSCAN').prop('disabled', true).attr('aria-busy','true').text('Running...').addClass('uk-button-disabled');
+            $('#stopSCAN').show().prop('disabled', false);
+            $('#reload').prop('disabled', false);
+            $('#infoAPP').html('⚠️ Proses sebelumnya tidak selesai. Tekan tombol <b>RESET PROSES</b> untuk memulai ulang.').show();
+            try { if (typeof setScanUIGating === 'function') setScanUIGating(true); } catch(_) {}
+        } else {
+            $('#startSCAN').prop('disabled', false).removeAttr('aria-busy').text('Start').removeClass('uk-button-disabled');
+            $('#stopSCAN').hide();
+            try { if (typeof setScanUIGating === 'function') setScanUIGating(false); } catch(_) {}
+        }
     }
+
+    const appStateInit = getAppState();
+    applyRunUI(appStateInit.run === 'YES');
+    // Re-apply once IndexedDB cache is fully warmed to avoid false negatives
+    try {
+        if (window.whenStorageReady && typeof window.whenStorageReady.then === 'function') {
+            window.whenStorageReady.then(() => {
+                try {
+                    const st = getAppState();
+                    applyRunUI(st && st.run === 'YES');
+                } catch(_) {}
+            });
+        }
+    } catch(_) {}
+
+    // Cross-tab run state sync via BroadcastChannel
+    try {
+        if (window.__MC_BC) {
+            window.__MC_BC.addEventListener('message', function(ev){
+                try {
+                    const msg = ev?.data;
+                    if (!msg || msg.type !== 'kv') return;
+                    if (String(msg.key).toUpperCase() === 'APP_STATE') {
+                        const r = (msg.val && msg.val.run) ? String(msg.val.run).toUpperCase() : 'NO';
+                        applyRunUI(r === 'YES');
+                    }
+                } catch(_) {}
+            });
+        }
+    } catch(_) {}
 
     const isDark = !!appStateInit.darkMode;
     if (isDark) {

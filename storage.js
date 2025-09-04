@@ -99,6 +99,9 @@
         }
         try { window.whenStorageReady = warmCacheAll(); } catch(_){}
 
+        // Initialize cross-tab channel for state sync (best-effort)
+        try { window.__MC_BC = window.__MC_BC || new BroadcastChannel('MULTICHECKER_APP'); } catch(_) {}
+
         // Public API (kept sync signatures to avoid large refactor)
         window.getFromLocalStorage = function(key, defaultValue){
             try{
@@ -115,6 +118,8 @@
                 const nsKey = String((window.storagePrefix||'') + key);
                 cache[nsKey] = value;
                 idbSet(nsKey, value);
+                // Broadcast key update (e.g., APP_STATE) to other tabs
+                try { if (window.__MC_BC) window.__MC_BC.postMessage({ type: 'kv', key, val: value }); } catch(_) {}
                 // no localStorage mirror
             }catch(_){ /* ignore */ }
         };
@@ -131,6 +136,7 @@
                         window.LAST_STORAGE_ERROR = 'IndexedDB transaction failed (possibly quota or permissions).';
                     } catch(_) {}
                 }
+                try { if (ok && window.__MC_BC) window.__MC_BC.postMessage({ type: 'kv', key, val: value }); } catch(_) {}
                 return { ok };
             } catch (e) {
                 try { window.LAST_STORAGE_ERROR = (e && e.message) ? e.message : String(e); } catch(_) {}

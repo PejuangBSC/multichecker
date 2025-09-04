@@ -702,6 +702,9 @@
       }
 
       $('#loadingOverlay').fadeOut(150);
+
+      // Reload the page after successful update to ensure all views reflect changes
+      try { if (aggregated.length > 0) setTimeout(() => location.reload(), 300); } catch(_) {}
   }
 
   // Register to App namespace
