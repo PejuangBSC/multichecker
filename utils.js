@@ -739,6 +739,39 @@ function getFeeSwap(chainName) {
     return feeSwap;
 }
 
+// =================================================================================
+// PRICE HELPERS (USD conversion for DEX display)
+// =================================================================================
+function getStableSymbols(){
+    return ['USDT','USDC','DAI','FDUSD','TUSD','BUSD','USDE'];
+}
+
+function getBaseTokenSymbol(chainName){
+    try {
+        const cfg = (window.CONFIG_CHAINS||{})[String(chainName).toLowerCase()] || {};
+        const sym = String((cfg.BaseFEEDEX||'').replace('USDT','')||'');
+        return sym.toUpperCase();
+    } catch(_) { return ''; }
+}
+
+function getBaseTokenUSD(chainName){
+    try {
+        const list = getFromLocalStorage('ALL_GAS_FEES', []) || [];
+        const key = (window.CONFIG_CHAINS?.[String(chainName).toLowerCase()]?.Nama_Chain) || chainName;
+        const hit = (list||[]).find(e => String(e.chain||'').toLowerCase() === String(key).toLowerCase());
+        const price = parseFloat(hit?.tokenPrice);
+        return isFinite(price) && price > 0 ? price : 0;
+    } catch(_) { return 0; }
+}
+
+try {
+    if (typeof window !== 'undefined') {
+        window.getStableSymbols = window.getStableSymbols || getStableSymbols;
+        window.getBaseTokenSymbol = window.getBaseTokenSymbol || getBaseTokenSymbol;
+        window.getBaseTokenUSD = window.getBaseTokenUSD || getBaseTokenUSD;
+    }
+} catch(_){}
+
 /**
  * Generates a direct trade link for a given DEX.
  * @param {string} dex - The DEX name.

@@ -748,14 +748,43 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     }
 
     let displayRate, tooltipRate, tooltipText;
-    if (trx === 'TokentoPair') {
-        displayRate = rateTokentoPair * priceSellPair_CEX;
-        tooltipRate = rateTokentoPair;
-        tooltipText = `1 ${Name_in} ≈ ${tooltipRate.toFixed(6)} ${Name_out}`;
-    } else {
-        displayRate = rateTokentoPair * priceSellToken_CEX;
-        tooltipRate = rateTokentoPair;
-        tooltipText = `1 ${Name_in} ≈ ${tooltipRate.toFixed(6)} ${Name_out}`;
+    tooltipRate = rateTokentoPair;
+    tooltipText = `1 ${Name_in} ≈ ${tooltipRate.toFixed(6)} ${Name_out}`;
+
+    // New: DEX-based USD rate where possible (both directions)
+    try {
+        const stableSet = (typeof getStableSymbols === 'function') ? getStableSymbols() : ['USDT','USDC','DAI'];
+        const outSym = String(Name_out||'').toUpperCase();
+        const inSym  = String(Name_in||'').toUpperCase();
+        const baseSym = (typeof getBaseTokenSymbol === 'function') ? getBaseTokenSymbol(nameChain) : '';
+        const baseUsd = (typeof getBaseTokenUSD === 'function') ? getBaseTokenUSD(nameChain) : 0;
+
+        if (trx === 'TokentoPair') {
+            // token -> pair
+            if (stableSet.includes(outSym)) {
+                // Output already in stable → amount_out is USD directly per 1 token_in
+                displayRate = rateTokentoPair;
+            } else if (baseSym && outSym === baseSym && baseUsd > 0) {
+                // token -> base → multiply by base USD
+                displayRate = rateTokentoPair * baseUsd;
+            }
+        } else {
+            // pair -> token (we want USD per 1 token_out)
+            if (rateTokentoPair > 0) {
+                if (stableSet.includes(inSym)) {
+                    // Input already USD → price per token = 1 / tokens_per_USD
+                    displayRate = 1 / rateTokentoPair;
+                } else if (baseSym && inSym === baseSym && baseUsd > 0) {
+                    // Input base coin → price per token = (baseUSD) / tokens_per_base
+                    displayRate = baseUsd / rateTokentoPair;
+                }
+            }
+        }
+    } catch(_) {}
+
+    // Fallback to previous CEX-based conversion if DEX-based not resolved
+    if (typeof displayRate === 'undefined') {
+        if (trx === 'TokentoPair') displayRate = rateTokentoPair * priceSellPair_CEX; else displayRate = rateTokentoPair * priceSellToken_CEX;
     }
 
     const rateIdr = (typeof formatIDRfromUSDT === 'function') ? formatIDRfromUSDT(displayRate) : 'N/A';
