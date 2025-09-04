@@ -672,11 +672,11 @@
       if (failed.length > 0) {
           try {
               UIkit.notification({
-                  message: `⚠️ Sebagian gagal: ${failed.map(f => `${f.cex}`).join(', ')}`,
+                  message: `⚠️ GAGAL UPDATE EXCHANGER: ${failed.map(f => `${f.cex}`).join(', ')}`,
                   status: 'warning', timeout: 6000
               });
           } catch(_) {
-              alert(`⚠️ SEBAGIAN GAGAL\n${failed.map(f => `- ${f.cex}: ${f.message}`).join('\n')}`);
+              alert(`⚠️ GAGAL UPDATE EXCHANGER \n${failed.map(f => `- ${f.cex}: ${f.message}`).join('\n')}`);
           }
       }
       // If absolutely nothing succeeded, stop here

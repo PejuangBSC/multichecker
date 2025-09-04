@@ -118,7 +118,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         const chainShort = (data.chain || '').substring(0,3).toUpperCase();
 
         rowHtml += `
-            <td id="${idPrefix}${rowId}" class="uk-text-center uk-background td-detail" style="text-align: center; border:1px solid black;">
+            <td id="${idPrefix}${rowId}" class="uk-text-center uk-background td-detail" style="text-align: center; border:1px solid black; width:10%; padding:10px;">
                 [${index + 1}] <span style="color: ${warnaCex}; font-weight:bolder;">${data.cex} </span>
                 on <span style="color: ${warnaChain}; font-weight:bolder;">${chainShort} </span>
                 <span id="${idPrefix}EditMulti-${data.id}" data-id="${data.id}" title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span>
