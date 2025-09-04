@@ -507,33 +507,42 @@ function DisplayPNL(data) {
     FeeSwap, FeeWD, sc_input, sc_output, Name_out, totalValue, totalModal,
     nameChain, codeChain, trx, profitLossPercent, vol,
     idPrefix, baseId, linkDEX, dexUsdRate,
-    // opsional sumber rate konversi
     quoteToUSDT: quoteToUSDT_in,
-    cexInfo,     // opsional: seperti { '<QUOTE>ToUSDT': { buy, sell } }
-    rates        // opsional: seperti { <QUOTE>: { toUSDT: number } }
+    cexInfo,
+    rates
   } = data;
 
   const mainCell = document.getElementById(String(idPrefix || '') + String(baseId || ''));
   if (!mainCell) return;
 
-  // Helpers ringkas
+  // Helpers
   const n = v => Number.isFinite(+v) ? +v : 0;
   const fmtUSD = v => (typeof formatPrice === 'function') ? formatPrice(n(v)) : n(v).toFixed(6);
   const fmtIDR = v => (typeof formatIDRfromUSDT === 'function') ? formatIDRfromUSDT(n(v)) : 'N/A';
+  const lower = s => String(s || '').toLowerCase();
+  const upper = s => String(s || '').toUpperCase();
 
   // Link CEX
   const urls = (typeof GeturlExchanger === 'function')
-    ? GeturlExchanger(String(cex||'').toUpperCase(), String(Name_in||''), String(Name_out||''))
+    ? GeturlExchanger(upper(cex), String(Name_in||''), String(Name_out||''))
     : {};
-  const buyLinkCEX  = urls?.tradeToken || '#';
-  const sellLinkCEX = urls?.tradePair  || '#';
-  const wdTokenUrl  = urls?.withdrawTokenUrl || urls?.withdrawUrl || '#';
-  const dpTokenUrl  = urls?.depositTokenUrl  || urls?.depositUrl  || '#';
 
-  // Angka & kondisi umum
-  const pnl    = n(profitLoss);
-  const feeAll = n(totalFee);
-  const bruto  = n(totalValue) - n(Modal);
+  const getCexLinks = (direction) => {
+    const isT2P = (lower(direction) === 'tokentopair');
+    return {
+      trade   : isT2P ? (urls?.tradeToken || urls?.tradeUrl || '#')
+                      : (urls?.tradePair  || urls?.tradeUrl || '#'),
+      withdraw: isT2P ? (urls?.withdrawTokenUrl || urls?.withdrawUrl || '#')
+                      : (urls?.withdrawPairUrl  || urls?.withdrawUrl || '#'),
+      deposit : isT2P ? (urls?.depositTokenUrl  || urls?.depositUrl  || '#')
+                      : (urls?.depositPairUrl   || urls?.depositUrl  || '#'),
+    };
+  };
+
+  // Angka umum
+  const pnl     = n(profitLoss);
+  const feeAll  = n(totalFee);
+  const bruto   = n(totalValue) - n(Modal);
 
   const filterPNLValue =
     (typeof getPNLFilter === 'function') ? n(getPNLFilter())
@@ -548,147 +557,127 @@ function DisplayPNL(data) {
   const volOK    = n(vol) >= n(Modal);
   const isHighlight = (!checkVol && passPNL) || (checkVol && passPNL && volOK);
 
-  // =========================
-  // NORMALISASI HARGA DEX → USDT/TOKEN (ROBUST)
-  // =========================
-  const quote = String(Name_out || '').toUpperCase();
+  // Normalisasi harga DEX → USDT/TOKEN
+  const quote = upper(Name_out);
   const isUSDTQuote = quote === 'USDT';
 
-  // 1) Kumpulkan kandidat rate QUOTE→USDT
   let q2u = 0;
-  if (isUSDTQuote) {
-    q2u = 1;
-  } else if (Number.isFinite(+quoteToUSDT_in)) {
-    q2u = n(quoteToUSDT_in);
-  } else if (cexInfo && cexInfo[`${quote}ToUSDT`]) {
-    q2u = n(cexInfo[`${quote}ToUSDT`].buy || cexInfo[`${quote}ToUSDT`].sell || 0);
-  } else if (rates && rates[quote]) {
-    q2u = n(rates[quote].toUSDT);
-  }
+  if (isUSDTQuote) q2u = 1;
+  else if (Number.isFinite(+quoteToUSDT_in)) q2u = n(quoteToUSDT_in);
+  else if (cexInfo && cexInfo[`${quote}ToUSDT`]) q2u = n(cexInfo[`${quote}ToUSDT`].buy || cexInfo[`${quote}ToUSDT`].sell || 0);
+  else if (rates && rates[quote]) q2u = n(rates[quote].toUSDT);
 
-  // 2) DEX rate mentah
-  const dexRateRaw = n(dexUsdRate);  // bisa QUOTE/TOKEN atau TOKEN/QUOTE atau bahkan sudah USDT/TOKEN
+  const dexRateRaw = n(dexUsdRate);
 
-  // 3) Hitung dua kandidat:
-  //    a) Asumsi dexRateRaw adalah QUOTE/TOKEN → USDT/TOKEN = dexRateRaw * q2u
-  //    b) Asumsi dexRateRaw adalah TOKEN/QUOTE → USDT/TOKEN = (q2u / dexRateRaw)
-  //    c) Jika quote=USDT, keduanya = dexRateRaw
   let candA = dexRateRaw;
   let candB = dexRateRaw;
-
   if (!isUSDTQuote) {
-    candA = (q2u > 0) ? (dexRateRaw * q2u) : dexRateRaw;
-    candB = (q2u > 0 && dexRateRaw > 0) ? (q2u / dexRateRaw) : 0;
+    candA = (q2u > 0) ? (dexRateRaw * q2u) : dexRateRaw;           // QUOTE/TOKEN → USDT/TOKEN
+    candB = (q2u > 0 && dexRateRaw > 0) ? (q2u / dexRateRaw) : 0;  // TOKEN/QUOTE → USDT/TOKEN
   }
 
-  // 4) Pilih kandidat yang paling “masuk akal”.
-  //    Jika kita punya harga CEX (USDT/TOKEN), pilih kandidat yang paling dekat skalanya.
-  //    Untuk TokentoPair bandingkan ke priceBuyToken_CEX; PairtoToken bandingkan ke priceSellToken_CEX.
   const refCexBuy  = n(priceBuyToken_CEX);
   const refCexSell = n(priceSellToken_CEX);
-  let dexUsdtPerToken;
 
-  if (String(trx).toLowerCase() === 'tokentopair') {
+  let dexUsdtPerToken;
+  if (lower(trx) === 'tokentopair') {
     if (refCexBuy > 0 && candA > 0 && candB > 0) {
-      const dA = Math.abs(candA - refCexBuy);
-      const dB = Math.abs(candB - refCexBuy);
-      dexUsdtPerToken = (dA <= dB) ? candA : candB;
-    } else {
-      dexUsdtPerToken = candA || candB || dexRateRaw;
-    }
+      dexUsdtPerToken = (Math.abs(candA - refCexBuy) <= Math.abs(candB - refCexBuy)) ? candA : candB;
+    } else dexUsdtPerToken = candA || candB || dexRateRaw;
   } else {
     if (refCexSell > 0 && candA > 0 && candB > 0) {
-      const dA = Math.abs(candA - refCexSell);
-      const dB = Math.abs(candB - refCexSell);
-      dexUsdtPerToken = (dA <= dB) ? candA : candB;
-    } else {
-      dexUsdtPerToken = candA || candB || dexRateRaw;
-    }
+      dexUsdtPerToken = (Math.abs(candA - refCexSell) <= Math.abs(candB - refCexSell)) ? candA : candB;
+    } else dexUsdtPerToken = candA || candB || dexRateRaw;
   }
 
-  // =========================
-  // TAMPILKAN HARGA (SELALU USDT/TOKEN)
-  // =========================
-  const CEX = String(cex||'').toUpperCase();
-  const DEX = String(dextype||'').toUpperCase();
+  // Tampilkan harga + link
+  const CEX = upper(cex);
+  const DEX = upper(dextype);
+  const direction = lower(trx);
+  const cexLinks = getCexLinks(direction);
 
   let buyPrice, sellPrice, buyLink, sellLink, tipBuy, tipSell;
 
-  if (String(trx).toLowerCase() === 'tokentopair') {
-    // BUY di CEX (USDT/TOKEN), SELL di DEX (USDT/TOKEN)
+  if (direction === 'tokentopair') {
     buyPrice  = refCexBuy;
     sellPrice = n(dexUsdtPerToken);
-    buyLink   = buyLinkCEX;
+    buyLink   = cexLinks.trade;      // TOKEN
     sellLink  = linkDEX || '#';
 
     tipBuy  = `USDT -> ${Name_in} | ${CEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
     const inv = sellPrice > 0 ? (1/sellPrice) : 0;
     tipSell = `${Name_in} -> ${Name_out} | ${DEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   } else {
-    // PairtoToken: BUY di DEX (USDT/TOKEN), SELL di CEX (USDT/TOKEN)
     buyPrice  = n(dexUsdtPerToken);
     sellPrice = refCexSell;
     buyLink   = linkDEX || '#';
-    sellLink  = buyLinkCEX;
+    sellLink  = cexLinks.trade;      // PAIR
 
     tipBuy  = `${Name_in} -> ${Name_out} | ${DEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
     const inv = sellPrice > 0 ? (1/sellPrice) : 0;
     tipSell = `${Name_out} -> USDT | ${CEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   }
 
-  // Baris fee & info
-  const wdLine  = `<a class="uk-text-primary" href="${wdTokenUrl}" target="_blank" rel="noopener" title="FEE WITHDRAW">🈳 WD: ${n(FeeWD).toFixed(4)}$</a>`;
-  const dpLine  = `<a class="uk-text-primary" href="${dpTokenUrl}" target="_blank" rel="noopener">🈷️ DP[${Name_in}]</a>`;
-  const swapFee = `<span class="uk-text-danger" title="FEE SWAP">💸 SW: ${n(FeeSwap).toFixed(4)}$</span>`;
+  // Fee & info (WD/DP sesuai arah) — FEE SWAP PISAH BARIS
+  const wdUrl = cexLinks.withdraw;
+  const dpUrl = cexLinks.deposit;
 
-  // Style & teks
+  const wdLine   = `<a class="uk-text-primary" href="${wdUrl}" target="_blank" rel="noopener" title="FEE WITHDRAW">🈳 WD: ${n(FeeWD).toFixed(4)}$</a>`;
+  const dpLine   = `<a class="uk-text-primary" href="${dpUrl}" target="_blank" rel="noopener">🈷️ DP[${Name_in}]</a>`;
+  const swapLine = `<span class="monitor-line uk-text-danger" title="FEE SWAP">💸 SW: ${n(FeeSwap).toFixed(4)}$</span>`;
+
+  const feeLine  = (direction === 'tokentopair') ? wdLine : dpLine;
+
+  // Highlight + UIkit
   const netClass = (pnl >= 0) ? 'uk-text-success' : 'uk-text-danger';
   const bracket  = `[${bruto.toFixed(2)} ~ ${feeAll.toFixed(2)}]`;
 
-  // Highlight
-  const forceHighlight = pnl > feeAll;
-  const shouldHighlight = isHighlight || forceHighlight;
+  const shouldHighlight = isHighlight || (pnl > feeAll);
   mainCell.style.cssText = shouldHighlight
     ? "border:1px solid #222;background-color:#94fa95!important;font-weight:bolder!important;color:#000!important;vertical-align:middle!important;text-align:center!important;"
     : "text-align:center;vertical-align:middle;";
 
-  // Rangkaian HTML utama
-  const lineBuy  = `<a class="monitor-line uk-text-success dex-price-link" href="${buyLink}"  target="_blank" rel="noopener" title="${tipBuy}">⬆ ${fmtUSD(buyPrice)}</a>`;
-  const lineSell = `<a class="monitor-line uk-text-danger  dex-price-link" href="${sellLink}" target="_blank" rel="noopener" title="${tipSell}">⬇ ${fmtUSD(sellPrice)}</a>`;
-  const feeBlock = `${(String(trx).toLowerCase()==='tokentopair') ? wdLine : dpLine} <span class="monitor-line">${swapFee}</span>`;
-  const lineBrut = `<span class="monitor-line uk-text-dark" title="BRUTO ~ TOTAL FEE">${bracket}</span>`;
-  const linePNL  = `<span class="monitor-line ${netClass}" title="PROFIT / LOSS">💰 PNL: ${pnl.toFixed(2)}</span>`;
+  // Baris utama (SWAP dipisah baris sendiri)
+  const lineBuy   = `<a class="monitor-line uk-text-success dex-price-link" href="${buyLink}"  target="_blank" rel="noopener" title="${tipBuy}">⬆ ${fmtUSD(buyPrice)}</a>`;
+  const lineSell  = `<a class="monitor-line uk-text-danger  dex-price-link" href="${sellLink}" target="_blank" rel="noopener" title="${tipSell}">⬇ ${fmtUSD(sellPrice)}</a>`;
+  const feeBlock1 = `<span class="monitor-line">${feeLine}</span>`;
+  const feeBlock2 = `<span class="monitor-line">${swapLine}</span>`; // ← baris terpisah
+  const lineBrut  = `<span class="monitor-line uk-text-muted" title="BRUTO ~ TOTAL FEE">${bracket}</span>`;
+  const linePNL   = `<span class="monitor-line ${netClass}" title="PROFIT / LOSS">💰 PNL: ${pnl.toFixed(2)}</span>`;
 
-  const resultHtml = [lineBuy, lineSell, `<span class="monitor-line">${feeBlock}</span>`, lineBrut, linePNL].join(' ');
+  const resultHtml = [lineBuy, lineSell, feeBlock1, '', feeBlock2, lineBrut, linePNL].join(' ');
 
-  // Panel sinyal / Telegram
+  // Panel sinyal / Telegram (opsional)
   try {
     if (pnl > feeAll && typeof InfoSinyal === 'function') {
-      InfoSinyal(String(dextype||'').toLowerCase(), NameX, pnl, feeAll, CEX, Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix);
+      InfoSinyal(lower(dextype), NameX, pnl, feeAll, upper(cex), Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix);
     }
   } catch(_) {}
 
   try {
     if (typeof MultisendMessage === 'function' && (pnl > filterPNLValue)) {
-      const direction = (String(trx).toLowerCase() === 'tokentopair') ? 'cex_to_dex' : 'dex_to_cex';
+      const directionMsg = (direction === 'tokentopair') ? 'cex_to_dex' : 'dex_to_cex';
       const tokenData = { chain: nameChain, symbol: Name_in, pairSymbol: Name_out, contractAddress: sc_input, pairContractAddress: sc_output };
-      const priceBUY  = n(buyPrice);   // USDT/TOKEN
-      const priceSELL = n(sellPrice);  // USDT/TOKEN
       const nickname =
         (typeof getFromLocalStorage === 'function')
           ? (getFromLocalStorage('SETTING_SCANNER', {})?.nickname || '')
           : (typeof SavedSettingData !== 'undefined' ? (SavedSettingData?.nickname || '') : '');
-      MultisendMessage(CEX, dextype, tokenData, Modal, pnl, priceBUY, priceSELL, n(FeeSwap), n(FeeWD), feeAll, nickname, direction);
+
+      MultisendMessage(
+        upper(cex), dextype, tokenData, Modal, pnl,
+        n(buyPrice), n(sellPrice), n(FeeSwap), n(FeeWD), feeAll, nickname, directionMsg
+      );
     }
   } catch(_) {}
 
   // Render akhir
   const dexNameAndModal = mainCell.querySelector('strong')?.outerHTML || '';
   const modeNow = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
-  const resultWrapClass = (String(modeNow.type).toLowerCase() === 'single') ? 'uk-text-dark' : 'uk-text-primary';
+  const resultWrapClass = (lower(modeNow.type) === 'single') ? 'uk-text-dark' : 'uk-text-primary';
   const boldStyle = shouldHighlight ? 'font-weight:bolder;' : '';
 
-  mainCell.innerHTML = `${dexNameAndModal ? dexNameAndModal + '<br>' : ''}<span class="${resultWrapClass}" style="${boldStyle}">${resultHtml}</span>`;
+  mainCell.innerHTML =
+    `${dexNameAndModal ? dexNameAndModal + '<br>' : ''}<span class="${resultWrapClass}" style="${boldStyle}">${resultHtml}</span>`;
 }
 
 /** Append a compact item to the DEX signal panel and play audio. */
