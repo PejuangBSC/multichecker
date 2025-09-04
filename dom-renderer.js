@@ -621,9 +621,9 @@ function DisplayPNL(data) {
     buyLink   = buyLinkCEX;
     sellLink  = linkDEX || '#';
 
-    tipBuy  = `${Name_in} -> ${Name_out} | ${CEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
+    tipBuy  = `USDT -> ${Name_in} | ${CEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
     const inv = sellPrice > 0 ? (1/sellPrice) : 0;
-    tipSell = `${Name_out} -> ${Name_in} | ${DEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
+    tipSell = `${Name_in} -> ${Name_out} | ${DEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   } else {
     // PairtoToken: BUY di DEX (USDT/TOKEN), SELL di CEX (USDT/TOKEN)
     buyPrice  = n(dexUsdtPerToken);
@@ -631,9 +631,9 @@ function DisplayPNL(data) {
     buyLink   = linkDEX || '#';
     sellLink  = buyLinkCEX;
 
-    tipBuy  = `${Name_out} -> ${Name_in} | ${DEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
+    tipBuy  = `${Name_in} -> ${Name_out} | ${DEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
     const inv = sellPrice > 0 ? (1/sellPrice) : 0;
-    tipSell = `${Name_in} -> ${Name_out} | ${CEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
+    tipSell = `${Name_out} -> USDT | ${CEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   }
 
   // Baris fee & info
@@ -797,6 +797,9 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
                 } else if (baseSym && inSym === baseSym && baseUsd > 0) {
                     // Input base coin → price per token = (baseUSD) / tokens_per_base
                     displayRate = baseUsd / rateTokentoPair;
+                } else if (priceBuyPair_CEX > 0) {
+                    // Multi-hop via CEX USD per pair: USD/token = (USD per 1 pair) / (tokens per 1 pair)
+                    displayRate = priceBuyPair_CEX / rateTokentoPair;
                 }
             }
         }
