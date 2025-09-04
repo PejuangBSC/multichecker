@@ -652,6 +652,7 @@ body.dark-mode {
 /* Keep monitoring tables readable on small screens by forcing horizontal scroll */
 #main-table,
 #single-chain-table {
+  min-width: 1600px; /* prevent auto-shrink; adjust if needed */
   table-layout: auto;
 }
 
