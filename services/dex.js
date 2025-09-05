@@ -205,7 +205,8 @@
           if (!response || !response.amountOutWei) return reject({ pesanDEX: 'SWOOP response invalid' });
           const amount_out = parseFloat(response.amountOutWei) / Math.pow(10, des_output);
           const FeeSwap = getFeeSwap(nameChain);
-          resolve({ dexTitle: `${dexType} via SWOOP`, sc_input, des_input, sc_output, des_output, FeeSwap, dex: dexType, amount_out });
+          // Keep dexTitle as the main DEX/aggregator name only (no "via ..." suffix)
+          resolve({ dexTitle: dexType, sc_input, des_input, sc_output, des_output, FeeSwap, dex: dexType, amount_out });
         },
         error: function (xhr, textStatus) {
           let alertMessage = `Error: ${textStatus}`;

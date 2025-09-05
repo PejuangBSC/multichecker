@@ -160,7 +160,9 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
 
     const linkBuy = `<a href="${chainConfig.URL_Chain}/token/${scIn}">${fromSymbol}</a>`;
     const linkSell = `<a href="${chainConfig.URL_Chain}/token/${scOut}">${toSymbol}</a>`;
-    const dexTradeLink = `<a href="https://swap.defillama.com/?chain=${chainConfig.Nama_Chain}&from=${scIn}&to=${scOut}">${dex.toUpperCase()}</a>`;
+    // Sanitize DEX text to show only the main DEX (strip any " via ..." qualifiers)
+    const dexText = String(dex || '').replace(/\s+via\s+.*$/i, '');
+    const dexTradeLink = `<a href="https://swap.defillama.com/?chain=${chainConfig.Nama_Chain}&from=${scIn}&to=${scOut}">${dexText.toUpperCase()}</a>`;
     const urls = GeturlExchanger(cex.toUpperCase(), fromSymbol, toSymbol) || {};
     const linkCEX = `<a href="${urls.tradeToken || '#'}">${cex.toUpperCase()}</a>`;
 

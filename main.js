@@ -71,49 +71,8 @@ function attachEditButtonListeners() {
         }
     });
 
-    // Delete token handler (works even during scanning because it's a span, not a button)
-    $('.delete-token-button').off('click').on('click', function () {
-        try {
-            const $el = $(this);
-            const id = String($el.data('id'));
-            if (!id) return;
-            const symIn  = String($el.data('symbol-in')  || '').toUpperCase();
-            const symOut = String($el.data('symbol-out') || '').toUpperCase();
-            const chain  = String($el.data('chain')      || '').toUpperCase();
-            const cex    = String($el.data('cex')        || '').toUpperCase();
-            const detail = `• Token: ${symIn||'-'}/${symOut||'-'}\n• Chain: ${chain||'-'}\n• CEX: ${cex||'-'}`;
-            const ok = confirm(`🗑️ Hapus Koin Ini?\n\n${detail}\n\n⚠️ Tindakan ini tidak dapat dibatalkan. Lanjutkan?`);
-            if (!ok) return;
-
-            const mode = getAppMode();
-            if (mode.type === 'single') {
-                let list = getTokensChain(mode.chain);
-                const before = list.length;
-                list = list.filter(t => String(t.id) !== id);
-                setTokensChain(mode.chain, list);
-                if (list.length < before) {
-                    try { setLastAction('HAPUS KOIN'); } catch(_) {}
-                    toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
-                }
-                // Sembunyikan baris pada tabel berjalan agar hasil scan lain tidak hilang
-                try { $el.closest('tr').addClass('row-hidden'); } catch(_) {}
-            } else {
-                let list = getTokensMulti();
-                const before = list.length;
-                list = list.filter(t => String(t.id) !== id);
-                setTokensMulti(list);
-                if (list.length < before) {
-                    try { setLastAction('HAPUS KOIN'); } catch(_) {}
-                   toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
-                }
-                // Sembunyikan baris pada tabel berjalan agar hasil scan lain tidak hilang
-                try { $el.closest('tr').addClass('row-hidden'); } catch(_) {}
-            }
-        } catch (e) {
-            console.error('Gagal menghapus koin:', e);
-            toastr.error('Gagal menghapus koin');
-        }
-    });
+    // Delete token handler is delegated globally (see click.globalDelete).
+    // No direct binding here to avoid duplicate confirmations.
 }
 
 // Also bind a delegated delete handler to be resilient during scanning and rerenders
