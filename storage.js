@@ -113,6 +113,101 @@
             }catch(e){ return defaultValue; }
         };
 
+        // History helpers (append-only list in KV)
+        function resolveModeInfo(){
+            try {
+                if (typeof getAppMode === 'function') {
+                    const m = getAppMode();
+                    if (m && String(m.type).toLowerCase() === 'single') {
+                        return { mode: 'single', chain: String(m.chain||'').toUpperCase() || 'UNKNOWN' };
+                    }
+                    return { mode: 'multi', chain: 'MULTICHAIN' };
+                }
+            } catch(_) {}
+            // Fallback to URL param
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                const raw = (params.get('chain') || 'all').toLowerCase();
+                if (!raw || raw === 'all') return { mode: 'multi', chain: 'MULTICHAIN' };
+                return { mode: 'single', chain: raw.toUpperCase() };
+            } catch(_) { return { mode: 'multi', chain: 'MULTICHAIN' }; }
+        }
+
+        function formatActionLabel(action, includeChain){
+            try {
+                const hasBracket = /\[[^\]]+\]$/.test(String(action));
+                if (!includeChain || hasBracket) return String(action);
+                const info = resolveModeInfo();
+                return `${String(action)} [${info.chain}]`;
+            } catch(_) { return String(action); }
+        }
+
+        async function getHistoryLog(){
+            try {
+                const key = String((window.storagePrefix||'') + 'HISTORY_LOG');
+                if (Object.prototype.hasOwnProperty.call(cache, key)) return Array.isArray(cache[key]) ? cache[key] : [];
+                const val = await idbGet(key);
+                if (val !== undefined) cache[key] = val;
+                return Array.isArray(val) ? val : [];
+            } catch(_) { return []; }
+        }
+
+        async function addHistoryEntryRaw(entry){
+            try {
+                const list = await getHistoryLog();
+                const capped = list.slice(-999);
+                capped.push(entry);
+                const key = String((window.storagePrefix||'') + 'HISTORY_LOG');
+                cache[key] = capped;
+                await idbSet(key, capped);
+                try { if (window.__MC_BC) window.__MC_BC.postMessage({ type: 'history', entry }); } catch(_) {}
+                return true;
+            } catch(_) { return false; }
+        }
+
+        // options: { includeChain?: boolean }
+        window.addHistoryEntry = async function(action, status, meta, options){
+            try {
+                const when = new Date();
+                const stamp = when.toLocaleString('id-ID', { hour12: false });
+                const includeChain = (options && typeof options.includeChain === 'boolean') ? options.includeChain : true;
+                const actionLabel = formatActionLabel(action, includeChain);
+                const entry = {
+                    id: (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
+                    timeISO: when.toISOString(),
+                    time: stamp,
+                    action: String(actionLabel||'').trim(),
+                    status: String(status||'success').toLowerCase(),
+                    meta: meta || undefined
+                };
+                return await addHistoryEntryRaw(entry);
+            } catch(_) { return false; }
+        };
+
+        // Expose getters and bulk delete utilities
+        window.getHistoryLog = async function(){ return await getHistoryLog(); };
+        window.clearHistoryLog = async function(){
+            try{
+                const key = String((window.storagePrefix||'') + 'HISTORY_LOG');
+                cache[key] = [];
+                await idbSet(key, []);
+                try { if (window.__MC_BC) window.__MC_BC.postMessage({ type: 'history_clear' }); } catch(_) {}
+                return true;
+            } catch(_) { return false; }
+        };
+        window.deleteHistoryByIds = async function(ids){
+            try{
+                const list = await getHistoryLog();
+                const set = new Set((ids||[]).map(String));
+                const filtered = list.filter(e => !set.has(String(e.id)));
+                const key = String((window.storagePrefix||'') + 'HISTORY_LOG');
+                cache[key] = filtered;
+                await idbSet(key, filtered);
+                try { if (window.__MC_BC) window.__MC_BC.postMessage({ type: 'history_delete', ids: Array.from(set) }); } catch(_) {}
+                return { ok: true, removed: list.length - filtered.length };
+            } catch(e){ return { ok:false, error: e }; }
+        };
+
         window.saveToLocalStorage = function(key, value){
             try{
                 const nsKey = String((window.storagePrefix||'') + key);
@@ -264,7 +359,7 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        setLastAction(`EXPORT DATA KOIN [${chainLabel}]`);
+        try { setLastAction(`EXPORT DATA KOIN`, 'success'); } catch(_) {}
     }
 
     // ============================
@@ -323,13 +418,26 @@
                 // Hitung jumlah token yang diimport
                 let jumlahToken = Array.isArray(tokenData) ? tokenData.length : 0;
 
-                // Tampilkan alert dengan Unicode
-                alert(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
-                setLastAction(`IMPORT DATA KOIN [${chainLabel}]`);
-                location.reload();
+                // Notifikasi sukses + tetap tampil setelah reload
+                try { setLastAction(`IMPORT DATA KOIN`, 'success', { count: jumlahToken }); } catch(_) {}
+                try {
+                    if (typeof reloadWithNotify === 'function') {
+                        reloadWithNotify('success', `✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
+                    } else if (typeof notifyAfterReload === 'function') {
+                        notify('success', `✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`, null, { persist: true });
+                        location.reload();
+                    } else if (typeof toastr !== 'undefined') {
+                        toastr.success(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
+                        location.reload();
+                    } else {
+                        alert(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
+                        location.reload();
+                    }
+                } catch(_) { try { location.reload(); } catch(_){} }
 
             } catch (error) {
                 console.error("Error parsing CSV:", error);
+                try { setLastAction('IMPORT DATA KOIN', 'error', { error: String(error && error.message || error) }); } catch(_) {}
                 toastr.error("Format file CSV tidak valid!");
             }
         };

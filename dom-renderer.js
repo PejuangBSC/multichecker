@@ -255,7 +255,7 @@ function renderTokenManagementList() {
         const pairStatsHtml = Object.entries(countByPair).map(([pair, count]) => (
             `<span class="uk-text-bolder" style="margin:2px;">${pair}</span> <span class="uk-text-dark uk-text-bolder"> [${count}]</span> `
         )).join(' ') || '-';
-       // statsHtml = `<b class="uk-text-primary uk-text-bolder">STATISTIK KOIN</b>: ${cexStatsHtml} | ${pairStatsHtml}`;
+       
         statsHtml = `<b class="uk-text-primary uk-text-bolder">MANAJEMEN KOIN CHAIN ${chainKey.toUpperCase()}</b>`;
     } else { // multi-chain mode
         const countByChain = activeTokensForStats.reduce((acc, t) => { const k = String(t.chain || '').toLowerCase(); acc[k] = (acc[k] || 0) + 1; return acc; }, {});
@@ -270,7 +270,7 @@ function renderTokenManagementList() {
             return `<span style="color:${col}; margin:2px; font-weight:bolder;">${cex}</span> <span class="uk-text-dark uk-text-bolder"> [${count}]</span> `;
         }).join(' ') || '-';
         statsHtml = `<b class="uk-text-primary uk-text-bolder">MANAJEMEN KOIN (MULTICHAIN)</b>`;
-       // statsHtml = `<b class="uk-text-primary uk-text-bolder">STATISTIK KOIN</b>: ${chainStatsHtml} | ${cexStatsHtml}`;
+       
     }
 
     const currentQ = ($('#mgrSearchInput').length ? ($('#mgrSearchInput').val() || '') : ($('#searchInput').length ? ($('#searchInput').val() || '') : ''));
@@ -460,7 +460,7 @@ function renderTokenManagementList() {
 function updateTableVolCEX(finalResult, cex, tableBodyId = 'dataTableBody') {
     const cexName = cex.toUpperCase();
     const TokenPair = finalResult.token + "_" + finalResult.pair;
-    const isIndodax = cexName === 'INDODAX';
+    
     const idPrefix = tableBodyId + '_';
 
     const getPriceIDR = priceUSDT => {
@@ -495,6 +495,57 @@ function updateTableVolCEX(finalResult, cex, tableBodyId = 'dataTableBody') {
         `<span class='uk-text-primary uk-text-bolder'>${finalResult.pair} -> ${finalResult.token}</span><br/>` +
         volumesBuyToken.map(data => renderVolume(data, 'uk-text-danger')).join('')
     );
+}
+
+// Helper: convert HEX or named color to RGBA with given alpha; fall back to greenish
+function hexToRgba(hex, alpha) {
+  try {
+    if (!hex) return `rgba(148, 250, 149, ${alpha})`;
+    const h = String(hex).trim();
+    // If already rgba/hsla or rgb, just replace alpha when possible
+    if (h.startsWith('rgba')) {
+      return h.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, `rgba($1,$2,$3,${alpha})`);
+    }
+    if (h.startsWith('rgb')) {
+      const m = h.match(/rgb\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)/);
+      if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+    }
+    let c = h.replace('#','');
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    const r = parseInt(c.slice(0,2), 16);
+    const g = parseInt(c.slice(2,4), 16);
+    const b = parseInt(c.slice(4,6), 16);
+    if ([r,g,b].some(Number.isNaN)) return `rgba(148, 250, 149, ${alpha})`;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  } catch(_) {
+    return `rgba(148, 250, 149, ${alpha})`;
+  }
+}
+
+// Helper: resolve chain color hex from config or chainData
+function getChainColorHexByName(chainName) {
+  try {
+    const key = String(chainName || '').toLowerCase();
+    const cfg = (typeof getChainData === 'function')
+      ? getChainData(chainName)
+      : ((typeof window !== 'undefined' && window.CONFIG_CHAINS) ? window.CONFIG_CHAINS[key] : undefined);
+    return cfg?.WARNA || cfg?.COLOR_CHAIN || '#94fa95';
+  } catch(_) {
+    return '#94fa95';
+  }
+}
+
+// Helper: detect dark mode (basic). Overrideable if app provides getTheme/getDarkMode
+function isDarkMode() {
+  try {
+    if (typeof getTheme === 'function') return String(getTheme()).toLowerCase().includes('dark');
+    if (typeof getDarkMode === 'function') return !!getDarkMode();
+    // CSS class or media query fallback
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+  } catch(_) {}
+  return false;
 }
 
 /**
@@ -633,8 +684,11 @@ function DisplayPNL(data) {
   const bracket  = `[${bruto.toFixed(2)} ~ ${feeAll.toFixed(2)}]`;
 
   const shouldHighlight = isHighlight || (pnl > feeAll);
+  const chainColorHexHL = getChainColorHexByName(nameChain);
+  // In dark mode: keep a lighter green; else use chain color alpha
+  const hlBg = isDarkMode() ? hexToRgba('#7fffa0', 0.35) : hexToRgba(chainColorHexHL, 0.4);
   mainCell.style.cssText = shouldHighlight
-    ? "border:1px solid #222;background-color:#94fa95!important;font-weight:bolder!important;color:#000!important;vertical-align:middle!important;text-align:center!important;"
+    ? `border:1px solid #222;background-color:${hlBg}!important;font-weight:bolder!important;color:#000!important;vertical-align:middle!important;text-align:center!important;`
     : "text-align:center;vertical-align:middle;";
 
   // Baris utama (SWAP dipisah baris sendiri)
@@ -684,12 +738,15 @@ function DisplayPNL(data) {
 function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair, profitLossPercent, modal, nameChain, codeChain, trx, idPrefix) {
   const chainData = getChainData(nameChain);
   const chainShort = String(chainData?.SHORT_NAME || chainData?.Nama_Chain || nameChain).toUpperCase();
-  const warnaChain = String(chainData?.COLOR_CHAIN);
+  const warnaChain = String(chainData?.COLOR_CHAIN || chainData?.WARNA || '#94fa95');
   const filterPNLValue = (typeof getPNLFilter === 'function') ? getPNLFilter() : parseFloat(SavedSettingData.filterPNL);
   const warnaCEX = getWarnaCEX(cex);
   const warnaTeksArah = (trx === "TokentoPair") ? "uk-text-success" : "uk-text-danger";
   const baseId = `${cex.toUpperCase()}_${DEXPLUS.toUpperCase()}_${NameToken}_${NamePair}_${String(nameChain).toUpperCase()}`;
-  const highlightStyle = (Number(PNL) > filterPNLValue) ? "background-color:#94fa95; font-weight:bolder;" : "";
+  const signalBg = isDarkMode() ? hexToRgba('#7fffa0', 0.35) : hexToRgba(warnaChain, 0.4);
+  const highlightStyle = (Number(PNL) > filterPNLValue)
+    ? `background-color:${signalBg}; font-weight:bolder;`
+    : "";
 
   const modeNow2 = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
   const isSingleMode2 = String(modeNow2.type).toLowerCase() === 'single';
@@ -752,7 +809,8 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     const linkDEX = generateDexLink(dextype,nameChain,codeChain,Name_in,sc_input, Name_out, sc_output);
 
     if (!linkDEX) {
-        console.error(`DEX Type "${dextype}" tidak valid atau belum didukung.`);
+        try { if (typeof notify === 'function') notify('error', `DEX Type "${dextype}" tidak valid atau belum didukung.`); else if (typeof toastr !== 'undefined') toastr.error(`DEX Type "${dextype}" tidak valid atau belum didukung.`); } catch(_) {}
+        try { console.error(`DEX Type "${dextype}" tidak valid atau belum didukung.`); } catch(_) {}
         return { type: 'error', id: idPrefix + baseId, message: `DEX Type "${dextype}" tidak valid.` };
     }
 

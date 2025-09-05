@@ -70,7 +70,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 strong.insertAdjacentElement('afterend', br);
                 statusSpan = document.createElement('span');
                 statusSpan.className = 'dex-status uk-text-muted';
-               // statusSpan.style.fontSize = '18px';
+               
                 br.insertAdjacentElement('afterend', statusSpan);
             }
             statusSpan.classList.remove('uk-text-danger', 'uk-text-warning');
@@ -142,12 +142,12 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                             strong.insertAdjacentElement('afterend', br);
                             statusSpan = document.createElement('span');
                             statusSpan.className = 'dex-status uk-text-danger';
-                           // statusSpan.style.fontSize = '18px';
+                           
                             br.insertAdjacentElement('afterend', statusSpan);
                         } else {
                             statusSpan = document.createElement('span');
                             statusSpan.className = 'dex-status uk-text-danger';
-                          //  statusSpan.style.fontSize = '18px';
+                           
                             cell.appendChild(statusSpan);
                         }
                     }
@@ -241,12 +241,12 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             strong.insertAdjacentElement('afterend', br);
                                             statusSpan = document.createElement('span');
                                             statusSpan.className = 'dex-status';
-                                           // statusSpan.style.fontSize = '18px';
+                           
                                             br.insertAdjacentElement('afterend', statusSpan);
                                         } else {
                                             statusSpan = document.createElement('span');
                                             statusSpan.className = 'dex-status';
-                                          //  statusSpan.style.fontSize = '18px';
+                           
                                             cell.appendChild(statusSpan);
                                         }
                                     }
@@ -330,7 +330,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         const buyLine = `buy : ${Number(buyPrice||0)}$`;
                                         const sellLine = `sell : ${Number(sellPrice||0)}$`;
                                         const pnlLine = `PNL : ${Number(update.profitLoss||0).toFixed(2)}$`;
-                                        console.log(`${pairLine}\n${routeLine}\n${modalLine}\n${buyLine}\n${sellLine}\n${pnlLine}\n----------------------`);
+                                        
                                     } catch(_) {}
                                     uiUpdateQueue.push(update);
                                 };
@@ -385,7 +385,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                 const buyLine = `buy : ${Number(buyPrice||0)}$`;
                                                 const sellLine = `sell : ${Number(sellPrice||0)}$`;
                                                 const pnlLine = `PNL : N/A (DEX error)`;
-                                                console.log(`${pairLine}\n${routeLine}\n${modalLine}\n${buyLine}\n${sellLine}\n${pnlLine}\n----------------------`);
+                                                
                                             } catch(_) {}
                                         });
                                     } else {
@@ -401,7 +401,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             const buyLine = `buy : ${Number(buyPrice||0)}$`;
                                             const sellLine = `sell : ${Number(sellPrice||0)}$`;
                                             const pnlLine = `PNL : N/A (DEX error)`;
-                                            console.log(`${pairLine}\n${routeLine}\n${modalLine}\n${buyLine}\n${sellLine}\n${pnlLine}\n----------------------`);
+                                            
                                         } catch(_) {}
                                     }
                                 };
@@ -554,14 +554,21 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 /**
  * Stops the currently running scanner.
  */
-function stopScanner() {
-    isScanRunning = false;
-    cancelAnimationFrame(animationFrameId);
-    setAppState({ run: 'NO' });
+async function stopScanner() {
+    try { isScanRunning = false; } catch(_) {}
+    try { cancelAnimationFrame(animationFrameId); } catch(_) {}
     try { clearInterval(window.__autoRunInterval); } catch(_) {}
     window.__autoRunInterval = null;
-    form_on();
-    location.reload(); // The original stop logic reloads the page.
+    try { form_on(); } catch(_) {}
+    try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
+    try {
+        if (typeof saveToLocalStorageAsync === 'function') {
+            await saveToLocalStorageAsync('APP_STATE', Object.assign({}, getAppState(), { run: 'NO' }));
+        } else {
+            setAppState({ run: 'NO' });
+        }
+    } catch(_) { setAppState({ run: 'NO' }); }
+    try { location.reload(); } catch(_) {}
 }
 
 /**

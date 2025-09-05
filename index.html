@@ -10,6 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/css/toastr.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/js/toastr.min.js"></script>
+    <script src="js/notify-shim.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/web3/dist/web3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@1.70.0/lib/index.iife.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/uikit@3.17.11/dist/js/uikit-icons.min.js"></script> 
@@ -54,7 +55,7 @@
                         <h3 id="judul" class="uk-margin-remove" 
                             style="font-size: 18px; line-height: 1.2; color: #000; font-weight: bold;">
                             MULTICHECKER <span id="current-chain-label" style="margin-left:3px;">[ALL]</span>
-                            <img src="https://coopsugar.org/storage/2022/03/new.gif" width="24px" />
+                            <!-- <img src="https://coopsugar.org/storage/2022/03/new.gif" width="24px" /> -->
                         </h3>
                         &nbsp;&nbsp;
                         <span>[ <b> 
@@ -70,7 +71,7 @@
                         <span id="chain-links-container"></span>
                          
                          <a href="#" target="_blank" id="ManajemenKoin" data-feature="manage">
-                            <img title="MANAJEMEN KOIN" class="icon"  src="https://cdn-icons-png.flaticon.com/512/8618/8618023.png" width="24px" />
+                            <img title="MANAJEMEN KOIN" class="icon"  src="https://cdn-icons-png.flaticon.com/512/998/998712.png" width="24px" />
                         </a>   
                          <img class="icon" id="UpdateWalletCEX" data-feature="wallet" title="CHECK EXCHANGER" width="24px"  src="https://cdn-icons-png.flaticon.com/512/1969/1969111.png"  />
 
@@ -78,7 +79,8 @@
                         <img class="icon" id="reload" data-feature="reload" title="RESET PROSES" width="24px" src="https://cdn-icons-png.flaticon.com/256/10264/10264169.png" />
 
                          <a href="modal.html" class="iframe-modal-trigger" data-feature="assets"><img class="icon" title="MANAJEMEN ASSET" width="24px" src="https://cdn-icons-png.flaticon.com/512/4626/4626344.png" /></a>
-                         <a href="#" id="openBackupModal" title="Backup/Restore Database"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/1431/1431463.png" /></a>
+                         <a href="#" id="openBackupModal" title="Backup/Restore Database"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/8618/8618023.png" /></a>
+                         <a href="#" id="openHistoryModal" title="Riwayat Aksi"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/169/169244.png" /></a>
                        
                          <a href="https://cors-anywhere.herokuapp.com/corsdemo" class="iframe-modal-trigger" data-feature="proxy"><img class="icon" title="BUKA AKSES" width="24px"  src="https://cdn-icons-png.flaticon.com/512/890/890162.png" /></a>
                         <!-- Memory management removed (no localStorage) -->
@@ -529,6 +531,56 @@
 
   </div>
 </div>
+
+<!-- Modal: History Log -->
+<div id="history-modal" uk-modal>
+  <div class="uk-modal-dialog uk-width-1-1@m uk-width-2-3@l uk-margin-auto-vertical">
+    <div class="uk-modal-header uk-flex uk-flex-between uk-flex-middle uk-padding-small">
+      <div>
+        <h4 class="uk-modal-title uk-margin-remove"><span uk-icon="clock"></span> Riwayat Aksi</h4>
+        <p class="uk-text-meta uk-margin-remove-top">Filter dan kelola riwayat aksi aplikasi</p>
+      </div>
+      <button class="uk-modal-close-default" type="button" uk-close></button>
+    </div>
+    <div class="uk-modal-body uk-padding-small">
+      <div class="uk-grid-small uk-child-width-1-3@m uk-child-width-1-1" uk-grid>
+        <div>
+          <label class="uk-form-label">Mode</label>
+          <select id="histMode" class="uk-select uk-form-small">
+            <option value="all">Semua</option>
+            <option value="single">Single</option>
+            <option value="multi">Multi</option>
+          </select>
+        </div>
+        <div>
+          <label class="uk-form-label">Chain</label>
+          <input id="histChain" class="uk-input uk-form-small" placeholder="MULTICHAIN / BSC / ..." />
+        </div>
+        <div>
+          <label class="uk-form-label">Cari</label>
+          <input id="histSearch" class="uk-input uk-form-small" placeholder="Cari action/status..." />
+        </div>
+      </div>
+      <div class="uk-overflow-auto uk-margin-small-top" style="max-height:60vh; border:1px solid #ddd; border-radius:4px;">
+        <table class="uk-table uk-table-divider uk-table-hover uk-table-small uk-margin-remove">
+          <thead style="position:sticky; top:0; background:#fff; z-index:1;">
+            <tr>
+              <th style="width:32px;"><input type="checkbox" id="histSelectAll"></th>
+              <th style="width:160px;">Waktu</th>
+              <th>Aksi</th>
+              <th style="width:90px;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="histTbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="uk-modal-footer uk-padding-small uk-text-right">
+      <button class="uk-button uk-button-danger uk-button-small" id="histDeleteSelected">Hapus Terpilih</button>
+      <button class="uk-button uk-button-default uk-button-small" id="histClearAll">Bersihkan Semua</button>
+    </div>
+  </div>
+  </div>
 
 <!-- Modal: Backup & Restore Database -->
 <div id="backup-modal" uk-modal>

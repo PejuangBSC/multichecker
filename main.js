@@ -92,7 +92,7 @@ function attachEditButtonListeners() {
                 list = list.filter(t => String(t.id) !== id);
                 setTokensChain(mode.chain, list);
                 if (list.length < before) {
-                    try { setLastAction(`HAPUS KOIN [${String(mode.chain).toUpperCase()}]`); } catch(_) {}
+                    try { setLastAction('HAPUS KOIN'); } catch(_) {}
                     toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
                 }
                 // Sembunyikan baris pada tabel berjalan agar hasil scan lain tidak hilang
@@ -103,7 +103,7 @@ function attachEditButtonListeners() {
                 list = list.filter(t => String(t.id) !== id);
                 setTokensMulti(list);
                 if (list.length < before) {
-                    try { setLastAction('HAPUS KOIN [MULTICHAIN]'); } catch(_) {}
+                    try { setLastAction('HAPUS KOIN'); } catch(_) {}
                    toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
                 }
                 // Sembunyikan baris pada tabel berjalan agar hasil scan lain tidak hilang
@@ -137,7 +137,7 @@ $(document).off('click.globalDelete').on('click.globalDelete', '.delete-token-bu
             list = list.filter(t => String(t.id) !== id);
             setTokensChain(mode.chain, list);
             if (list.length < before) {
-                try { setLastAction(`HAPUS KOIN [${String(mode.chain).toUpperCase()}]`); } catch(_) {}
+                try { setLastAction('HAPUS KOIN'); } catch(_) {}
                 toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
             }
             try { $el.closest('tr').addClass('row-hidden'); } catch(_) {}
@@ -147,7 +147,7 @@ $(document).off('click.globalDelete').on('click.globalDelete', '.delete-token-bu
             list = list.filter(t => String(t.id) !== id);
             setTokensMulti(list);
             if (list.length < before) {
-                try { setLastAction('HAPUS KOIN [MULTICHAIN]'); } catch(_) {}
+                try { setLastAction('HAPUS KOIN'); } catch(_) {}
                 toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
             }
             try { $el.closest('tr').addClass('row-hidden'); } catch(_) {}
@@ -825,10 +825,19 @@ async function deferredInit() {
         toastr.info(`POSISI ${label} ${status}`);
     });
 
-    $("#reload").click(function () {
+$("#reload").click(function () {
         // Always set run to NO on reload to ensure a clean state
-        setAppState({ run: 'NO' });
-        location.reload();
+        try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
+        try {
+            if (typeof saveToLocalStorageAsync === 'function') {
+                saveToLocalStorageAsync('APP_STATE', Object.assign({}, getAppState(), { run: 'NO' })).then(() => {
+                    location.reload();
+                });
+            } else {
+                setAppState({ run: 'NO' });
+                location.reload();
+            }
+        } catch(_) { setAppState({ run: 'NO' }); location.reload(); }
     });
 
     $("#stopSCAN").click(function () {
@@ -1001,12 +1010,13 @@ async function deferredInit() {
             const cfg = (typeof window !== 'undefined' ? (window.CONFIG_CEX || {}) : (CONFIG_CEX || {}));
             const valid = (selected || []).map(x => String(x).toUpperCase()).filter(cx => !!cfg[cx]);
             if (!valid.length) {
-                alert('Pilih minimal 1 CEX pada filter sebelum update wallet.');
+                toastr.error('Pilih minimal 1 CEX pada filter sebelum update wallet.');
+                try { setLastAction('UPDATE WALLET EXCHANGER', 'error', { reason: 'NO_CEX_SELECTED' }); } catch(_) {}
                 return;
             }
         } catch(_) { /* fallthrough to confirm */ }
 
-        if (!confirm("APAKAH ANDA INGIN UPDATE WALLET EXCHANGER?")) return;
+        if (!confirm("APAKAH ANDA INGIN UPDATE WALLET EXCHANGER?")) { try { setLastAction('UPDATE WALLET EXCHANGER', 'warning', { reason: 'CANCELLED' }); } catch(_) {} return; }
 
         // Ensure any running scan stops before updating wallets
         try {
@@ -1172,7 +1182,7 @@ $("#startSCAN").click(function () {
         try {
             const action = (idx !== -1) ? 'UBAH KOIN' : 'TAMBAH KOIN';
             const chainLbl = String(updatedToken.chain || (m.type==='single'? m.chain : 'all')).toUpperCase();
-            setLastAction(`${action} [${chainLbl}] `);
+            setLastAction(`${action}`);
         } catch(_) { setLastAction('UBAH KOIN'); }
         if (window.UIkit?.modal) UIkit.modal('#FormEditKoinModal').hide();
     });
@@ -1301,7 +1311,7 @@ $("#startSCAN").click(function () {
             try {
                 const chainLbl = String(tokens[idx]?.chain || (m.type==='single'? m.chain : 'all')).toUpperCase();
                 const pairLbl = `${String(tokens[idx]?.symbol_in||'').toUpperCase()}/${String(tokens[idx]?.symbol_out||'').toUpperCase()}`;
-                setLastAction(`UBAH STATUS KOIN [${chainLbl}] ${pairLbl}`);
+                setLastAction(`UBAH STATUS KOIN`);
             } catch(_) { setLastAction('UBAH STATUS KOIN'); }
         }
     });
@@ -1597,7 +1607,7 @@ $("#startSCAN").click(function () {
         }
 
         if (ok) {
-            try { setLastAction(`SINKRONISASI KOIN ${chainKey.toUpperCase()}`); } catch(_) {}
+            try { setLastAction('SINKRONISASI KOIN'); } catch(_) {}
             toastr.success(`Disimpan: ${selectedTokens.length} koin (${added} baru, ${replaced} diperbarui) untuk ${activeSingleChainKey}.`);
             UIkit.modal('#sync-modal').hide();
             // Full reload to ensure a clean state and updated filters
@@ -1635,6 +1645,13 @@ $("#startSCAN").click(function () {
 
 $(document).ready(function() {
     // --- Critical Initializations (Immediate) ---
+    // If previous page triggered a reload/reset, force run=NO before reading state
+    try {
+        if (sessionStorage.getItem('APP_FORCE_RUN_NO') === '1') {
+            setAppState({ run: 'NO' });
+            sessionStorage.removeItem('APP_FORCE_RUN_NO');
+        }
+    } catch(_) {}
     // Initialize app state from localStorage
     function applyRunUI(isRunning){
         if (isRunning) {
@@ -1928,6 +1945,13 @@ $(document).ready(function() {
     };
 });
 
+// Ensure any hard reload navigations do not leave run=YES persisted
+try {
+    window.addEventListener('beforeunload', function(){
+        try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
+    });
+} catch(_) {}
+
 function readCexSelectionFromForm() {
     const selectedCexs = [];
     $('#cex-checkbox-koin input[type="checkbox"]:checked').each(function () {
@@ -1961,11 +1985,35 @@ function readDexSelectionFromForm() {
         setLastAction("UBAH KOIN");
     }
 
-function setLastAction(action) {
+function setLastAction(action, statusOrMeta, maybeMeta) {
     const formattedTime = new Date().toLocaleString('id-ID', { hour12: false });
-    const lastAction = { time: formattedTime, action: action };
-    saveToLocalStorage("HISTORY", lastAction);
-    $("#infoAPP").html(`${lastAction.action} at ${lastAction.time}`);
+    // Build action label consistently with history (append [CHAIN] unless excluded)
+    const excludeChain = /BACKUP|RESTORE|SETTING/i.test(String(action||''));
+    // Normalize incoming action: drop any existing [..] chunks and trailing extras
+    let baseAction = String(action||'').replace(/\s*\[[^\]]*\]/g, '').trim();
+    let displayAction = baseAction;
+    try {
+        // Only append if not already has trailing [..]
+        const hasBracket = /\[[^\]]+\]$/.test(displayAction);
+        if (!excludeChain && !hasBracket) {
+            let chainLabel = 'MULTICHAIN';
+            try {
+                const m = getAppMode();
+                chainLabel = (m && String(m.type).toLowerCase()==='single') ? String(m.chain||'').toUpperCase() : 'MULTICHAIN';
+            } catch(_) {}
+            displayAction = `${displayAction} [${chainLabel}]`;
+        }
+    } catch(_) {}
+
+    const lastAction = { time: formattedTime, action: displayAction };
+    try { saveToLocalStorage("HISTORY", lastAction); } catch(_) {}
+    try { $("#infoAPP").html(`${lastAction.action} at ${lastAction.time}`); } catch(_) {}
+    // Also append to HISTORY_LOG in IndexedDB with same label
+    try {
+        const status = (typeof statusOrMeta === 'string') ? statusOrMeta : 'success';
+        const meta = (typeof statusOrMeta === 'object' && statusOrMeta) ? statusOrMeta : (maybeMeta || undefined);
+        if (typeof addHistoryEntry === 'function') addHistoryEntry(displayAction, status, meta, { includeChain: false });
+    } catch(_) {}
 }
 
 // getManagedChains is defined in utils.js (deduplicated)
@@ -1975,7 +2023,66 @@ function setLastAction(action) {
  */
 // calculateResult is implemented in dom-renderer.js (deduplicated)
     // Backup/Restore modal
-    $(document).on('click', '#openBackupModal', function(e){ e.preventDefault(); try { UIkit.modal('#backup-modal').show(); } catch(_) {} });
+$(document).on('click', '#openBackupModal', function(e){ e.preventDefault(); try { UIkit.modal('#backup-modal').show(); } catch(_) {} });
+// History modal
+$(document).on('click', '#openHistoryModal', function(e){ e.preventDefault(); try { UIkit.modal('#history-modal').show(); renderHistoryTable(); } catch(_) {} });
+
+async function renderHistoryTable(){
+  try {
+    const rows = await (window.getHistoryLog ? window.getHistoryLog() : Promise.resolve([]));
+    const mode = String($('#histMode').val()||'all').toLowerCase();
+    const chain = String($('#histChain').val()||'').trim().toUpperCase();
+    const q = String($('#histSearch').val()||'').toLowerCase();
+    const filtered = rows.filter(r => {
+      // Since action already contains [CHAIN], chain filter applies to action string
+      if (chain && String(r.action||'').toUpperCase().indexOf(`[${chain}]`) === -1) return false;
+      if (mode !== 'all') {
+        const isSingle = /\[[A-Z0-9_]+\]$/.test(String(r.action||''));
+        if (mode === 'single' && !isSingle) return false;
+        if (mode === 'multi' && isSingle && String(r.action||'').toUpperCase().indexOf('[MULTICHAIN]') === -1) return false;
+      }
+      if (q) {
+        const blob = `${r.action||''} ${r.status||''} ${r.time||''}`.toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    }).reverse();
+    const $tb = $('#histTbody').empty();
+    filtered.forEach(it => {
+      const id = String(it.id||'');
+      const stColor = (it.status==='success')?'#1e8e3e':(it.status==='warning')?'#b37d00':'#b3261e';
+      const tr = `
+        <tr data-id="${id}">
+          <td><input type="checkbox" class="histRowChk"></td>
+          <td>${it.time||''}</td>
+          <td>${it.action||''}</td>
+          <td><span style="color:${stColor}; font-weight:600;">${String(it.status||'').toUpperCase()}</span></td>
+        </tr>`;
+      $tb.append(tr);
+    });
+  } catch(e) { console.warn('renderHistoryTable failed', e); }
+}
+
+$(document).on('change', '#histMode, #histChain, #histSearch', function(){ renderHistoryTable(); });
+$(document).on('click', '#histSelectAll', function(){ const on=this.checked; $('#histTbody .histRowChk').prop('checked', on); });
+$(document).on('click', '#histDeleteSelected', async function(){
+  try {
+    const ids = $('#histTbody .histRowChk:checked').map(function(){ return $(this).closest('tr').data('id'); }).get();
+    if (!ids.length) { toastr.info('Pilih data riwayat terlebih dahulu.'); return; }
+    const res = await (window.deleteHistoryByIds ? window.deleteHistoryByIds(ids) : Promise.resolve({ ok:false }));
+    if (res.ok) { toastr.success(`Hapus ${res.removed||ids.length} entri riwayat.`); renderHistoryTable(); }
+    else { toastr.error('Gagal menghapus riwayat.'); }
+  } catch(e) { toastr.error('Error saat menghapus riwayat.'); }
+});
+$(document).on('click', '#histClearAll', async function(){
+  try {
+    if (!confirm('Bersihkan semua riwayat?')) return;
+    const ok = await (window.clearHistoryLog ? window.clearHistoryLog() : Promise.resolve(false));
+    if (ok) { toastr.success('Riwayat dibersihkan.'); renderHistoryTable(); }
+    else { toastr.error('Gagal membersihkan riwayat.'); }
+  } catch(e) { toastr.error('Error saat membersihkan riwayat.'); }
+});
+// No export/save from History per request
     $(document).on('click', '#btnBackupDb', async function(){
         try {
             const payload = await (window.exportIDB ? window.exportIDB() : Promise.resolve(null));
@@ -1992,6 +2099,7 @@ function setLastAction(action) {
         } catch(e) {
             console.error('Backup error:', e);
             toastr.error('Terjadi kesalahan saat backup.');
+            try { setLastAction('BACKUP DATABASE', 'error', { error: String(e && e.message || e) }); } catch(_) {}
         }
     });
     $(document).on('click', '#btnRestoreDb', function(){ $('#restoreFileInput').trigger('click'); });
@@ -2013,6 +2121,7 @@ function setLastAction(action) {
             } catch(err){
                 console.error('Restore parse error:', err);
                 toastr.error('File tidak valid. Pastikan format JSON benar.');
+                try { setLastAction('RESTORE DATABASE', 'error', { error: String(err && err.message || err) }); } catch(_) {}
             } finally {
                 try { ev.target.value = ''; } catch(_) {}
             }

@@ -306,7 +306,7 @@
               };
 
               updateTableVolCEX(finalResult, cex, tableBodyId);
-              //console.log(finalResult);
+            
               resolve(finalResult);
           }).catch(error => { reject(error); });
       });
@@ -662,12 +662,23 @@
       });
 
       // Commit results even if some CEX failed (partial success behavior)
-      if (Object.keys(walletStatusByCex).length > 0) {
-          saveToLocalStorage('CEX_WALLET_STATUS', walletStatusByCex);
+      try {
           const okCount = aggregated.length;
           const failCount = failed.length;
-          infoAdd(`✅ Data wallet tersimpan. OK: ${okCount}, Gagal: ${failCount}.`);
-      }
+          // Always persist attempt meta
+          if (typeof saveToLocalStorageAsync === 'function') {
+              await saveToLocalStorageAsync('CEX_WALLET_STATUS_META', { time: new Date().toISOString(), ok: okCount, fail: failCount });
+          } else {
+              saveToLocalStorage('CEX_WALLET_STATUS_META', { time: new Date().toISOString(), ok: okCount, fail: failCount });
+          }
+          // Persist the status map (can be empty on total failure)
+          if (typeof saveToLocalStorageAsync === 'function') {
+              await saveToLocalStorageAsync('CEX_WALLET_STATUS', walletStatusByCex);
+          } else {
+              saveToLocalStorage('CEX_WALLET_STATUS', walletStatusByCex);
+          }
+          if (okCount + failCount > 0) infoAdd(`✅ Data wallet tersimpan. OK: ${okCount}, Gagal: ${failCount}.`);
+      } catch(e) { console.warn('Persist wallet status failed:', e); }
       // Notify failures (non-blocking)
       if (failed.length > 0) {
           try {
@@ -679,8 +690,9 @@
               alert(`⚠️ GAGAL UPDATE EXCHANGER \n${failed.map(f => `- ${f.cex}: ${f.message}`).join('\n')}`);
           }
       }
-      // If absolutely nothing succeeded, stop here
+      // If absolutely nothing succeeded, continue after logging so meta/save still persisted above
       if (aggregated.length === 0) {
+          try { setLastAction("UPDATE WALLET EXCHANGER", 'error', { error: 'All CEX updates failed', fail: failed.length }); } catch(_) {}
           $('#loadingOverlay').fadeOut(150);
           return;
       }
@@ -690,7 +702,7 @@
           applyWalletStatusToTokenList(key);
       } catch(_) {}
 
-      setLastAction("UPDATE WALLET EXCHANGER");
+      setLastAction("UPDATE WALLET EXCHANGER", (failed.length>0 ? 'warning' : 'success'), { ok: aggregated.length, fail: failed.length });
       try {
           UIkit.notification({ message: '✅ BERHASIL UPDATE WALLET EXCHANGER', status: 'success' });
       } catch(_) { alert('✅ SEBAGIAN BERHASIL UPDATE WALLET EXCHANGER,SILAKAN CEK STATUS DEPOSIT & WITHDRAW, EXCHANGER YANG GAGAL UPDATE'); }
@@ -704,7 +716,8 @@
       $('#loadingOverlay').fadeOut(150);
 
       // Reload the page after successful update to ensure all views reflect changes
-      try { if (aggregated.length > 0) setTimeout(() => location.reload(), 300); } catch(_) {}
+      // Slightly longer delay to allow async IDB writes (history, wallet status) to settle
+      try { if (aggregated.length > 0) setTimeout(() => location.reload(), 800); } catch(_) {}
   }
 
   // Register to App namespace

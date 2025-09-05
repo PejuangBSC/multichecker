@@ -13,9 +13,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/css/toastr.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/js/toastr.min.js"></script>
+    <script src="js/notify-shim.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"
     integrity="sha512-E8QSvWZ0eCLGk4km3hxSsNmGWbLtSCSUcewDQPQWZF6pEU8GlT8a5fF32wOl1i8ftdMhssTrF/OhyGWwonTcXA=="
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="idb-localstorage-shim.js"></script>
 </head>
 <style>
      .uk-container {
@@ -493,7 +495,11 @@
 </div>
 
 <script>  
-    $(document).ready(function () {
+    $(document).ready(async function () {
+        // Ensure IndexedDB-backed localStorage is initialized
+        if (window.__IDB_LOCALSTORAGE_READY__) {
+            try { await window.__IDB_LOCALSTORAGE_READY__; } catch (e) {}
+        }
         // KALKULATOR 
             var ratePrice = {
                 usdt: 1,
@@ -533,7 +539,7 @@
                             toastr.info("Custom token " + symbol1 + " ditemukan dengan harga " + ratePrice.random1 + " USDT.");
                         })
                         .fail(function() {
-                            toastr.errorr("Custom token tidak ditemukan.");
+                            toastr.error("Custom token tidak ditemukan.");
                             ratePrice.random1 = 0;
                             $("#random1price").prop("disabled", true).val('');
                         });
@@ -606,7 +612,7 @@
             $("#cekTokensBtn").on("click", function () {
                 var symbol1 = $("#random1symbol").val().toUpperCase().trim();
                 if (!symbol1) {
-                    toastr.errorr("Masukkan simbol untuk custom token.");
+                    toastr.error("Masukkan simbol untuk custom token.");
                     return;
                 }
 
@@ -622,7 +628,7 @@
                         });
                     })
                     .fail(function () {
-                        toastr.errorr("Token tidak ditemukan.");
+                        toastr.error("Token tidak ditemukan.");
                         ratePrice.random1 = 0;
                         $("#random1price").prop("disabled", true).val('');
                     });
@@ -804,7 +810,7 @@
 
             // Simpan nilai input ke localStorage
             localStorage.setItem(`MULTI_${inputId}`, value);
-           // toastr.info("Perubahan Data Telah Simpan!");
+           
         });
 
         $('#SaveConfigCEXS').on('click', async function () {
@@ -882,7 +888,7 @@
                     }
                 } catch (error) {
                     // Jika pengecekan gagal, tampilkan pesan error
-                    //toastr.error(`Gagal memeriksa ${exchange}: ${error.message}`);
+                    
                     allChecksPassed = false; // Tandai bahwa ada pengecekan yang gagal
                     $('#TotalSaldoCEX').text(`???`);
                 }
@@ -890,7 +896,7 @@
 
             // Jika ada pengecekan yang gagal, beri tahu pengguna dan berhenti
             if (!allChecksPassed) {
-        //        toastr.error("Beberapa pengecekan CEX gagal. Periksa kembali koneksi dan API Key.");
+        
                 // Jika pengecekan gagal, tampilkan pesan error
                 return; // Keluar dari fungsi jika ada pengecekan yang gagal
             }
