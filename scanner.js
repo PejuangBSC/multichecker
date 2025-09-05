@@ -60,25 +60,14 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     $('#sinyal-container [id^="sinyal"]').empty();
     // Hide empty signal cards so none appear at start
     try { if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards(); } catch(_) {}
-    // Reset all DEX cells default status to lock (without rewriting full cell)
+    // Reset all DEX cells back to default: "DEXNAME [$MODAL]" + lock icon, clearing previous results
     try {
         const selector = `td[id^="${tableBodyId}_"]`;
         document.querySelectorAll(selector).forEach(cell => {
             const strong = cell.querySelector('strong');
             if (!strong) return;
-            let statusSpan = cell.querySelector('.dex-status');
-            if (!statusSpan) {
-                const br = document.createElement('br');
-                strong.insertAdjacentElement('afterend', br);
-                statusSpan = document.createElement('span');
-                statusSpan.className = 'dex-status uk-text-muted';
-               
-                br.insertAdjacentElement('afterend', statusSpan);
-            }
-            statusSpan.classList.remove('uk-text-danger', 'uk-text-warning');
-            statusSpan.classList.add('uk-text-muted');
-            statusSpan.textContent = '🔒';
-            statusSpan.removeAttribute('title');
+            const dexHeaderHtml = strong.outerHTML;
+            cell.innerHTML = `${dexHeaderHtml}<br><span class=\"dex-status uk-text-muted\">🔒</span>`;
             cell.style.backgroundColor = '';
         });
     } catch (_) {}
