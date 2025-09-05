@@ -755,7 +755,7 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
   // Item sinyal: kompak + border kanan (separator)
   const sLink = `
     <div class="signal-item uk-flex uk-flex-middle uk-flex-nowrap uk-text-small uk-padding-remove-vertical" >
-      <a href="#${idPrefix}${baseId}" class="uk-link-reset" style="text-decoration:none; font-size:12px; margin-top:2px;">
+      <a href="#${idPrefix}${baseId}" class="uk-link-reset" style="text-decoration:none; font-size:12px; margin-top:2px; margin-left:4px;">
         <span style="color:${warnaCEX}; ${highlightStyle}; display:inline-block;">
           🔸 ${String(cex).slice(0,3).toUpperCase()}X
           <span class="uk-text-dark">:${modal}</span>
@@ -766,6 +766,9 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
     </div>`;
 
   $("#sinyal" + DEXPLUS.toLowerCase()).append(sLink);
+
+  // Pastikan kartu sinyal DEX utama terlihat ketika ada item sinyal
+  try { if (typeof window.showSignalCard === 'function') window.showSignalCard(DEXPLUS.toLowerCase()); } catch(_) {}
 
   const audio = new Audio('audio.mp3');
   audio.play();

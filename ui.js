@@ -156,15 +156,10 @@ function RenderCardSignal() {
   const sinyalContainer = document.getElementById('sinyal-container');
   if (!sinyalContainer) return;
 
-  // Grid responsif: 1 / 2@s / 3@m / 6@l
+  // Grid dasar (tanpa child-width tetap; akan diset dinamis sesuai jumlah kartu terlihat)
   sinyalContainer.innerHTML = '';
   sinyalContainer.setAttribute('uk-grid', '');
-  sinyalContainer.className =
-    'uk-grid uk-grid-small uk-grid-match ' +
-    'uk-child-width-1-1 ' +
-    'uk-child-width-1-2@s ' +
-    'uk-child-width-1-3@m ' +
-    'uk-child-width-1-6@l';
+  sinyalContainer.className = 'uk-grid uk-grid-small uk-grid-match';
 
   // Warna header sesuai chain
   let chainColor = '#5c9514';
@@ -178,12 +173,17 @@ function RenderCardSignal() {
 
   dexList.forEach((dex, index) => {
     const gridItem = document.createElement('div');
+    const dexLower = String(dex).toLowerCase();
+    gridItem.id = `card-${dexLower}`;
+    gridItem.dataset.dex = dexLower;
+    // Sembunyikan card saat awal (belum ada sinyal)
+    gridItem.style.display = 'none';
 
     const card = document.createElement('div');
     card.className = 'uk-card uk-card-default uk-card-hover uk-card-small signal-card uk-margin-small-top';
     card.style.cssText = `border-radius:6px; overflow:hidden; border:1px solid ${chainColor};`;
 
-    const bodyId = `body-${String(dex).toLowerCase()}-${index}`;
+    const bodyId = `body-${dexLower}-${index}`;
 
     // HEADER lebih tipis
     const cardHeader = document.createElement('div');
@@ -213,7 +213,7 @@ function RenderCardSignal() {
 
     // CONTAINER SINYAL: flex wrap rapat
     const signalSpan = document.createElement('div');
-    signalSpan.id = `sinyal${String(dex).toLowerCase()}`;
+    signalSpan.id = `sinyal${dexLower}`;
     signalSpan.className = 'signal-card_content uk-flex uk-flex-middle uk-flex-wrap';
     signalSpan.style.gap = '2px'; // jarak antar sinyal kecil
 
@@ -228,6 +228,34 @@ function RenderCardSignal() {
 
   // Sinkron tema + warna border sinyal saat dark mode
   try { if (typeof window.updateSignalTheme === 'function') window.updateSignalTheme(); } catch(_) {}
+
+  // Terapkan layout grid dinamis sesuai jumlah kartu yang terlihat
+  try { if (typeof window.updateSignalGridLayout === 'function') window.updateSignalGridLayout(); } catch(_) {}
+
+  // Tambahkan placeholder info jika belum ada sinyal
+  try {
+    const existing = document.getElementById('no-signal-placeholder');
+    if (!existing) {
+      const info = document.createElement('div');
+      info.id = 'no-signal-placeholder';
+      info.className = 'no-signal-placeholder uk-width-1-1 uk-margin-small-top';
+      info.style.display = 'none';
+      info.innerHTML = `
+        <div class="uk-card uk-card-default uk-card-hover uk-card-small signal-card" style="border-radius:6px; overflow:hidden; border:1px solid ${chainColor};">
+          <div class="uk-card-header uk-padding-small uk-padding-remove-vertical" style="background-color:${chainColor}; color:#fff; border-bottom:1px solid ${chainColor};">
+            <div class="uk-flex uk-flex-middle uk-flex-between">
+              <div class="uk-flex uk-flex-middle" style="gap:8px;">
+                <span class="uk-text-bold" style="color:#fff!important; font-size:14px;">INFORMASI</span>
+              </div>
+            </div>
+          </div>
+          <div class="uk-card-body uk-padding-small uk-padding-remove-vertical" style="padding-left:6px; padding-right:6px;">
+            <div class="uk-text-center uk-text-bold" style="color:#e53935; font-size:13px;">MASIH BELUM ADA INFO SELISIH HARGA</div>
+          </div>
+        </div>`;
+      sinyalContainer.insertBefore(info, sinyalContainer.firstChild);
+    }
+  } catch(_) {}
 }
 
  
@@ -260,6 +288,60 @@ window.updateSignalTheme = function() {
             if (span) span.style.color = isDark ? '#ffffff' : '#000000';
         });
     } catch(_) {}
+};
+
+/** Hitung dan set kelas grid child-width berdasarkan jumlah card yang terlihat. */
+window.updateSignalGridLayout = function() {
+  try {
+    const container = document.getElementById('sinyal-container');
+    if (!container) return;
+    const cardItems = Array.from(container.querySelectorAll('div[id^="card-"]'));
+    const visibleItems = cardItems.filter(el => el && el.style.display !== 'none');
+    const n = Math.max(visibleItems.length, 1);
+
+    // Reset kelas child-width lama
+    container.className = 'uk-grid uk-grid-small uk-grid-match';
+
+    // Tambah kelas child-width sesuai jumlah terlihat (1..12 aman untuk UIkit)
+    const maxCols = Math.min(n, 12);
+    container.classList.add(`uk-child-width-1-${maxCols}`);
+
+    // Toggle placeholder info
+    const placeholder = document.getElementById('no-signal-placeholder');
+    if (placeholder) {
+      placeholder.style.display = (visibleItems.length === 0) ? '' : 'none';
+    }
+
+    // Update UIkit layout
+    if (window.UIkit && typeof UIkit.update === 'function') UIkit.update(container);
+  } catch(_) {}
+};
+
+/** Tampilkan card sinyal untuk DEX tertentu (dipanggil saat ada sinyal). */
+window.showSignalCard = function(dexLower) {
+  try {
+    const el = document.getElementById(`card-${String(dexLower).toLowerCase()}`);
+    if (!el) return;
+    el.style.display = '';
+    window.updateSignalGridLayout && window.updateSignalGridLayout();
+  } catch(_) {}
+};
+
+/** Sembunyikan semua card yang kontennya kosong; panggil di awal scan. */
+window.hideEmptySignalCards = function() {
+  try {
+    const container = document.getElementById('sinyal-container');
+    if (!container) return;
+    const spans = container.querySelectorAll('[id^="sinyal"]');
+    spans.forEach(sp => {
+      const wrap = sp.closest('div[id^="card-"]');
+      if (!wrap) return;
+      if (!sp.children || sp.children.length === 0) {
+        wrap.style.display = 'none';
+      }
+    });
+    window.updateSignalGridLayout && window.updateSignalGridLayout();
+  } catch(_) {}
 };
 
 /** Open and populate the 'Edit Koin' modal by token id. */

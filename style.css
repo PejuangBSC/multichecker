@@ -190,15 +190,8 @@ a:hover, .uk-link:hover {
 
 /* Signal cards: show initial space/message when empty */
 #sinyal-container .signal-card_content {
-  min-height: 20px; /* give cards some initial height */
+  min-height: 20px; /* compact base height */
   padding: 6px 4px; /* gentle inner padding */
-}
-#sinyal-container .signal-card_content:empty::before {
-  content: 'Belum ada sinyal';
-  display: block;
-  color: #03431a;
-  font-style: italic;
-  opacity: 0.85;
 }
 
 /* Header */
@@ -287,6 +280,9 @@ body.dark-mode #pageLoadingOverlay {
     background-color: #ffffff;
     border-radius: 8px;
 }
+
+/* Override for signal placeholder wrapper so only inner card is styled */
+#sinyal-container .no-signal-placeholder { border: 0; background: transparent; }
 
 /* Progress Bar */
 #progress-container {

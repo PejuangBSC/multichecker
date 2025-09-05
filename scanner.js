@@ -58,6 +58,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     // Keep user's search query intact; do not reset searchInput here.
     // Clear previous signals (container uses <div id="sinyal...">)
     $('#sinyal-container [id^="sinyal"]').empty();
+    // Hide empty signal cards so none appear at start
+    try { if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards(); } catch(_) {}
     // Reset all DEX cells default status to lock (without rewriting full cell)
     try {
         const selector = `td[id^="${tableBodyId}_"]`;
