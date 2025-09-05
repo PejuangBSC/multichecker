@@ -121,7 +121,12 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
             <td id="${idPrefix}${rowId}" class="uk-text-center uk-background td-detail" style="text-align: center; border:1px solid black; width:10%; padding:10px;">
                 <span class="detail-line">[${index + 1}] <span style="color: ${warnaCex}; font-weight:bolder;">${data.cex} </span>
                 on <span style="color: ${warnaChain}; font-weight:bolder;">${chainShort} </span>
-                <span id="${idPrefix}EditMulti-${data.id}" data-id="${data.id}" title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span></span>
+                <span id="${idPrefix}EditMulti-${data.id}" data-id="${data.id}"
+                data-chain="${String(data.chain).toLowerCase()}"
+                      data-cex="${String(data.cex).toUpperCase()}"
+                      data-symbol-in="${String(data.symbol_in).toUpperCase()}"
+                      data-symbol-out="${String(data.symbol_out).toUpperCase()}"
+                       title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span></span>
                 <span class="detail-line"><span style="color: ${warnaChain}; font-weight:bolder;">${linkToken} </span>
                 ⇄ <span style="color: ${warnaChain}; font-weight:bolder;">${linkPair} </span>
                 <span id="${idPrefix}DelMulti-${data.id}"

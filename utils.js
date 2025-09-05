@@ -181,8 +181,21 @@ function getFlattenedSortedChain(chain){
 }
 
 function getTokensMulti(){
-    const t = getFromLocalStorage('TOKEN_MULTICHAIN', []);
-    return Array.isArray(t) ? t : [];
+    let t = getFromLocalStorage('TOKEN_MULTICHAIN', []);
+    if (!Array.isArray(t)) return [];
+    // Ensure every token has a stable non-empty id
+    let mutated = false;
+    const fixed = t.map(item => {
+        if (!item || (item.id !== 0 && !item.id)) {
+            // generate a reasonably unique id
+            const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            mutated = true;
+            return { ...item, id: newId };
+        }
+        return item;
+    });
+    if (mutated) saveToLocalStorage('TOKEN_MULTICHAIN', fixed);
+    return fixed;
 }
 
 function setTokensMulti(list){
@@ -216,7 +229,20 @@ function getTokensChain(chain){
     const chainKey = String(chain).toLowerCase();
     const primaryKey = `TOKEN_${String(chainKey).toUpperCase()}`;
     let t = getFromLocalStorage(primaryKey, []);
-    if (Array.isArray(t) && t.length) return t;
+    if (Array.isArray(t) && t.length) {
+        // Ensure ids
+        let mutated = false;
+        const fixed = t.map(item => {
+            if (!item || (item.id !== 0 && !item.id)) {
+                const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                mutated = true;
+                return { ...item, id: newId };
+            }
+            return item;
+        });
+        if (mutated) saveToLocalStorage(primaryKey, fixed);
+        return fixed;
+    }
     // Fallback to legacy naming using Nama_Chain (e.g., ETHEREUM) if present in backup
     try {
         const legacyName = (window.CONFIG_CHAINS?.[chainKey]?.Nama_Chain || '').toString().toUpperCase();
@@ -224,9 +250,19 @@ function getTokensChain(chain){
             const legacyKey = `TOKEN_${legacyName}`;
             const legacy = getFromLocalStorage(legacyKey, []);
             if (Array.isArray(legacy) && legacy.length) {
+                // Normalize ids during migration
+                let mutated = false;
+                const fixed = legacy.map(item => {
+                    if (!item || (item.id !== 0 && !item.id)) {
+                        const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                        mutated = true;
+                        return { ...item, id: newId };
+                    }
+                    return item;
+                });
                 // Migrate into primary for consistency
-                saveToLocalStorage(primaryKey, legacy);
-                return legacy;
+                saveToLocalStorage(primaryKey, fixed);
+                return fixed;
             }
         }
     } catch(_) {}
