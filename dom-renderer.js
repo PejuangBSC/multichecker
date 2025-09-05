@@ -586,7 +586,7 @@ function DisplayPNL(data) {
       withdraw: isT2P ? (urls?.withdrawTokenUrl || urls?.withdrawUrl || '#')
                       : (urls?.withdrawPairUrl  || urls?.withdrawUrl || '#'),
       deposit : isT2P ? (urls?.depositTokenUrl  || urls?.depositUrl  || '#')
-                      : (urls?.depositPairUrl   || urls?.depositUrl  || '#'),
+                      : (urls?.depositPairUrl   || urls?.depositTokenUrl  || '#'),
     };
   };
 
@@ -674,7 +674,7 @@ function DisplayPNL(data) {
   const dpUrl = cexLinks.deposit;
 
   const wdLine   = `<a class="uk-text-primary" href="${wdUrl}" target="_blank" rel="noopener" title="FEE WITHDRAW">🈳 WD: ${n(FeeWD).toFixed(4)}$</a>`;
-  const dpLine   = `<a class="uk-text-primary" href="${dpUrl}" target="_blank" rel="noopener">🈷️ DP[${Name_in}]</a>`;
+  const dpLine   = `<a class="uk-text-primary" href="${dpUrl}" target="_blank" rel="noopener">🈷️ DP[${Name_out}]</a>`;
   const swapLine = `<span class="monitor-line uk-text-danger" title="FEE SWAP">💸 SW: ${n(FeeSwap).toFixed(4)}$</span>`;
 
   const feeLine  = (direction === 'tokentopair') ? wdLine : dpLine;
