@@ -15,18 +15,17 @@ var SavedSettingData = getFromLocalStorage('SETTING_SCANNER', {});
 let activeSingleChainKey = null; // To track the currently active single-chain view
 
 // Configure Toastr to avoid top-right where toolbar resides
-try {
-    if (window.toastr) {
-        window.toastr.options = Object.assign({}, window.toastr.options || {}, {
-            positionClass: 'toast-top-right',
-            preventDuplicates: true,
-            newestOnTop: true,
-            closeButton: true,
-            progressBar: true,
-            timeOut: 3500
-        });
-    }
-} catch(_) {}
+// Configure Toastr if available (no try/catch) // REFACTORED
+if (typeof window !== 'undefined' && window.toastr) {
+    window.toastr.options = Object.assign({}, window.toastr.options || {}, {
+        positionClass: 'toast-top-right',
+        preventDuplicates: true,
+        newestOnTop: true,
+        closeButton: true,
+        progressBar: true,
+        timeOut: 3500
+    });
+}
 
 // --- Application Initialization ---
 
@@ -61,15 +60,8 @@ document.addEventListener('DOMContentLoaded', function(){
  * Refreshes the main token table from localStorage data.
  */
 function attachEditButtonListeners() {
-    // Detach any previous listeners to prevent duplicates, then attach new ones
-    $('.edit-token-button').off('click').on('click', function () {
-        try {
-            openEditModalById($(this).data('id'));
-        } catch (e) {
-            console.error('Gagal membuka modal edit:', e);
-            toastr.error('Gagal membuka form edit');
-        }
-    });
+    // Edit handler is delegated globally; no direct binding here.
+    // This avoids missing handlers after dynamic rerenders and prevents duplicates.
 
     // Delete token handler is delegated globally (see click.globalDelete).
     // No direct binding here to avoid duplicate confirmations.
@@ -112,6 +104,19 @@ $(document).off('click.globalDelete').on('click.globalDelete', '.delete-token-bu
             try { $el.closest('tr').addClass('row-hidden'); } catch(_) {}
         }
     } catch(e) { console.error('Delete error:', e); toastr.error('Gagal menghapus koin'); }
+});
+
+// Also bind a delegated edit handler so newly rendered rows always work
+$(document).off('click.globalEdit').on('click.globalEdit', '.edit-token-button', function(){
+    try {
+        const id = String($(this).data('id') || '');
+        if (!id) { toastr.error('ID token tidak ditemukan'); return; }
+        if (typeof openEditModalById === 'function') openEditModalById(id);
+        else toastr.error('Fungsi edit tidak tersedia');
+    } catch (e) {
+        console.error('Gagal membuka modal edit:', e);
+        toastr.error('Gagal membuka form edit');
+    }
 });
 
 function refreshTokensTable() {
@@ -280,32 +285,36 @@ function renderSettingsForm() {
  */
 function bootApp() {
     const state = computeAppReadiness();
-    try { applyThemeForMode(); } catch(_){}
+    // REFACTORED
+    if (typeof applyThemeForMode === 'function') applyThemeForMode();
     applyControlsFor(state);
     // Show settings section automatically if settings are missing (including MISSING_BOTH)
     const settingsMissing = !hasValidSettings();
     if (settingsMissing) {
         // Populate settings form when auto-shown and ensure it's enabled
-        try { renderSettingsForm(); } catch(_) {}
+        // REFACTORED
+        if (typeof renderSettingsForm === 'function') renderSettingsForm();
         $('#form-setting-app').show();
         $('#filter-card, #scanner-config, #single-chain-view, #token-management, #iframe-container').hide();
-        try { $('#dataTableBody').closest('.uk-overflow-auto').hide(); } catch(_) {}
-        try { document.getElementById('form-setting-app').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(_) {}
-        // Disable everything except settings form controls
-        try {
-            $('input, select, textarea, button').prop('disabled', true);
-            $('#form-setting-app').find('input, select, textarea, button').prop('disabled', false);
-            // On first run, prevent closing the form accidentally
-            $('#btn-cancel-setting').prop('disabled', true);
-        } catch(_) {}
+        // REFACTORED
+        if ($('#dataTableBody').length) { $('#dataTableBody').closest('.uk-overflow-auto').hide(); }
+        if ($('#form-setting-app').length && $('#form-setting-app')[0] && typeof $('#form-setting-app')[0].scrollIntoView === 'function') {
+            $('#form-setting-app')[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        // Disable everything except settings form controls // REFACTORED
+        $('input, select, textarea, button').prop('disabled', true);
+        $('#form-setting-app').find('input, select, textarea, button').prop('disabled', false);
+        // On first run, prevent closing the form accidentally
+        $('#btn-cancel-setting').prop('disabled', true);
     } else {
         $('#form-setting-app').hide();
         // Restore primary sections
         $('#filter-card, #scanner-config').show();
-        try { $('#dataTableBody').closest('.uk-overflow-auto').show(); } catch(_) {}
+        if ($('#dataTableBody').length) { $('#dataTableBody').closest('.uk-overflow-auto').show(); }
     }
     if (state === 'READY') {
-        try { cekDataAwal(); } catch (e) { console.error('cekDataAwal error:', e); }
+        // REFACTORED
+        if (typeof cekDataAwal === 'function') { cekDataAwal(); } else { console.warn('cekDataAwal() not available'); }
     } else {
         if (window.toastr) {
             if (state === 'MISSING_SETTINGS') toastr.warning('Lengkapi SETTING terlebih dahulu');
@@ -348,7 +357,8 @@ function cekDataAwal() {
     console.info('✅ Proses Memuat DATA KOIN selesai.');
 
     // Use new modular filter card + loaders
-    try { refreshTokensTable(); } catch (e) { console.error(e); }
+    // REFACTORED
+    if (typeof refreshTokensTable === 'function') { refreshTokensTable(); }
   }
 
   const managedChains = Object.keys(CONFIG_CHAINS || {});
@@ -785,18 +795,9 @@ async function deferredInit() {
     });
 
 $("#reload").click(function () {
-        // Always set run to NO on reload to ensure a clean state
+        // Per-tab reload: do NOT broadcast run=NO; only mark local flag
         try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
-        try {
-            if (typeof saveToLocalStorageAsync === 'function') {
-                saveToLocalStorageAsync('APP_STATE', Object.assign({}, getAppState(), { run: 'NO' })).then(() => {
-                    location.reload();
-                });
-            } else {
-                setAppState({ run: 'NO' });
-                location.reload();
-            }
-        } catch(_) { setAppState({ run: 'NO' }); location.reload(); }
+        try { location.reload(); } catch(_) {}
     });
 
     $("#stopSCAN").click(function () {
@@ -826,11 +827,10 @@ $("#reload").click(function () {
         });
     } catch(_) {}
 
-    // Cancel button in inline settings: hide form and restore main sections
+    // Cancel button in inline settings: restore without broadcasting to other tabs
     $(document).on('click', '#btn-cancel-setting', function () {
-        // Reload page to re-apply previous settings and UI state cleanly
-        setAppState({ run: 'NO' });
-        location.reload();
+        try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
+        try { location.reload(); } catch(_) {}
     });
 
     $("#SettingConfig").on("click", function () {
@@ -1604,10 +1604,9 @@ $("#startSCAN").click(function () {
 
 $(document).ready(function() {
     // --- Critical Initializations (Immediate) ---
-    // If previous page triggered a reload/reset, force run=NO before reading state
+    // If previous page triggered a reload/reset, clear local flag only (do not broadcast)
     try {
         if (sessionStorage.getItem('APP_FORCE_RUN_NO') === '1') {
-            setAppState({ run: 'NO' });
             sessionStorage.removeItem('APP_FORCE_RUN_NO');
         }
     } catch(_) {}
@@ -1616,9 +1615,11 @@ $(document).ready(function() {
         if (isRunning) {
             try { form_off(); } catch(_) {}
             $('#startSCAN').prop('disabled', true).attr('aria-busy','true').text('Running...').addClass('uk-button-disabled');
+            $('#infoAPP').html('RUN SCANNING...').show();
             $('#stopSCAN').show().prop('disabled', false);
             $('#reload').prop('disabled', false);
-            $('#infoAPP').html('⚠️ Proses sebelumnya tidak selesai. Tekan tombol <b>RESET PROSES</b> untuk memulai ulang.').show();
+            //$('#infoAPP').html('⚠️ Proses sebelumnya tidak selesai. Tekan tombol <b>RESET PROSES</b> untuk memulai ulang.').show();
+           
             try { if (typeof setScanUIGating === 'function') setScanUIGating(true); } catch(_) {}
         } else {
             $('#startSCAN').prop('disabled', false).removeAttr('aria-busy').text('Start').removeClass('uk-button-disabled');
@@ -1642,20 +1643,23 @@ $(document).ready(function() {
     } catch(_) {}
 
     // Cross-tab run state sync via BroadcastChannel
-    try {
-        if (window.__MC_BC) {
-            window.__MC_BC.addEventListener('message', function(ev){
-                try {
-                    const msg = ev?.data;
-                    if (!msg || msg.type !== 'kv') return;
-                    if (String(msg.key).toUpperCase() === 'APP_STATE') {
-                        const r = (msg.val && msg.val.run) ? String(msg.val.run).toUpperCase() : 'NO';
-                        applyRunUI(r === 'YES');
-                    }
-                } catch(_) {}
-            });
-        }
-    } catch(_) {}
+    // REFACTORED: Cross-tab APP_STATE listener without try/catch
+    if (window.__MC_BC) {
+        window.__MC_BC.addEventListener('message', function(ev){
+            const msg = ev?.data;
+            if (!msg || msg.type !== 'kv') return;
+            if (String(msg.key).toUpperCase() !== 'APP_STATE') return;
+            const r = (msg.val && msg.val.run) ? String(msg.val.run).toUpperCase() : 'NO';
+            applyRunUI(r === 'YES');
+            if (r === 'NO') {
+                const running = (typeof isScanRunning !== 'undefined') ? !!isScanRunning : false;
+                if (running) {
+                    if (typeof stopScannerSoft === 'function') stopScannerSoft();
+                    location.reload();
+                }
+            }
+        });
+    }
 
     const isDark = !!appStateInit.darkMode;
     if (isDark) {
@@ -1671,9 +1675,26 @@ $(document).ready(function() {
     updateDarkIcon(isDark);
 
     // --- Defer heavy initialization ---
-    // Apply themed background as early as possible so per-chain color appears before overlay hides
-    try { applyThemeForMode(); } catch(_) {}
+    // Apply themed background as early as possible so per-chain color appears before overlay hides // REFACTORED
+    if (typeof applyThemeForMode === 'function') applyThemeForMode();
     setTimeout(deferredInit, 0);
+
+    // --- Report Database Status (IndexedDB) --- // REFACTORED
+    async function reportDatabaseStatus(){
+        const payload = await (window.exportIDB ? window.exportIDB() : Promise.resolve(null));
+        if (!payload || !Array.isArray(payload.items)) {
+            if (window.toastr) toastr.warning('Database belum tersedia atau tidak dapat diakses.');
+            return;
+        }
+        const n = payload.items.length;
+        if (window.toastr) toastr.info(`TERHUBUNG DATABASE...`);
+        else console.info('Database siap. Items:', n);
+    }
+    if (window.whenStorageReady && typeof window.whenStorageReady.then === 'function') {
+        window.whenStorageReady.then(reportDatabaseStatus);
+    } else {
+        reportDatabaseStatus();
+    }
 
     // Initial header label + sync icon visibility based on URL mode
     try {
@@ -2070,13 +2091,28 @@ $(document).on('click', '#histClearAll', async function(){
             try{
                 const text = String(e.target.result||'').trim();
                 const json = JSON.parse(text);
+                // Validasi dasar payload backup
+                if (!json || typeof json !== 'object' || json.schema !== 'kv-v1' || !Array.isArray(json.items)) {
+                    toastr.error('File backup tidak valid atau schema tidak dikenali.');
+                    return;
+                }
+                // Info jika DB/Store berbeda (tetap lanjut restore)
+                try {
+                    if (json.db && String(json.db) !== 'MULTICHECKER_DB') {
+                        toastr.warning(`Nama database berbeda: ${json.db}`);
+                    }
+                    if (json.store && String(json.store) !== 'MULTICHECKER_KV') {
+                        toastr.warning(`Nama store berbeda: ${json.store}`);
+                    }
+                } catch(_) {}
                 const res = await (window.restoreIDB ? window.restoreIDB(json) : Promise.resolve({ ok:0, fail:0 }));
-                toastr.success(`Restore selesai. OK: ${res.ok}, Fail: ${res.fail}`);
                 try { setLastAction('RESTORE DATABASE'); } catch(_) {}
+                const msg = `Restore selesai. OK: ${res.ok}, Fail: ${res.fail}`;
+                try { toastr.success(`✅ ${msg}`); } catch(_) {}
                 try { $('#backupSummary').text(`Restore OK: ${res.ok}, Fail: ${res.fail}`); } catch(_) {}
-                // Refresh UI data views
-                try { refreshTokensTable(); } catch(_) {}
-                try { if (typeof renderFilterCard === 'function') renderFilterCard(); } catch(_) {}
+                // Tampilkan alert sukses dan reload halaman agar data hasil restore terpakai penuh
+                try { alert(`✅ ${msg}\nHalaman akan di-reload untuk menerapkan perubahan.`); } catch(_) {}
+                try { location.reload(); } catch(_) {}
             } catch(err){
                 console.error('Restore parse error:', err);
                 toastr.error('File tidak valid. Pastikan format JSON benar.');

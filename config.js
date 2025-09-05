@@ -252,12 +252,12 @@ const CONFIG_DEXS = {
     kyberswap: {
         STRATEGY: 'kyberswap',
         builder: ({ chainName, tokenAddress, pairAddress }) => `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
-        allowFallback: true,
+        allowFallback: false,
     },
     '0x': {
         STRATEGY: '0x',
         builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => `https://matcha.xyz/tokens/${chainName}/${tokenAddress.toLowerCase()}?buyChain=${chainCode}&buyAddress=${pairAddress.toLowerCase()}`,
-        allowFallback: true,
+        allowFallback: false,
     },
     odos: {
         STRATEGY: 'odos',
@@ -267,7 +267,7 @@ const CONFIG_DEXS = {
     okx: {
         STRATEGY: 'okx',
         builder: ({ chainCode, tokenAddress, pairAddress }) => `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
-        allowFallback: true,
+        allowFallback: false,
     },
     '1inch': {
         STRATEGY: '1inch',

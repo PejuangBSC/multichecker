@@ -6,25 +6,28 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
     if (tableBodyId === 'dataTableBody') {
         RenderCardSignal();
     }
-    const tableBody = document.getElementById(tableBodyId);
-    // Manage concurrent renders per table body
-    try { window.__TABLE_RENDER_JOBS = window.__TABLE_RENDER_JOBS || new Map(); } catch(_) {}
+    const $tableBody = $('#' + tableBodyId);
+    // Manage concurrent renders per table body // REFACTORED
+    if (typeof window !== 'undefined') {
+        window.__TABLE_RENDER_JOBS = window.__TABLE_RENDER_JOBS || new Map();
+    }
     const __jobKey = String(tableBodyId);
     const __prevJob = window.__TABLE_RENDER_JOBS.get(__jobKey);
-    if (__prevJob && typeof __prevJob.cancel === 'function') { try { __prevJob.cancel(); } catch(_){} }
+    // Cancel previous job safely without try/catch // REFACTORED
+    if (__prevJob && typeof __prevJob.cancel === 'function') { __prevJob.cancel(); }
 
     if (!Array.isArray(filteredData) || filteredData.length === 0) {
         // Disable the correct start button based on the table being rendered
         $('#startSCAN').prop('disabled', true);
 
-        if (tableBody) tableBody.innerHTML = '<tr><td colspan="11" class="uk-text-center">No tokens to display.</td></tr>';
+        if ($tableBody.length) $tableBody.html('<tr><td colspan="11" class="uk-text-center">No tokens to display.</td></tr>');
         return;
     }
 
     const maxSlots = 4;
 
     // Incremental chunked rendering to avoid blocking on large datasets
-    if (tableBody) tableBody.innerHTML = '';
+    if ($tableBody.length) $tableBody.html('');
     const total = filteredData.length;
     const CHUNK = 200; // rows per batch
     let cursor = 0;
@@ -33,7 +36,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
 
     function renderChunk(){
         if (__cancelled) return;
-        if (!tableBody) return;
+        if (!$tableBody.length) return;
         let chunkHtml = '';
         const start = cursor;
         const end = Math.min(start + CHUNK, total);
@@ -174,12 +177,11 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         rowHtml += '</tr>';
         chunkHtml += rowHtml;
         }
-        if (chunkHtml) tableBody.insertAdjacentHTML('beforeend', chunkHtml);
-        try {
-            const pct = Math.floor(((end) / Math.max(total,1)) * 100);
-            const label = `Rendering table: ${end}/${total} (${pct}%)`;
-            const p = document.getElementById('progress'); if (p) p.textContent = label;
-        } catch(_) {}
+        if (chunkHtml) $tableBody.append(chunkHtml);
+        // Update progress label without try/catch // REFACTORED
+        const pct = Math.floor(((end) / Math.max(total,1)) * 100);
+        const label = `Rendering table: ${end}/${total} (${pct}%)`;
+        $('#progress').text(label);
         cursor = end;
         if (cursor < total) {
             // Yield back to UI; schedule next batch
@@ -323,7 +325,6 @@ function renderTokenManagementList() {
     const $tb = $('#mgrTbody').empty();
 
     // Virtualize manager rows for large datasets
-    const container = document.getElementById('manager-table');
     const ROW_ESTIMATE = 64; // px per row (approx, adjusted for larger text)
     const VIRTUAL_THRESHOLD = 150; // start virtualization earlier for smoother scroll on large lists
 
@@ -385,19 +386,18 @@ function renderTokenManagementList() {
         let desInDisp = r.des_in ?? '';
         let scOutDisp = r.sc_out || '';
         let desOutDisp = r.des_out ?? '';
-        try {
-            const chainCfg = (window.CONFIG_CHAINS || {})[String(r.chain).toLowerCase()] || {};
-            const pairDefs = chainCfg.PAIRDEXS || {};
-            const isInvalid = (addr) => !addr || String(addr).toLowerCase() === '0x' || String(addr).length < 6;
-            const pairKey = String(r.symbol_out || '').toUpperCase();
-            if (isInvalid(scOutDisp)) {
-                const def = pairDefs[pairKey] || pairDefs['NON'] || {};
-                if (def && def.scAddressPair) {
-                    scOutDisp = def.scAddressPair;
-                    desOutDisp = def.desPair ?? desOutDisp;
-                }
+        // Resolve defaults without try/catch // REFACTORED
+        const chainCfg = (window.CONFIG_CHAINS || {})[String(r.chain).toLowerCase()] || {};
+        const pairDefs = chainCfg.PAIRDEXS || {};
+        const isInvalid = (addr) => !addr || String(addr).toLowerCase() === '0x' || String(addr).length < 6;
+        const pairKey = String(r.symbol_out || '').toUpperCase();
+        if (isInvalid(scOutDisp)) {
+            const def = pairDefs[pairKey] || pairDefs['NON'] || {};
+            if (def && def.scAddressPair) {
+                scOutDisp = def.scAddressPair;
+                desOutDisp = def.desPair ?? desOutDisp;
             }
-        } catch(_) {}
+        }
 
         const rowHtml = `
         <tr>
@@ -425,10 +425,11 @@ function renderTokenManagementList() {
         return rowHtml;
     }
 
-    if (container && rows.length > VIRTUAL_THRESHOLD) {
+    if ($('#manager-table').length && rows.length > VIRTUAL_THRESHOLD) {
         // Initialize virtualization
+        const $container = $('#manager-table');
         const total = rows.length;
-        const visibleCount = Math.max(20, Math.ceil(container.clientHeight / ROW_ESTIMATE) + 10);
+        const visibleCount = Math.max(20, Math.ceil($container.height() / ROW_ESTIMATE) + 10);
 
         function renderSlice(startIdx){
             const start = Math.max(0, Math.min(total - 1, startIdx|0));
@@ -447,13 +448,13 @@ function renderTokenManagementList() {
 
         let lastStart = 0;
         renderSlice(0);
-        container.addEventListener('scroll', function onScroll(){
-            const newStart = Math.floor(container.scrollTop / ROW_ESTIMATE) - 5;
+        $container.on('scroll.virtual', function(){
+            const newStart = Math.floor(($container.scrollTop() || 0) / ROW_ESTIMATE) - 5;
             if (newStart !== lastStart) {
                 lastStart = newStart;
                 renderSlice(newStart);
             }
-        }, { passive: true });
+        });
     } else {
         rows.forEach(r => { $tb.append(renderMgrRow(r)); });
     }
@@ -528,28 +529,22 @@ function hexToRgba(hex, alpha) {
 }
 
 // Helper: resolve chain color hex from config or chainData
-function getChainColorHexByName(chainName) {
-  try {
-    const key = String(chainName || '').toLowerCase();
-    const cfg = (typeof getChainData === 'function')
-      ? getChainData(chainName)
-      : ((typeof window !== 'undefined' && window.CONFIG_CHAINS) ? window.CONFIG_CHAINS[key] : undefined);
-    return cfg?.WARNA || cfg?.COLOR_CHAIN || '#94fa95';
-  } catch(_) {
-    return '#94fa95';
-  }
+function getChainColorHexByName(chainName) { // REFACTORED
+  const key = String(chainName || '').toLowerCase();
+  const cfg = (typeof getChainData === 'function')
+    ? getChainData(chainName)
+    : (typeof window !== 'undefined' ? window.CONFIG_CHAINS?.[key] : undefined);
+  return cfg?.WARNA || cfg?.COLOR_CHAIN || '#94fa95';
 }
 
 // Helper: detect dark mode (basic). Overrideable if app provides getTheme/getDarkMode
-function isDarkMode() {
-  try {
-    if (typeof getTheme === 'function') return String(getTheme()).toLowerCase().includes('dark');
-    if (typeof getDarkMode === 'function') return !!getDarkMode();
-    // CSS class or media query fallback
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-  } catch(_) {}
+function isDarkMode() { // REFACTORED
+  if (typeof getTheme === 'function') return String(getTheme()).toLowerCase().includes('dark');
+  if (typeof getDarkMode === 'function') return !!getDarkMode();
+  // CSS class or media query fallback
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
   return false;
 }
 
@@ -568,8 +563,8 @@ function DisplayPNL(data) {
     rates
   } = data;
 
-  const mainCell = document.getElementById(String(idPrefix || '') + String(baseId || ''));
-  if (!mainCell) return;
+  const $mainCell = $('#' + String(idPrefix || '') + String(baseId || ''));
+  if (!$mainCell.length) return;
 
   // Helpers
   const n = v => Number.isFinite(+v) ? +v : 0;
@@ -691,10 +686,10 @@ function DisplayPNL(data) {
   const shouldHighlight = isHighlight || (pnl > feeAll);
   const chainColorHexHL = getChainColorHexByName(nameChain);
   // In dark mode: keep a lighter green; else use chain color alpha
-  const hlBg = isDarkMode() ? hexToRgba('#7fffa0', 0.35) : hexToRgba(chainColorHexHL, 0.4);
-  mainCell.style.cssText = shouldHighlight
+  const hlBg = isDarkMode() ? hexToRgba('#7fffa0', 0.25) : hexToRgba(chainColorHexHL, 0.24);
+  $mainCell.attr('style', shouldHighlight
     ? `border:1px solid #222;background-color:${hlBg}!important;font-weight:bolder!important;color:#000!important;vertical-align:middle!important;text-align:center!important;`
-    : "text-align:center;vertical-align:middle;";
+    : 'text-align:center;vertical-align:middle;');
 
   // Baris utama (SWAP dipisah baris sendiri)
   const lineBuy   = `<a class="monitor-line uk-text-success dex-price-link" href="${buyLink}"  target="_blank" rel="noopener" title="${tipBuy}">⬆ ${fmtUSD(buyPrice)}</a>`;
@@ -706,37 +701,32 @@ function DisplayPNL(data) {
 
   const resultHtml = [lineBuy, lineSell, feeBlock1, '', feeBlock2, lineBrut, linePNL].join(' ');
 
-  // Panel sinyal / Telegram (opsional)
-  try {
-    if (pnl > feeAll && typeof InfoSinyal === 'function') {
-      InfoSinyal(lower(dextype), NameX, pnl, feeAll, upper(cex), Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix);
-    }
-  } catch(_) {}
+  // Panel sinyal / Telegram (opsional) // REFACTORED
+  if (pnl > feeAll && typeof InfoSinyal === 'function') {
+    InfoSinyal(lower(dextype), NameX, pnl, feeAll, upper(cex), Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix);
+  }
 
-  try {
-    if (typeof MultisendMessage === 'function' && (pnl > filterPNLValue)) {
-      const directionMsg = (direction === 'tokentopair') ? 'cex_to_dex' : 'dex_to_cex';
-      const tokenData = { chain: nameChain, symbol: Name_in, pairSymbol: Name_out, contractAddress: sc_input, pairContractAddress: sc_output };
-      const nickname =
-        (typeof getFromLocalStorage === 'function')
-          ? (getFromLocalStorage('SETTING_SCANNER', {})?.nickname || '')
-          : (typeof SavedSettingData !== 'undefined' ? (SavedSettingData?.nickname || '') : '');
+  // REFACTORED
+  if (typeof MultisendMessage === 'function' && (pnl > filterPNLValue)) {
+    const directionMsg = (direction === 'tokentopair') ? 'cex_to_dex' : 'dex_to_cex';
+    const tokenData = { chain: nameChain, symbol: Name_in, pairSymbol: Name_out, contractAddress: sc_input, pairContractAddress: sc_output };
+    const nickname = (typeof getFromLocalStorage === 'function')
+      ? (getFromLocalStorage('SETTING_SCANNER', {})?.nickname || '')
+      : (typeof SavedSettingData !== 'undefined' ? (SavedSettingData?.nickname || '') : '');
 
-      MultisendMessage(
-        upper(cex), dextype, tokenData, Modal, pnl,
-        n(buyPrice), n(sellPrice), n(FeeSwap), n(FeeWD), feeAll, nickname, directionMsg
-      );
-    }
-  } catch(_) {}
+    MultisendMessage(
+      upper(cex), dextype, tokenData, Modal, pnl,
+      n(buyPrice), n(sellPrice), n(FeeSwap), n(FeeWD), feeAll, nickname, directionMsg
+    );
+  }
 
   // Render akhir
-  const dexNameAndModal = mainCell.querySelector('strong')?.outerHTML || '';
+  const dexNameAndModal = ($mainCell.find('strong').first().prop('outerHTML')) || '';
   const modeNow = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
   const resultWrapClass = (lower(modeNow.type) === 'single') ? 'uk-text-dark' : 'uk-text-primary';
   const boldStyle = shouldHighlight ? 'font-weight:bolder;' : '';
 
-  mainCell.innerHTML =
-    `${dexNameAndModal ? dexNameAndModal + '<br>' : ''}<span class="${resultWrapClass}" style="${boldStyle}">${resultHtml}</span>`;
+  $mainCell.html(`${dexNameAndModal ? dexNameAndModal + '<br>' : ''}<span class="${resultWrapClass}" style="${boldStyle}">${resultHtml}</span>`);
 }
 
 /** Append a compact item to the DEX signal panel and play audio. */
@@ -748,7 +738,7 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
   const warnaCEX = getWarnaCEX(cex);
   const warnaTeksArah = (trx === "TokentoPair") ? "uk-text-success" : "uk-text-danger";
   const baseId = `${cex.toUpperCase()}_${DEXPLUS.toUpperCase()}_${NameToken}_${NamePair}_${String(nameChain).toUpperCase()}`;
-  const signalBg = isDarkMode() ? hexToRgba('#7fffa0', 0.35) : hexToRgba(warnaChain, 0.4);
+  const signalBg = isDarkMode() ? hexToRgba('#7fffa0', 0.25) : hexToRgba(warnaChain, 0.24);
   const highlightStyle = (Number(PNL) > filterPNLValue)
     ? `background-color:${signalBg}; font-weight:bolder;`
     : "";
@@ -772,8 +762,10 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
 
   $("#sinyal" + DEXPLUS.toLowerCase()).append(sLink);
 
-  // Pastikan kartu sinyal DEX utama terlihat ketika ada item sinyal
-  try { if (typeof window.showSignalCard === 'function') window.showSignalCard(DEXPLUS.toLowerCase()); } catch(_) {}
+  // Pastikan kartu sinyal DEX utama terlihat ketika ada item sinyal // REFACTORED
+  if (typeof window !== 'undefined' && typeof window.showSignalCard === 'function') {
+    window.showSignalCard(DEXPLUS.toLowerCase());
+  }
 
   const audio = new Audio('audio.mp3');
   audio.play();
@@ -827,38 +819,37 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     tooltipText = `1 ${Name_in} ≈ ${tooltipRate.toFixed(6)} ${Name_out}`;
 
     // New: DEX-based USD rate where possible (both directions)
-    try {
-        const stableSet = (typeof getStableSymbols === 'function') ? getStableSymbols() : ['USDT','USDC','DAI'];
-        const outSym = String(Name_out||'').toUpperCase();
-        const inSym  = String(Name_in||'').toUpperCase();
-        const baseSym = (typeof getBaseTokenSymbol === 'function') ? getBaseTokenSymbol(nameChain) : '';
-        const baseUsd = (typeof getBaseTokenUSD === 'function') ? getBaseTokenUSD(nameChain) : 0;
+    // Compute displayRate using safe checks (no try/catch) // REFACTORED
+    const stableSet = (typeof getStableSymbols === 'function') ? getStableSymbols() : ['USDT','USDC','DAI'];
+    const outSym = String(Name_out||'').toUpperCase();
+    const inSym  = String(Name_in||'').toUpperCase();
+    const baseSym = (typeof getBaseTokenSymbol === 'function') ? getBaseTokenSymbol(nameChain) : '';
+    const baseUsd = (typeof getBaseTokenUSD === 'function') ? getBaseTokenUSD(nameChain) : 0;
 
-        if (trx === 'TokentoPair') {
-            // token -> pair
-            if (stableSet.includes(outSym)) {
-                // Output already in stable → amount_out is USD directly per 1 token_in
-                displayRate = rateTokentoPair;
-            } else if (baseSym && outSym === baseSym && baseUsd > 0) {
-                // token -> base → multiply by base USD
-                displayRate = rateTokentoPair * baseUsd;
-            }
-        } else {
-            // pair -> token (we want USD per 1 token_out)
-            if (rateTokentoPair > 0) {
-                if (stableSet.includes(inSym)) {
-                    // Input already USD → price per token = 1 / tokens_per_USD
-                    displayRate = 1 / rateTokentoPair;
-                } else if (baseSym && inSym === baseSym && baseUsd > 0) {
-                    // Input base coin → price per token = (baseUSD) / tokens_per_base
-                    displayRate = baseUsd / rateTokentoPair;
-                } else if (priceBuyPair_CEX > 0) {
-                    // Multi-hop via CEX USD per pair: USD/token = (USD per 1 pair) / (tokens per 1 pair)
-                    displayRate = priceBuyPair_CEX / rateTokentoPair;
-                }
+    if (trx === 'TokentoPair') {
+        // token -> pair
+        if (stableSet.includes(outSym)) {
+            // Output already in stable → amount_out is USD directly per 1 token_in
+            displayRate = rateTokentoPair;
+        } else if (baseSym && outSym === baseSym && baseUsd > 0) {
+            // token -> base → multiply by base USD
+            displayRate = rateTokentoPair * baseUsd;
+        }
+    } else {
+        // pair -> token (we want USD per 1 token_out)
+        if (rateTokentoPair > 0) {
+            if (stableSet.includes(inSym)) {
+                // Input already USD → price per token = 1 / tokens_per_USD
+                displayRate = 1 / rateTokentoPair;
+            } else if (baseSym && inSym === baseSym && baseUsd > 0) {
+                // Input base coin → price per token = (baseUSD) / tokens_per_base
+                displayRate = baseUsd / rateTokentoPair;
+            } else if (priceBuyPair_CEX > 0) {
+                // Multi-hop via CEX USD per pair: USD/token = (USD per 1 pair) / (tokens per 1 pair)
+                displayRate = priceBuyPair_CEX / rateTokentoPair;
             }
         }
-    } catch(_) {}
+    }
 
     // Fallback if DEX-based USD rate not resolved
     // - TokentoPair: USD/token = (pair per token) * (USD per 1 pair)
@@ -889,14 +880,12 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     };
 }
 
-// Optional namespacing for future modular use
-try {
-    if (window.App && typeof window.App.register === 'function') {
-        window.App.register('DOM', {
-            loadKointoTable,
-            renderTokenManagementList,
-            InfoSinyal,
-            calculateResult
-        });
-    }
-} catch(_) {}
+// Optional namespacing for future modular use // REFACTORED
+if (typeof window !== 'undefined' && window.App && typeof window.App.register === 'function') {
+    window.App.register('DOM', {
+        loadKointoTable,
+        renderTokenManagementList,
+        InfoSinyal,
+        calculateResult
+    });
+}

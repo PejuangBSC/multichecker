@@ -11,10 +11,10 @@ let isScanRunning = false;
  * - For each token: fetch CEX orderbook → quote DEX routes → compute PNL → update UI
  */
 async function startScanner(tokensToScan, settings, tableBodyId) {
-    // Cancel any pending autorun countdown when a new scan starts
-    try { clearInterval(window.__autoRunInterval); } catch(_) {}
+    // Cancel any pending autorun countdown when a new scan starts // REFACTORED
+    clearInterval(window.__autoRunInterval);
     window.__autoRunInterval = null;
-    try { $('#autoRunCountdown').text(''); } catch(_) {}
+    $('#autoRunCountdown').text(''); // REFACTORED
     const lastAction = getFromLocalStorage('HISTORY', {});
     if (lastAction && lastAction.action && lastAction.time) {
         $('#infoAPP').text(`${lastAction.action} at ${lastAction.time}`);
@@ -55,36 +55,28 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
     setAppState({ run: 'YES' });
     $('#startSCAN').prop('disabled', true).text('Running...').addClass('uk-button-disabled');
+    $('#infoAPP').html('RUN SCANNING...').show();
     // Keep user's search query intact; do not reset searchInput here.
     // Clear previous signals (container uses <div id="sinyal...">)
     $('#sinyal-container [id^="sinyal"]').empty();
-    // Hide empty signal cards so none appear at start
-    try { if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards(); } catch(_) {}
+    // Hide empty signal cards so none appear at start // REFACTORED
+    if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards();
     // Reset all DEX cells back to default: "DEXNAME [$MODAL]" + lock icon, clearing previous results
-    try {
-        const selector = `td[id^="${tableBodyId}_"]`;
-        document.querySelectorAll(selector).forEach(cell => {
-            const strong = cell.querySelector('strong');
-            if (!strong) return;
-            const dexHeaderHtml = strong.outerHTML;
-            cell.innerHTML = `${dexHeaderHtml}<br><span class=\"dex-status uk-text-muted\">🔒</span>`;
-            cell.style.backgroundColor = '';
-        });
-    } catch (_) {}
+    const selector = `td[id^="${tableBodyId}_"]`; // REFACTORED
+    document.querySelectorAll(selector).forEach(cell => {
+        const strong = cell.querySelector('strong');
+        if (!strong) return;
+        const dexHeaderHtml = strong.outerHTML;
+        cell.innerHTML = `${dexHeaderHtml}<br><span class=\"dex-status uk-text-muted\">🔒</span>`;
+        cell.style.backgroundColor = '';
+    });
     // Apply gating first, then disable globally to ensure edit remains locked during scan
-    try { if (typeof setScanUIGating === 'function') setScanUIGating(true); } catch(_) {}
+    if (typeof setScanUIGating === 'function') setScanUIGating(true); // REFACTORED
     form_off();
     $("#autoScrollCheckbox").show().prop('disabled', false);
     $("#stopSCAN").show().prop('disabled', false);
-    $('#LoadDataBtn, #SettingModal, #MasterData,#UpdateWalletCEX, #chain-links-container,.sort-toggle').css({ 'pointer-events': 'none', 'opacity': '0.4' });
-    // Lock edit buttons and management link during scanning
-    try { $('.edit-token-button, #ManajemenKoin').css({ 'pointer-events': 'none', 'opacity': '0.4' }); } catch(_) {}
-    // Disable all toolbar actions during scanning, except Reload and Dark Mode toggle
-    try {
-        const $allToolbar = $('.header-card a, .header-card .icon');
-        $allToolbar.css({ pointerEvents: 'none', opacity: 0.4 });
-        $('#reload, #darkModeToggle').css({ pointerEvents: 'auto', opacity: 1 });
-    } catch(_) {}
+    // Use centralized gating to toggle all UI states during scan // REFACTORED
+    if (typeof setScanUIGating === 'function') setScanUIGating(true);
     $('.statusCheckbox').css({ 'pointer-events': 'auto', 'opacity': '1' }).prop('disabled', false);
 
     sendStatusTELE(ConfigScan.nickname, 'ONLINE');
@@ -335,7 +327,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         setWatchdog(wdKeyFallback, () => {
                                             const msg = (initialError?.pesanDEX ? `Initial: ${initialError.pesanDEX} | ` : '') + 'SWOOP: Request Timeout';
                                             updateDexCellStatus('fallback_error', dex, msg);
-                                        }, speedScan + 200);
+                                        }, 5000);
                                         getPriceSWOOP(
                                             isKiri ? token.sc_in : token.sc_out, isKiri ? token.des_in : token.des_out,
                                             isKiri ? token.sc_out : token.sc_in, isKiri ? token.des_out : token.des_in,
@@ -457,20 +449,21 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 const first = groupTokens[0];
                 const suffix = `DETAIL_${first.cex.toUpperCase()}_${first.symbol_in.toUpperCase()}_${first.symbol_out.toUpperCase()}_${first.chain.toUpperCase()}`.replace(/[^A-Z0-9_]/g, '');
                 const fullId = `${tableBodyId}_${suffix}`;
-                requestAnimationFrame(() => {
-                    let target = document.getElementById(fullId) || document.querySelector(`[id$="${suffix}"]`);
-                    if (!target) return;
-                    target.classList.add('auto-focus');
-                    setTimeout(() => target.classList.remove('auto-focus'), 900);
-                    const container = target.closest('.uk-overflow-auto');
-                    if (container && container.scrollHeight > container.clientHeight) {
-                        const tRect = target.getBoundingClientRect();
-                        const cRect = container.getBoundingClientRect();
-                        const desiredTop = (tRect.top - cRect.top) + container.scrollTop - (container.clientHeight / 2) + (tRect.height / 2);
-                        container.scrollTo({ top: Math.max(desiredTop, 0), behavior: 'smooth' });
+                requestAnimationFrame(() => { // REFACTORED
+                    const $target = $('#' + fullId).length ? $('#' + fullId) : $(`[id$="${suffix}"]`).first();
+                    if (!$target.length) return;
+                    $target.addClass('auto-focus');
+                    setTimeout(() => $target.removeClass('auto-focus'), 900);
+                    const $container = $target.closest('.uk-overflow-auto');
+                    if ($container.length && $container[0].scrollHeight > $container[0].clientHeight) {
+                        const tRect = $target[0].getBoundingClientRect();
+                        const cRect = $container[0].getBoundingClientRect();
+                        const desiredTop = (tRect.top - cRect.top) + $container.scrollTop() - ($container[0].clientHeight / 2) + (tRect.height / 2);
+                        $container.animate({ scrollTop: Math.max(desiredTop, 0) }, 200);
                     } else {
-                        const top = target.getBoundingClientRect().top + window.pageYOffset - (window.innerHeight / 2) + (target.clientHeight / 2);
-                        window.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+                        const tRect = $target[0].getBoundingClientRect();
+                        const top = tRect.top + window.pageYOffset - (window.innerHeight / 2) + ($target[0].clientHeight / 2);
+                        $('html, body').animate({ scrollTop: Math.max(top, 0) }, 200);
                     }
                 });
             }
@@ -483,10 +476,9 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 if (!isScanRunning) return;
                 try { await processRequest(token, tableBodyId); } catch(e) { console.error(`Err token ${token.symbol_in}_${token.symbol_out}`, e); }
                 // Update progress as each token finishes
-                try {
-                    processed += 1;
-                    updateProgress(processed, tokensToProcess.length, startTime, `${token.symbol_in}_${token.symbol_out}`);
-                } catch(_) {}
+        // REFACTORED
+        processed += 1;
+        updateProgress(processed, tokensToProcess.length, startTime, `${token.symbol_in}_${token.symbol_out}`);
             })());
 
             await Promise.allSettled(jobs);
@@ -500,9 +492,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         form_on();
         $("#stopSCAN").hide().prop("disabled", true);
         $('#startSCAN').prop('disabled', false).text('Start').removeClass('uk-button-disabled');
-        $("#LoadDataBtn, #SettingModal, #MasterData,#UpdateWalletCEX,#chain-links-container,.sort-toggle, .edit-token-button").css("pointer-events", "auto").css("opacity", "1");
-        try { if (typeof setScanUIGating === 'function') setScanUIGating(false); } catch(_) {}
-        try { $('.header-card a, .header-card .icon').css({ pointerEvents: 'auto', opacity: 1 }); } catch(_) {}
+        // Release gating via centralized helper
+        if (typeof setScanUIGating === 'function') setScanUIGating(false); // REFACTORED
         setAppState({ run: 'NO' });
 
         // Schedule autorun if enabled
@@ -512,28 +503,22 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 let remain = total;
                 const $cd = $('#autoRunCountdown');
                 // Disable UI while waiting, similar to running state
-                try {
-                    $('#startSCAN').prop('disabled', true).addClass('uk-button-disabled');
-                    $('#stopSCAN').show().prop('disabled', false);
-                    $('#LoadDataBtn, #SettingModal, #MasterData,#UpdateWalletCEX,#chain-links-container,.sort-toggle, .edit-token-button').css({ pointerEvents: 'none', opacity: 0.4 });
-                    if (typeof setScanUIGating === 'function') setScanUIGating(true);
-                    const $allToolbar = $('.header-card a, .header-card .icon');
-                    $allToolbar.css({ pointerEvents: 'none', opacity: 0.4 });
-                    $('#reload, #darkModeToggle').css({ pointerEvents: 'auto', opacity: 1 });
-                } catch(_) {}
+                $('#startSCAN').prop('disabled', true).addClass('uk-button-disabled'); // REFACTORED
+                $('#stopSCAN').show().prop('disabled', false);
+                if (typeof setScanUIGating === 'function') setScanUIGating(true);
                 const tick = () => {
                     if (!window.AUTORUN_ENABLED) { clearInterval(window.__autoRunInterval); window.__autoRunInterval=null; return; }
-                    try { $cd.text(`AutoRun ${remain}s`).css({ color: '#e53935', fontWeight: 'bold' }); } catch(_) {}
+                    $cd.text(`AutoRun ${remain}s`).css({ color: '#e53935', fontWeight: 'bold' }); // REFACTORED
                     remain -= 1;
                     if (remain < 0) {
                         clearInterval(window.__autoRunInterval);
                         window.__autoRunInterval = null;
-                        try { $cd.text('').css({ color: '', fontWeight: '' }); } catch(_) {}
+                        $cd.text('').css({ color: '', fontWeight: '' }); // REFACTORED
                         // Trigger new scan using current filters/selection
                         $('#startSCAN').trigger('click');
                     }
                 };
-                try { clearInterval(window.__autoRunInterval); } catch(_) {}
+                clearInterval(window.__autoRunInterval); // REFACTORED
                 window.__autoRunInterval = setInterval(tick, 1000);
                 tick();
             }
@@ -547,11 +532,11 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
  * Stops the currently running scanner.
  */
 async function stopScanner() {
-    try { isScanRunning = false; } catch(_) {}
+    isScanRunning = false; // REFACTORED
     try { cancelAnimationFrame(animationFrameId); } catch(_) {}
-    try { clearInterval(window.__autoRunInterval); } catch(_) {}
+    clearInterval(window.__autoRunInterval); // REFACTORED
     window.__autoRunInterval = null;
-    try { form_on(); } catch(_) {}
+    if (typeof form_on === 'function') form_on(); // REFACTORED
     try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
     try {
         if (typeof saveToLocalStorageAsync === 'function') {
@@ -560,7 +545,7 @@ async function stopScanner() {
             setAppState({ run: 'NO' });
         }
     } catch(_) { setAppState({ run: 'NO' }); }
-    try { location.reload(); } catch(_) {}
+    location.reload(); // REFACTORED
 }
 
 /**
@@ -568,10 +553,10 @@ async function stopScanner() {
  * Useful before running long operations (e.g., Update Wallet CEX).
  */
 function stopScannerSoft() {
-    try { isScanRunning = false; } catch(_) {}
+    isScanRunning = false; // REFACTORED
     try { cancelAnimationFrame(animationFrameId); } catch(_) {}
-    try { setAppState({ run: 'NO' }); } catch(_) {}
-    try { clearInterval(window.__autoRunInterval); } catch(_) {}
+    setAppState({ run: 'NO' }); // REFACTORED
+    clearInterval(window.__autoRunInterval); // REFACTORED
     window.__autoRunInterval = null;
-    try { form_on(); } catch(_) {}
+    if (typeof form_on === 'function') form_on(); // REFACTORED
 }

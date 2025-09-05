@@ -115,18 +115,16 @@ function getFilterChain(chain){
     const key = `FILTER_${String(chainKey).toUpperCase()}`;
     let f = getFromLocalStorage(key, null);
     if (!f || typeof f !== 'object'){
-        try {
-            const legacyName = (window.CONFIG_CHAINS?.[chainKey]?.Nama_Chain || '').toString().toUpperCase();
-            if (legacyName) {
-                const legacyKey = `FILTER_${legacyName}`;
-                const lf = getFromLocalStorage(legacyKey, null);
-                if (lf && typeof lf === 'object') {
-                    // migrate
-                    saveToLocalStorage(key, lf);
-                    f = lf;
-                }
+        // REFACTORED: no try/catch; use optional chaining
+        const legacyName = (window.CONFIG_CHAINS?.[chainKey]?.Nama_Chain || '').toString().toUpperCase();
+        if (legacyName) {
+            const legacyKey = `FILTER_${legacyName}`;
+            const lf = getFromLocalStorage(legacyKey, null);
+            if (lf && typeof lf === 'object') {
+                saveToLocalStorage(key, lf);
+                f = lf;
             }
-        } catch(_) {}
+        }
     }
     if (f && typeof f==='object') return { cex: (f.cex||[]).map(String), pair: (f.pair||[]).map(x=>String(x).toUpperCase()) };
     return { cex: [], pair: [] };
@@ -159,11 +157,14 @@ function sortBySymbolIn(list, pref){
     });
 }
 
-function getSortPrefForMulti(){
-    try { const f = getFromLocalStorage('FILTER_MULTICHAIN', null); return (f && (f.sort==='A'||f.sort==='Z')) ? f.sort : 'A'; } catch(_) { return 'A'; }
+function getSortPrefForMulti(){ // REFACTORED
+    const f = getFromLocalStorage('FILTER_MULTICHAIN', null);
+    return (f && (f.sort==='A'||f.sort==='Z')) ? f.sort : 'A';
 }
-function getSortPrefForChain(chain){
-    try { const key = `FILTER_${String(chain).toUpperCase()}`; const f = getFromLocalStorage(key, null); return (f && (f.sort==='A'||f.sort==='Z')) ? f.sort : 'A'; } catch(_) { return 'A'; }
+function getSortPrefForChain(chain){ // REFACTORED
+    const key = `FILTER_${String(chain).toUpperCase()}`;
+    const f = getFromLocalStorage(key, null);
+    return (f && (f.sort==='A'||f.sort==='Z')) ? f.sort : 'A';
 }
 
 function getFlattenedSortedMulti(){
@@ -202,20 +203,16 @@ function setTokensMulti(list){
     const prev = getFromLocalStorage('TOKEN_MULTICHAIN', []);
     const arr = Array.isArray(list) ? list : [];
     saveToLocalStorage('TOKEN_MULTICHAIN', arr);
-    try {
-        const hadNoneBefore = !Array.isArray(prev) || prev.length === 0;
-        const nowHas = Array.isArray(arr) && arr.length > 0;
-        if (nowHas && hadNoneBefore) {
-            // Initialize default FILTER_MULTICHAIN to select all chains and CEX
-            const chains = Object.keys(window.CONFIG_CHAINS || {}).map(k => String(k).toLowerCase());
-            const cex = Object.keys(window.CONFIG_CEX || {}).map(k => String(k).toUpperCase());
-            const existing = getFromLocalStorage('FILTER_MULTICHAIN', null);
-            const empty = !existing || (!Array.isArray(existing.chains) && !Array.isArray(existing.cex)) || ((existing.chains||[]).length===0 && (existing.cex||[]).length===0);
-            if (empty) {
-                setFilterMulti({ chains, cex });
-            }
-        }
-    } catch(_) {}
+    // REFACTORED
+    const hadNoneBefore = !Array.isArray(prev) || prev.length === 0;
+    const nowHas = Array.isArray(arr) && arr.length > 0;
+    if (nowHas && hadNoneBefore) {
+        const chains = Object.keys(window.CONFIG_CHAINS || {}).map(k => String(k).toLowerCase());
+        const cex = Object.keys(window.CONFIG_CEX || {}).map(k => String(k).toUpperCase());
+        const existing = getFromLocalStorage('FILTER_MULTICHAIN', null);
+        const empty = !existing || (!Array.isArray(existing.chains) && !Array.isArray(existing.cex)) || ((existing.chains||[]).length===0 && (existing.cex||[]).length===0);
+        if (empty) setFilterMulti({ chains, cex });
+    }
 }
 
 // Async variants for explicit success/failure reporting (non-breaking: new helpers)
@@ -244,28 +241,25 @@ function getTokensChain(chain){
         return fixed;
     }
     // Fallback to legacy naming using Nama_Chain (e.g., ETHEREUM) if present in backup
-    try {
-        const legacyName = (window.CONFIG_CHAINS?.[chainKey]?.Nama_Chain || '').toString().toUpperCase();
-        if (legacyName) {
-            const legacyKey = `TOKEN_${legacyName}`;
-            const legacy = getFromLocalStorage(legacyKey, []);
-            if (Array.isArray(legacy) && legacy.length) {
-                // Normalize ids during migration
-                let mutated = false;
-                const fixed = legacy.map(item => {
-                    if (!item || (item.id !== 0 && !item.id)) {
-                        const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-                        mutated = true;
-                        return { ...item, id: newId };
-                    }
-                    return item;
-                });
-                // Migrate into primary for consistency
-                saveToLocalStorage(primaryKey, fixed);
-                return fixed;
-            }
+    // REFACTORED: legacy fallback without try/catch
+    const legacyName = (window.CONFIG_CHAINS?.[chainKey]?.Nama_Chain || '').toString().toUpperCase();
+    if (legacyName) {
+        const legacyKey = `TOKEN_${legacyName}`;
+        const legacy = getFromLocalStorage(legacyKey, []);
+        if (Array.isArray(legacy) && legacy.length) {
+            let mutated = false;
+            const fixed = legacy.map(item => {
+                if (!item || (item.id !== 0 && !item.id)) {
+                    const newId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                    mutated = true;
+                    return { ...item, id: newId };
+                }
+                return item;
+            });
+            saveToLocalStorage(primaryKey, fixed);
+            return fixed;
         }
-    } catch(_) {}
+    }
     return Array.isArray(t) ? t : [];
 }
 
@@ -275,22 +269,18 @@ function setTokensChain(chain, list){
     const prev = getFromLocalStorage(key, []);
     const arr = Array.isArray(list) ? list : [];
     saveToLocalStorage(key, arr);
-    try {
-        const hadNoneBefore = !Array.isArray(prev) || prev.length === 0;
-        const nowHas = Array.isArray(arr) && arr.length > 0;
-        if (nowHas && hadNoneBefore) {
-            // Initialize default FILTER_<CHAIN> to select all relevant CEX and PAIR
-            const cfg = (window.CONFIG_CHAINS || {})[chainKey] || {};
-            const cex = Object.keys(cfg.WALLET_CEX || window.CONFIG_CEX || {}).map(k => String(k));
-            const pairs = Array.from(new Set([...(Object.keys(cfg.PAIRDEXS || {})), 'NON'])).map(x => String(x).toUpperCase());
-            const fkey = `FILTER_${String(chainKey).toUpperCase()}`;
-            const existing = getFromLocalStorage(fkey, null);
-            const empty = !existing || ((existing.cex||[]).length===0 && (existing.pair||[]).length===0);
-            if (empty) {
-                setFilterChain(chain, { cex, pair: pairs });
-            }
-        }
-    } catch(_) {}
+    // REFACTORED
+    const hadNoneBefore2 = !Array.isArray(prev) || prev.length === 0;
+    const nowHas2 = Array.isArray(arr) && arr.length > 0;
+    if (nowHas2 && hadNoneBefore2) {
+        const cfg = (window.CONFIG_CHAINS || {})[chainKey] || {};
+        const cex = Object.keys(cfg.WALLET_CEX || window.CONFIG_CEX || {}).map(k => String(k));
+        const pairs = Array.from(new Set([...(Object.keys(cfg.PAIRDEXS || {})), 'NON'])).map(x => String(x).toUpperCase());
+        const fkey = `FILTER_${String(chainKey).toUpperCase()}`;
+        const existing = getFromLocalStorage(fkey, null);
+        const empty = !existing || ((existing.cex||[]).length===0 && (existing.pair||[]).length===0);
+        if (empty) setFilterChain(chain, { cex, pair: pairs });
+    }
 }
 
 async function setTokensChainAsync(chain, list){
@@ -308,18 +298,9 @@ function getFeatureReadiness() {
     const mode = getAppMode();
     const settings = getFromLocalStorage('SETTING_SCANNER', {});
     const hasSettings = !!(settings && typeof settings === 'object' && Object.keys(settings).length);
-    let hasTokensMulti = false;
-    let hasTokensChain = false;
-    try {
-        const multi = getTokensMulti();
-        hasTokensMulti = Array.isArray(multi) && multi.length > 0;
-    } catch(_) {}
-    try {
-        if (mode.type === 'single') {
-            const chainList = getTokensChain(mode.chain);
-            hasTokensChain = Array.isArray(chainList) && chainList.length > 0;
-        }
-    } catch(_) {}
+    const multi = getTokensMulti(); // REFACTORED
+    const hasTokensMulti = Array.isArray(multi) && multi.length > 0;
+    const hasTokensChain = (mode.type === 'single') ? (Array.isArray(getTokensChain(mode.chain)) && getTokensChain(mode.chain).length > 0) : false;
 
     const feature = {
         settings: true,
@@ -529,32 +510,25 @@ function createLink(url, text, className = '') {
  * @param {string} NamePair - The quote token symbol.
  * @returns {object} An object containing different URL types (trade, withdraw, deposit).
  */
-function GeturlExchanger(cex, NameToken, NamePair) {
-    try {
-        if (window.CEX && CEX.link && typeof CEX.link.buildAll === 'function') {
-            return CEX.link.buildAll(cex, NameToken, NamePair);
-        }
-    } catch(_) {}
-    // Fallback: use CONFIG_CEX.LINKS if available
-    try {
-        const cfg = (window.CONFIG_CEX || {})[String(cex||'').toUpperCase()] || {};
-        const L = cfg.LINKS || {};
-        const T = String(NameToken||'').toUpperCase();
-        const P = String(NamePair||'').toUpperCase();
-        const build = (fn, args) => { try { return typeof fn === 'function' ? fn(args) : null; } catch(_) { return null; } };
-        const tradeToken = build(L.tradeToken, { cex, token: T, pair: P }) || '#';
-        const tradePair  = build(L.tradePair,  { cex, token: T, pair: P }) || '#';
-        const withdraw   = build(L.withdraw,   { cex, token: T, pair: P }) || '#';
-        const deposit    = build(L.deposit,    { cex, token: T, pair: P }) || '#';
-        return {
-            tradeToken, tradePair,
-            withdrawUrl: withdraw, depositUrl: deposit,
-            withdrawTokenUrl: withdraw, depositTokenUrl: deposit,
-            withdrawPairUrl: withdraw, depositPairUrl: deposit
-        };
-    } catch(_) {}
-    // Last resort minimal object
-    return { tradeToken: '#', tradePair: '#', withdrawUrl: '#', depositUrl: '#', withdrawTokenUrl: '#', depositTokenUrl: '#', withdrawPairUrl: '#', depositPairUrl: '#'};
+function GeturlExchanger(cex, NameToken, NamePair) { // REFACTORED
+    if (window.CEX?.link && typeof CEX.link.buildAll === 'function') {
+        return CEX.link.buildAll(cex, NameToken, NamePair);
+    }
+    const cfg = (window.CONFIG_CEX || {})[String(cex||'').toUpperCase()] || {};
+    const L = cfg.LINKS || {};
+    const T = String(NameToken||'').toUpperCase();
+    const P = String(NamePair||'').toUpperCase();
+    const build = (fn, args) => (typeof fn === 'function' ? fn(args) : null);
+    const tradeToken = build(L.tradeToken, { cex, token: T, pair: P }) || '#';
+    const tradePair  = build(L.tradePair,  { cex, token: T, pair: P }) || '#';
+    const withdraw   = build(L.withdraw,   { cex, token: T, pair: P }) || '#';
+    const deposit    = build(L.deposit,    { cex, token: T, pair: P }) || '#';
+    return {
+        tradeToken, tradePair,
+        withdrawUrl: withdraw, depositUrl: deposit,
+        withdrawTokenUrl: withdraw, depositTokenUrl: deposit,
+        withdrawPairUrl: withdraw, depositPairUrl: deposit
+    };
 }
 
 /**
@@ -911,6 +885,8 @@ function setScanUIGating(isRunning) {
             // Disable scanner config controls and filter card inputs
             $('#scanner-config').find('input, select, button, textarea').prop('disabled', true);
             $('#filter-card').find('input, select, button, textarea').prop('disabled', true);
+            // Keep Auto Scroll checkbox enabled and clickable during scanning
+            $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: 1 });
             // Some extra clickable items in page
             $('.sort-toggle, .edit-token-button, #chain-links-container a').css({ pointerEvents: 'none', opacity: 0.4 });
             // Keep delete buttons active during scanning as requested
@@ -931,6 +907,8 @@ function setScanUIGating(isRunning) {
             $('.sort-toggle, .edit-token-button, #chain-links-container a').css({ pointerEvents: '', opacity: '' });
             $('.delete-token-button').css({ pointerEvents: '', opacity: '' });
             $('#token-management, #FormEditKoinModal').find('input, select, button, textarea').prop('disabled', false).css({ pointerEvents: '', opacity: '' });
+            // Ensure Auto Scroll remains interactive when idle too
+            $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
         }
     } catch (_) { /* noop */ }
 }

@@ -504,7 +504,11 @@ function buildDexCheckboxForKoin(token = {}) {
 
 /** Disable all form inputs globally. */
 function form_off() {
-    $('input, select, textarea, button').prop('disabled', true); 
+    $('input, select, textarea, button').prop('disabled', true);
+    // Whitelist critical controls to remain interactive during scanning
+    try {
+        $('#stopSCAN, #reload, #darkModeToggle, #autoScrollCheckbox').prop('disabled', false);
+    } catch(_) {}
 }
 
 /** Enable primary inputs (except textareas) globally. */

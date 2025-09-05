@@ -110,6 +110,7 @@
   <script src="https://cdn.jsdelivr.net/npm/web3/dist/web3.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/uikit@3.16.18/dist/js/uikit.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <script src="idb-localstorage-shim.js"></script>
   <!-- RPC Settings Modal -->
   <div id="rpcModal" uk-modal>
     <div class="uk-modal-dialog uk-modal-body">
@@ -131,7 +132,10 @@
     </div>
   </div>
   <script>
-  (function(){
+  (async function(){
+    if (window.__IDB_LOCALSTORAGE_READY__) {
+      try { await window.__IDB_LOCALSTORAGE_READY__; } catch(_){}
+    }
     // Compact duplicates (one-time at load)
     try { compactSnapshot(); } catch(_){}
     const CORS = 'https://proxykanan.awokawok.workers.dev/?';
@@ -220,10 +224,10 @@
       MEXC:{WARNA:'#1448ce'}, 
       GATE:{WARNA:'#D5006D'},
       KUCOIN:{WARNA:'#29b3af'}, 
-      BITGET:{WARNA:'#1aaaba'}, 
+      BITGET:{WARNA:'#07f0ff'}, 
       BYBIT:{WARNA:'#f29900'},
       // OKX:{WARNA:'#111'},
-      // INDODAX:{WARNA:'#1285b5'}
+      INDODAX:{WARNA:'#1285b5'}
     };
     const CHAINS = {
       ethereum:{ name:'ETHEREUM', RPC:'https://ethereum.publicnode.com' },
@@ -239,7 +243,9 @@
       MEXC:    { ApiKey: "mx0vglBh22wwHBY0il", ApiSecret: "429877e0b47c41b68dd77613cdfded64" },
       OKX:     { ApiKey: "4d6226e8-c858-42b5-a32e-60b6ce8b4bdc", ApiSecret: "3EB8717DE58187BAE45E282EB0045CE3", ApiPassphrase:"Macpro-2025" },
       GATE:    { ApiKey: "577bb104ebb7977925c0ba7a292a722e", ApiSecret: "48b2cd4b122f076d2ebf8833359dfeffd268c5a0ce276b4cbe6ba5aa52e7f7cc" },
-      BYBIT:   { ApiKey: "HnsUDsGJz3wBUWB0yo", ApiSecret: "7oxpgXRQGs7RvkGGoz8mM10drIKPXCVgUW4S" }
+      BYBIT:   { ApiKey: "HnsUDsGJz3wBUWB0yo", ApiSecret: "7oxpgXRQGs7RvkGGoz8mM10drIKPXCVgUW4S" },
+      // Optional: INDODAX TAPI (private) for network mapping
+      INDODAX: { ApiKey: "HRKOX8GL-KD9ANNF5-T7OKENAH-LHL5PBYQ-NW8GQICL", ApiSecret: "2ff67f7546f9b1af3344f4012fbb5561969de9440f1d1432c89473d1fe007deb3f3d0bac7400622b" }
     };
 
     // Price sources per CEX (centralized)
@@ -250,9 +256,9 @@
       GATE:    { url: 'https://api.gateio.ws/api/v4/spot/tickers',           useProxy: true,  parse: r => { const m={}; (r||[]).forEach(it=>{ const p=String(it.currency_pair||''); if (p.endsWith('_USDT')) m[p.replace(/_USDT$/,'')] = parseFloat(it.last); }); return m; } },
       KUCOIN:  { url: 'https://api.kucoin.com/api/v1/market/allTickers',     useProxy: true,  parse: r => { const m={}; ((r?.data?.ticker)||[]).forEach(it=>{ const s=String(it.symbol||''); if (s.endsWith('-USDT')) m[s.replace(/-USDT$/,'')] = parseFloat(it.last); }); return m; } },
       OKX:     { url: 'https://www.okx.com/api/v5/market/tickers?instType=SPOT', useProxy: true, parse: r => { const m={}; ((r?.data)||[]).forEach(it=>{ const s=String(it.instId||''); if (s.endsWith('-USDT')) m[s.replace(/-USDT$/,'')] = parseFloat(it.last); }); return m; } },
-      BITGET:  { url: 'https://api.bitget.com/api/v2/spot/market/tickers',  useProxy: false,  parse: r => { const m={}; ((r?.data)||[]).forEach(it=>{ const s=String(it.symbol||''); if (s.endsWith('USDT')) m[s.replace(/USDT$/,'')] = parseFloat(it.close); }); return m; } },
+      BITGET:  { url: 'https://api.bitget.com/api/v2/spot/market/tickers',  useProxy: false,  parse: r => { const m={}; ((r?.data)||[]).forEach(it=>{ const s=String(it.symbol||''); if (s.endsWith('USDT')) m[s.replace(/USDT$/,'')] = parseFloat(it.lastPr); }); return m; } },
       BYBIT:   { url: 'https://api.bybit.com/v5/market/tickers?category=spot', useProxy: false, parse: r => { const m={}; ((r?.result?.list)||[]).forEach(it=>{ const s=String(it.symbol||''); if (s.endsWith('USDT')) m[s.replace(/USDT$/,'')] = parseFloat(it.lastPrice); }); return m; } },
-      INDODAX: { url: null, useProxy: false, parse: _ => ({}) }
+      INDODAX: { url: 'https://indodax.com/api/ticker_all', useProxy: true, parse: r => { const m={}; const t=r?.tickers||{}; Object.keys(t).forEach(k=>{ if(/_idr$/i.test(k)){ const sym=k.replace(/_idr$/i,'').toUpperCase(); const last = parseFloat(t[k]?.last); if (isFinite(last)) m[sym]=last; } }); return m; } }
     };
 
     const $cex = $('#cex-list');
@@ -778,10 +784,52 @@
         return out;
       },
       async INDODAX(chainKey){
-        const res = await $.ajax({ url: prox('https://indodax.com/api/summaries') });
+        // Use INDODAX private TAPI getInfo to obtain network mapping per coin
+        const k = CEX_API.INDODAX || {};
+        if (!k.ApiKey || !k.ApiSecret) return [];
+        const ts = Date.now();
+        const recvWindow = 5000;
+        const method = 'getInfo';
+        const body = `method=${method}&timestamp=${ts}&recvWindow=${recvWindow}`;
+        const sign = CryptoJS.HmacSHA512(body, k.ApiSecret).toString();
+        let res;
+        try {
+          res = await $.ajax({
+            url: prox('https://indodax.com/tapi'),
+            type: 'POST',
+            headers: { 'Key': k.ApiKey, 'Sign': sign },
+            data: body
+          });
+        } catch(e){ return []; }
+        const networkMap = res?.return?.network || {};
         const out = [];
-        const tickers = res?.tickers || {};
-        Object.keys(tickers).forEach(k => { if(!/idr$/i.test(k)) return; const sym = k.replace(/idr$/i,'').toUpperCase(); out.push({ cex:'INDODAX', chain: chainKey, token: sym, symbol: sym, sc:'', decimals:'', deposit: null, withdraw: null, feeWD: 0 }); });
+        // Build snapshot index by chain+symbol for enrichment
+        let snapBySym = new Map();
+        try {
+          const snap = loadSnapshot();
+          const arr = Array.isArray(snap[chainKey]) ? snap[chainKey] : [];
+          arr.forEach(it => {
+            const sym = String(it.ticker || it.symbol || '').toUpperCase();
+            if (sym) snapBySym.set(sym, it);
+          });
+        } catch(_){}
+        // Iterate network mapping and filter by selected chain aliases
+        Object.keys(networkMap||{}).forEach(symRaw => {
+          const sym = String(symRaw||'').toUpperCase();
+          const netVal = networkMap[symRaw];
+          const nets = Array.isArray(netVal) ? netVal : [netVal];
+          // Pick any network alias that matches this chain
+          const hit = (nets||[]).some(n => matchesCex(chainKey, n, 'INDODAX'));
+          if (!hit) return;
+          const base = { cex:'INDODAX', chain: chainKey, token: sym, symbol: sym, sc:'', decimals:'', deposit: null, withdraw: null, feeWD: 0 };
+          const snapIt = snapBySym.get(sym);
+          if (snapIt) {
+            base.sc = snapIt.sc || '';
+            base.decimals = snapIt.des || snapIt.decimals || '';
+            base.token = String(snapIt.name || base.token).trim();
+          }
+          out.push(base);
+        });
         return out;
       }
     };
@@ -880,6 +928,8 @@
             const r = rows[i];
             const sc = String(r.sc||'');
             const name = r.token || r.symbol || '';
+            // Skip Web3 for INDODAX rows per requirement
+            if (String(r.cex||'').toUpperCase()==='INDODAX') { updateOverlayProgress(i+1); continue; }
             if(!/^0x[a-fA-F0-9]{40}$/.test(sc)) { continue; }
             const snapCached = snapBySc.get(sc.toLowerCase());
             if (snapCached && (snapCached.des!==undefined && snapCached.des!=='' && snapCached.des!=null)){
@@ -972,7 +1022,10 @@
         showOverlay('Loading from Database...'); setOverlayPhase('Local Rows', 1); updateOverlayProgress(1);
         const snap = loadSnapshot();
         const s = Array.isArray(snap[chainKey]) ? snap[chainKey] : [];
-        let rows = s.map(it => ({
+        // Filter by selected CEX (if any)
+        const selectedCexInitial = $('.cex-check:checked').map(function(){return this.value;}).get();
+        const sFiltered = selectedCexInitial.length ? s.filter(it => selectedCexInitial.includes(String(it.cex||'').toUpperCase())) : s;
+        let rows = sFiltered.map(it => ({
           cex: it.cex || '-',
           chain: it.chain || chainKey,
           token: String(it.name || it.token || '').trim(),
@@ -988,9 +1041,14 @@
         // Fetch bulk prices for checked CEX and fill into table
         (async ()=>{
           try {
-            setOverlayPhase('Bulk Prices', 1); updateOverlayProgress(1);
-            const selectedCex = $('.cex-check:checked').map(function(){return this.value;}).get();
-            if (!selectedCex.length) { UIkit.notification('Pilih minimal 1 CEX untuk ambil harga', {status:'warning'}); return; }
+            // Determine which CEX to fetch prices for: use selected chips if any, otherwise infer from rows
+            let selectedCex = $('.cex-check:checked').map(function(){return this.value;}).get();
+            if (!selectedCex.length) {
+              const set = new Set(); rows.forEach(r => { const cx=String(r.cex||'').toUpperCase(); if (cx && PRICE_SOURCES[cx]) set.add(cx); });
+              selectedCex = Array.from(set.values());
+            }
+            setOverlayPhase('Bulk Prices', selectedCex.length); updateOverlayProgress(0);
+            if (!selectedCex.length) { UIkit.notification('Tidak ada CEX untuk diambil harganya', {status:'warning'}); return; }
             const getPrice = await fetchBulkPrices(selectedCex, (idx, cex, err)=>{
               if (err) UIkit.notification({message:`PRICE_BULK gagal [${cex}]: ${err}`, status:'warning'});
               updateOverlayProgress(idx);

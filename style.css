@@ -469,7 +469,7 @@ body.dark-mode {
     color: #ffffff !important;
 }
 #startSCAN.uk-button:active:not(.uk-button-disabled):not([disabled]) {
-    background-color: #26833e !important;
+    background-color: #7d8c81 !important;
 }
 #startSCAN.uk-button.uk-button-disabled,
 #startSCAN.uk-button:disabled {

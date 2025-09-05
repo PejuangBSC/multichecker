@@ -138,11 +138,18 @@ function getRandomApiKeyOKX(keys) {
 /**
  * Send a compact status message to Telegram (startup/online, etc.).
  */
+function sendTelegramHTML(message) {
+    try {
+        if (!CONFIG_TELEGRAM || !CONFIG_TELEGRAM.BOT_TOKEN || !CONFIG_TELEGRAM.CHAT_ID) return;
+        const url = `https://api.telegram.org/bot${CONFIG_TELEGRAM.BOT_TOKEN}/sendMessage`;
+        const payload = { chat_id: CONFIG_TELEGRAM.CHAT_ID, text: message, parse_mode: "HTML", disable_web_page_preview: true };
+        $.post(url, payload);
+    } catch(_) { /* noop */ }
+}
+
 function sendStatusTELE(user, status) {
     const message = `<b>#MULTISCHECKER</b>\n<b>USER:</b> ${user ? user.toUpperCase() : '-'}[<b>${status ? status.toUpperCase() : '-'}]</b>`;
-    const url = `https://api.telegram.org/bot${CONFIG_TELEGRAM.BOT_TOKEN}/sendMessage`;
-    const payload = { chat_id: CONFIG_TELEGRAM.CHAT_ID, text: message, parse_mode: "HTML", disable_web_page_preview: true };
-    $.post(url, payload);
+    sendTelegramHTML(message);
 }
 
 /**
@@ -201,9 +208,7 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
     `<b>STATUS TOKEN:</b> WD ${f(wdTok)} | DP ${f(depTok)}\n`+
     `<b>STATUS PAIR:</b> WD ${f(wdPair)} | DP ${f(depPair)}\n`+
     `-----------------------------------------`;
-    const url = `https://api.telegram.org/bot${CONFIG_TELEGRAM.BOT_TOKEN}/sendMessage`;
-    const payload = { chat_id: CONFIG_TELEGRAM.CHAT_ID, text: message, parse_mode: "HTML", disable_web_page_preview: true };
-    $.post(url, payload);
+    sendTelegramHTML(message);
 }
 // [moved later] CEX Shims will be appended at end of file to override earlier defs
 // =================================================================================
