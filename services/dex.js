@@ -159,8 +159,14 @@
         const requestParams = { chainName, sc_input, sc_output, amount_in_big, des_output, SavedSettingData, codeChain, action, des_input, sc_input_in, sc_output_in };
         const { url, method, data, headers } = strategy.buildRequest(requestParams);
 
+        // Apply proxy if configured for this DEX
+        const cfg = (typeof DEX !== 'undefined' && DEX.get) ? (DEX.get(dexType) || {}) : {};
+        const useProxy = !!cfg.proxy;
+        const proxyPrefix = (root.CONFIG_PROXY && root.CONFIG_PROXY.PREFIX) ? String(root.CONFIG_PROXY.PREFIX) : '';
+        const finalUrl = (useProxy && proxyPrefix && typeof url === 'string' && !url.startsWith(proxyPrefix)) ? (proxyPrefix + url) : url;
+
         $.ajax({
-          url, method, dataType: 'json', timeout: timeoutMilliseconds, headers, data,
+          url: finalUrl, method, dataType: 'json', timeout: timeoutMilliseconds, headers, data,
           contentType: data ? 'application/json' : undefined,
           success: function (response) {
             try {
@@ -211,7 +217,10 @@
         error: function (xhr, textStatus) {
           let alertMessage = `Error: ${textStatus}`;
           if (textStatus === 'timeout') alertMessage = 'Request Timeout';
-          reject({ statusCode: xhr.status, pesanDEX: `SWOOP: ${alertMessage}`, color: '#f39999', DEX: dexType.toUpperCase() });
+          // refactor: use shared dark-mode helper for error color
+          const isDark = (typeof window !== 'undefined' && window.isDarkMode && window.isDarkMode()) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode'));
+          const errColor = isDark ? '#7e3636' : '#ffcccc';
+          reject({ statusCode: xhr.status, pesanDEX: `SWOOP: ${alertMessage}`, color: errColor, DEX: dexType.toUpperCase() });
         }
       });
     });
@@ -233,6 +242,7 @@
           builder: def?.builder,
           allowFallback: !!def?.allowFallback,
           strategy: def?.strategy || null,
+          proxy: !!def?.proxy,
         };
         REG.set(key, entry);
         // keep CONFIG_DEXS in sync for existing callers
@@ -240,6 +250,7 @@
         root.CONFIG_DEXS[key] = root.CONFIG_DEXS[key] || {};
         if (typeof entry.builder === 'function') root.CONFIG_DEXS[key].builder = entry.builder;
         if ('allowFallback' in entry) root.CONFIG_DEXS[key].allowFallback = entry.allowFallback;
+        if ('proxy' in entry) root.CONFIG_DEXS[key].proxy = entry.proxy;
       },
       get(name){ return REG.get(norm(name)) || null; },
       list(){ return Array.from(REG.keys()); }
@@ -249,7 +260,7 @@
     try {
       Object.keys(root.CONFIG_DEXS || {}).forEach(k => {
         const d = root.CONFIG_DEXS[k] || {};
-        DexAPI.register(k, { builder: d.builder, allowFallback: !!d.allowFallback, strategy: d.STRATEGY || null });
+        DexAPI.register(k, { builder: d.builder, allowFallback: !!d.allowFallback, strategy: d.STRATEGY || null, proxy: !!d.proxy });
       });
     } catch(_){}
 

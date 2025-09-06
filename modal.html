@@ -536,16 +536,16 @@
                             // Memperbarui harga custom token
                             ratePrice.random1 = parseFloat(response.price);
                             $("#random1price").prop("disabled", false).val(ratePrice.random1.toFixed(8));
-                            toastr.info("Custom token " + symbol1 + " ditemukan dengan harga " + ratePrice.random1 + " USDT.");
+                            if (typeof toast !== 'undefined' && toast.info) toast.info("Custom token " + symbol1 + " ditemukan dengan harga " + ratePrice.random1 + " USDT.");
                         })
                         .fail(function() {
-                            toastr.error("Custom token tidak ditemukan.");
+                            if (typeof toast !== 'undefined' && toast.error) toast.error("Custom token tidak ditemukan.");
                             ratePrice.random1 = 0;
                             $("#random1price").prop("disabled", true).val('');
                         });
                 }
 
-                toastr.info("Harga token telah diperbarui!");
+                if (typeof toast !== 'undefined' && toast.info) toast.info("Harga token telah diperbarui!");
             });
 
             // Fetch initial rates
@@ -612,7 +612,7 @@
             $("#cekTokensBtn").on("click", function () {
                 var symbol1 = $("#random1symbol").val().toUpperCase().trim();
                 if (!symbol1) {
-                    toastr.error("Masukkan simbol untuk custom token.");
+                    if (typeof toast !== 'undefined' && toast.error) toast.error("Masukkan simbol untuk custom token.");
                     return;
                 }
 
@@ -620,7 +620,7 @@
                     .done(function (response) {
                         ratePrice.random1 = parseFloat(response.price);
                         $("#random1price").prop("disabled", false).val(ratePrice.random1.toFixed(8));
-                        toastr.info("Custom token ditemukan: " + symbol1 + " dengan harga " + ratePrice.random1 + " USDT");
+                        if (typeof toast !== 'undefined' && toast.info) toast.info("Custom token ditemukan: " + symbol1 + " dengan harga " + ratePrice.random1 + " USDT");
 
                         // Tambahkan event listener untuk mengubah nilai custom token
                         $("#random1price").on("input", function () {
@@ -628,7 +628,7 @@
                         });
                     })
                     .fail(function () {
-                        toastr.error("Token tidak ditemukan.");
+                        if (typeof toast !== 'undefined' && toast.error) toast.error("Token tidak ditemukan.");
                         ratePrice.random1 = 0;
                         $("#random1price").prop("disabled", true).val('');
                     });
@@ -791,7 +791,7 @@
 
             // Ganti pesan toastr dengan nama inputan checkbox
             const inputName = checkbox.attr('name') || id; // Menggunakan atribut 'name' jika ada, jika tidak gunakan 'id'
-            toastr.success("Status "+inputName+" Berhasil Diubah!!");
+            if (typeof toast !== 'undefined' && toast.success) toast.success("Status "+inputName+" Berhasil Diubah!!");
             // Simpan nilai input ke localStorage jika checkbox dicentang
             relatedInputs.each(function() {
                 const input = $(this);
@@ -829,7 +829,7 @@
                     if ($(this).val().trim() === '') {
                         inputKosong = true;
                         $(this).addClass('input-error'); // Tambahkan class untuk menyorot input yang kosong
-                        toastr.error(`Inputan ${exchangeId} Masih Kosong.`);
+                        if (typeof toast !== 'undefined' && toast.error) toast.error(`Inputan ${exchangeId} Masih Kosong.`);
                         return false; // Keluar dari loop input jika ditemukan input kosong
                     }
                 });
@@ -1122,7 +1122,7 @@
             } catch (error) {
                 $("#BITGETSaldo").text("ERROR").addClass("error");
                 localStorage.setItem('MULTI_BITGETSaldo', 0);
-            toastr.error("Error Pengecekan Market Bitget: ", error);
+            if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Market Bitget: " + error);
             }
         }
 
@@ -1170,7 +1170,7 @@
             } catch (error) {
                 $("#KUCOINSaldo").text("ERROR").addClass("error");
                 localStorage.setItem('MULTI_KUCOINSaldo', 0);
-            toastr.error("Error Pengecekan Market Kucoin: ", error);
+            if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Market Kucoin: " + error);
             }
         }
 
@@ -1224,7 +1224,7 @@
             } catch (error) {
                 $("#BYBITSaldo").text("ERROR").addClass("error");
                 localStorage.setItem('MULTI_BYBITSaldo', 0);
-            toastr.error("Error Pengecekan Market Bybit: ", error);
+            if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Market Bybit: " + error);
             }
         }
         
@@ -1292,7 +1292,7 @@
             } catch (error) {
                 $("#INDODAXSaldo").text("ERROR").addClass("error");
                 localStorage.setItem("MULTI_INDODAXSaldo", 0);
-                toastr.error("Error Pengecekan Asset Indodax: " + error);
+                if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Asset Indodax: " + error);
             }
         }
 
@@ -1346,7 +1346,7 @@
             } catch (error) {
                 $("#MEXCSaldo").text("ERROR").addClass("error");
                 localStorage.setItem('MULTI_MEXCSaldo', 0);
-                toastr.error("Error Pengecekan Market MEXC: " + error.message);
+                if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Market MEXC: " + error.message);
             }
         }
 
@@ -1399,7 +1399,7 @@
             } catch (error) {
                 $("#BINANCESaldo").text("ERROR").addClass("error");
                 localStorage.setItem('MULTI_BINANCESaldo', 0);
-                toastr.error("Error Pengecekan Market Binance: " + error.message);
+                if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Market Binance: " + error.message);
             }
         }
 
@@ -1465,7 +1465,7 @@
             } catch (error) {
                 $("#GATESaldo").text("ERROR").addClass("error");
                 localStorage.setItem('MULTI_GATESaldo', 0);
-                toastr.error("Error Pengecekan Market Gate: " + error);
+                if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Market Gate: " + error);
             }
         }
  
@@ -1506,7 +1506,7 @@
             // Simpan waktu terakhir diperbarui ke localStorage
             localStorage.setItem('MULTI_lastUpdatePNL', formattedTime);
             localStorage.setItem('MULTI_MODALAWAL', inmodal_awal);
-            toastr.success("SIMPAN MODAL AWAL BERHASIL [ " + formattedTime + " ] ");
+            if (typeof toast !== 'undefined' && toast.success) toast.success("SIMPAN MODAL AWAL BERHASIL [ " + formattedTime + " ] ");
 
             // Ambil data untuk pengisian history
             const saldoExchanger = JSON.parse(localStorage.getItem('MULTI_TotalSaldoCEX'));
@@ -1530,7 +1530,7 @@
             $('#SaveConfigCEXS').trigger('click');
             // Simpan waktu terakhir diperbarui ke localStorage
             localStorage.setItem('MULTI_lastUpdatePNL', formattedTime);
-            toastr.success("RESET MODAL BERHASIL [ " + formattedTime + " ] ");
+            if (typeof toast !== 'undefined' && toast.success) toast.success("RESET MODAL BERHASIL [ " + formattedTime + " ] ");
 
             // Ambil data untuk pengisian history
             const saldoExchanger = JSON.parse(localStorage.getItem('MULTI_TotalSaldoCEX'));
@@ -1558,7 +1558,7 @@
               };
               history.unshift(newHistoryEntry); // Tambahkan entri ke array di posisi awal
               localStorage.setItem('MULTI_history', JSON.stringify(history.slice(0, 14)));
-              toastr.info("MODAL "+action.toUpperCase()+" BERHASIL.");
+              if (typeof toast !== 'undefined' && toast.info) toast.info("MODAL "+action.toUpperCase()+" BERHASIL.");
               LoadTableHistory()
         }
 

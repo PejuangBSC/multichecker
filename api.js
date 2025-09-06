@@ -29,16 +29,17 @@ function getRateUSDT() {
                     console.log("✅ Kurs USDT/IDR (Top Bid):", topBid);
                 } else {
                     console.error("Failed to parse USDT/IDR rate from Tokocrypto response:", data);
-                    toastr.error('Gagal parse kurs USDT/IDR dari Tokocrypto.');
+                    // refactor: use toast helper
+                    if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal parse kurs USDT/IDR dari Tokocrypto.');
                 }
             } else {
                 console.error("Invalid data structure for USDT/IDR rate from Tokocrypto:", data);
-                toastr.error('Struktur data kurs dari Tokocrypto tidak valid.');
+                if (typeof toast !== 'undefined' && toast.error) toast.error('Struktur data kurs dari Tokocrypto tidak valid.');
             }
         })
         .fail((jqXHR, textStatus, errorThrown) => {
             console.error("Failed to fetch USDT/IDR rate from Tokocrypto:", textStatus, errorThrown);
-            toastr.error('Gagal mengambil kurs USDT/IDR dari Tokocrypto.');
+            if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal mengambil kurs USDT/IDR dari Tokocrypto.');
         });
 }
 

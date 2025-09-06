@@ -343,6 +343,18 @@ function applyThemeForMode() {
             body.classList.add('theme-multi');
         }
 
+        // Apply dark-mode based on per-mode state
+        try {
+            const st = (typeof getAppState === 'function') ? getAppState() : { darkMode: false };
+            if (st && st.darkMode) {
+                body.classList.add('dark-mode', 'uk-dark');
+                body.classList.remove('uk-light');
+            } else {
+                body.classList.remove('dark-mode', 'uk-dark');
+            }
+            try { if (typeof updateDarkIcon === 'function') updateDarkIcon(!!st.darkMode); } catch(_) {}
+        } catch(_) {}
+
         root.style.setProperty('--theme-accent', accent);
         const chainLabel = document.getElementById('current-chain-label');
         if (chainLabel) {
@@ -350,11 +362,35 @@ function applyThemeForMode() {
             chainLabel.style.color = accent;
         }
 
+        // Update document title and favicon based on mode
+        try {
+            // Cache default favicon once
+            const fav = document.querySelector('link#favicon');
+            if (fav && !window.DEFAULT_FAVICON_HREF) {
+                window.DEFAULT_FAVICON_HREF = fav.getAttribute('href');
+            }
+            if (m.type === 'single') {
+                const cfg = (window.CONFIG_CHAINS || {})[m.chain] || {};
+                const nm = (cfg.Nama_Pendek || cfg.Nama_Chain || m.chain || 'CHAIN').toString().toUpperCase();
+                document.title = `${nm} SCANNER`;
+                if (fav) fav.setAttribute('href', cfg.ICON || window.DEFAULT_FAVICON_HREF || fav.getAttribute('href'));
+            } else {
+                document.title = 'ALL SCANNER';
+                if (fav && window.DEFAULT_FAVICON_HREF) fav.setAttribute('href', window.DEFAULT_FAVICON_HREF);
+            }
+        } catch(_) {}
+
         // Inject or update a style tag for theme overrides
         let styleEl = document.getElementById('dynamic-theme-style');
         const css = `
           :root { --theme-accent: ${accent}; }
-          .theme-single .uk-table thead th, .theme-multi .uk-table thead th { background: var(--theme-accent) !important; }
+          /* Use accent header only in light mode */
+          body.theme-single:not(.dark-mode) .uk-table thead th,
+          body.theme-multi:not(.dark-mode) .uk-table thead th { background: var(--theme-accent) !important; }
+          /* Dark-mode: force dark header for monitoring tables */
+          body.dark-mode .uk-table thead th { background: #1c1c1e !important; color: #e8e8e8 !important; border-bottom: 1px solid #444 !important; }
+          body.dark-mode #main-table thead,
+          body.dark-mode #single-chain-table thead { background: #1c1c1e !important; }
           #progress-bar { background-color: var(--theme-accent) !important; }
           #progress-container { border: 1px solid var(--theme-accent) !important; }
           .header-card { border-color: var(--theme-accent) !important; }
@@ -434,17 +470,7 @@ function linkifyStatus(flag, label, urlOk, colorOk = 'green') {
     return `<a href="${safe(urlOk)}" target="_blank" rel="noopener noreferrer" class="uk-text-bold" style="color:${color};">${text}</a>`;
 }
 
-/**
- * Gets a styled status label.
- * @param {boolean} flag - The status flag.
- * @param {string} type - The label type (e.g., 'DP').
- * @returns {string} HTML string for the label.
- */
-function getStatusLabel(flag, type) {
-    if (flag === true) return `<b style="color:green; font-weight:bold;">${type}</b>`;
-    if (flag === false) return `<b style="color:red; font-weight:bold;">${type.replace('P', 'X')}</b>`;
-    return `<b style="color:black; font-weight:bold;">${type.replace('P', '-')}</b>`;
-}
+// refactor: remove getStatusLabel (tidak dipakai); gunakan linkifyStatus untuk status DP/WD.
 
 /**
  * Converts a HEX color to an RGBA color.
@@ -452,10 +478,11 @@ function getStatusLabel(flag, type) {
  * @param {number} alpha - The alpha transparency value.
  * @returns {string} The RGBA color string.
  */
+// refactor: modernize to const
 function hexToRgba(hex, alpha) {
-    var r = parseInt(hex.slice(1, 3), 16);
-    var g = parseInt(hex.slice(3, 5), 16);
-    var b = parseInt(hex.slice(5, 7), 16);
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
@@ -490,18 +517,7 @@ function formatPrice(price) {
     return price.toFixed(6) + '$'; // Fallback jika format tidak dikenali
 }
 
-/**
- * Creates a simple hyperlink.
- * @param {string} url - The URL.
- * @param {string} text - The link text.
- * @param {string} [className=''] - Optional CSS class.
- * @returns {string} HTML string for the anchor tag.
- */
-function createLink(url, text, className = '') {
-    return url
-        ? `<a href="${url}" target="_blank" class="${className}"><b>${text}</b></a>`
-        : `<b>${text}</b>`;
-}
+// refactor: remove unused helper createLink (tidak dipakai)
 
 /**
  * Generates various URLs for a given CEX and token pair.
@@ -607,66 +623,9 @@ try {
     }
 } catch(_){}
 
-/**
- * Retrieves configuration data for a specific CEX.
- * @param {string} cexName - The name of the CEX (e.g., 'BINANCE').
- * @returns {object|null} The CEX configuration object or null if not found.
- */
-function getCexDataConfig(cexName) {
-    if (!cexName || typeof cexName !== 'string') return null;
+// refactor: remove unused getCexDataConfig (tidak dipakai di alur aplikasi)
 
-    const key = cexName.toUpperCase();
-    const cexData = (typeof CONFIG_CEX === 'object' && CONFIG_CEX[key]) ? CONFIG_CEX[key] : null;
-
-    if (!cexData) {
-        return null;
-    }
-
-    return {
-        NAME: key,
-        API_KEY: cexData.ApiKey || '',
-        API_SECRET: cexData.ApiSecret || '',
-        COLOR: cexData.WARNA || '#000'
-    };
-}
-
-/**
- * Retrieves configuration data for a specific DEX.
- * @param {string} dexName - The name of the DEX (e.g., 'kyberswap').
- * @returns {object|null} The DEX configuration object or null if not found.
- */
-function getDexData(dexName) {
-    if (!dexName || typeof dexName !== 'string') return null;
-
-    const nameLower = dexName.toLowerCase();
-    let dexKey = nameLower;
-    if (nameLower === '0x') dexKey = '0x';
-    if (nameLower === '1inch') dexKey = '1inch';
-
-    const dexConfig = (typeof CONFIG_DEXS === 'object') ? CONFIG_DEXS[dexKey] : undefined;
-
-    if (!dexConfig) {
-        return null;
-    }
-
-    const supportedChains = Object.keys(CONFIG_CHAINS || {})
-        .filter(chain => Array.isArray(CONFIG_CHAINS[chain].DEXS) && CONFIG_CHAINS[chain].DEXS.map(String).map(s => s.toLowerCase()).includes(dexKey))
-        .map(chain => ({
-            key: chain,
-            code: CONFIG_CHAINS[chain].Kode_Chain || '',
-            name: CONFIG_CHAINS[chain].Nama_Chain || chain,
-            short: CONFIG_CHAINS[chain].Nama_Pendek || '',
-            color: CONFIG_CHAINS[chain].WARNA || '#000'
-        }));
-
-    return {
-        NAME: dexKey,
-        HAS_BUILDER: typeof dexConfig.builder === 'function',
-        BUILDER: dexConfig.builder || null,
-        ALLOW_FALLBACK: !!dexConfig.allowFallback,
-        SUPPORTED_CHAINS: supportedChains
-    };
-}
+// refactor: remove unused getDexData (tidak dipakai di alur aplikasi)
 
 /**
  * Flattens the token data from TOKEN_SCANNER, creating a separate entry for each selected CEX.
@@ -779,6 +738,11 @@ try {
         window.getStableSymbols = window.getStableSymbols || getStableSymbols;
         window.getBaseTokenSymbol = window.getBaseTokenSymbol || getBaseTokenSymbol;
         window.getBaseTokenUSD = window.getBaseTokenUSD || getBaseTokenUSD;
+        // refactor: provide a small shared helper for dark mode checks
+        window.isDarkMode = window.isDarkMode || function isDarkMode(){
+            try { return !!(document && document.body && document.body.classList && document.body.classList.contains('dark-mode')); }
+            catch(_) { return false; }
+        };
     }
 } catch(_){}
 
@@ -880,11 +844,11 @@ function setScanUIGating(isRunning) {
         if (isRunning) {
             // Dim and disable all toolbar actions
             $allToolbar.css({ pointerEvents: 'none', opacity: 0.4 });
-            // Allow only reload + dark mode toggle
-            $('#reload, #darkModeToggle').css({ pointerEvents: 'auto', opacity: 1 });
+            // Allow only reload (dark mode toggle ikut dinonaktifkan saat scan)
+            $('#reload').css({ pointerEvents: 'auto', opacity: 1 });
             // Disable scanner config controls and filter card inputs
-            $('#scanner-config').find('input, select, button, textarea').prop('disabled', true);
-            $('#filter-card').find('input, select, button, textarea').prop('disabled', true);
+            $('#scanner-config').find('input, select, button, textarea').not('#btn-scroll-top').prop('disabled', true);
+            $('#filter-card').find('input, select, button, textarea').not('#btn-scroll-top').prop('disabled', true);
             // Keep Auto Scroll checkbox enabled and clickable during scanning
             $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: 1 });
             // Some extra clickable items in page
@@ -939,7 +903,6 @@ try {
             createHoverLink,
             safeUrl,
             linkifyStatus,
-            getStatusLabel,
             hexToRgba,
             flattenDataKoin,
             getFeeSwap,

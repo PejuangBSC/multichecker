@@ -30,15 +30,33 @@
 
   function openDB() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = (e) => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      try{
+        // Open without explicit version to avoid VersionError when DB already upgraded
+        const req = indexedDB.open(DB_NAME);
+        req.onupgradeneeded = () => {
+          const d = req.result;
+          if (!d.objectStoreNames.contains(STORE_NAME)) {
+            d.createObjectStore(STORE_NAME, { keyPath: 'key' });
+          }
+        };
+        req.onsuccess = () => {
+          const d = req.result;
+          if (!d.objectStoreNames.contains(STORE_NAME)){
+            const next = (d.version || 1) + 1;
+            d.close();
+            const up = indexedDB.open(DB_NAME, next);
+            up.onupgradeneeded = () => {
+              const udb = up.result;
+              if (!udb.objectStoreNames.contains(STORE_NAME)) udb.createObjectStore(STORE_NAME, { keyPath: 'key' });
+            };
+            up.onsuccess = () => resolve(up.result);
+            up.onerror = () => reject(up.error);
+          } else {
+            resolve(d);
+          }
+        };
+        req.onerror = () => reject(req.error);
+      }catch(e){ reject(e); }
     });
   }
 

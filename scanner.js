@@ -2,6 +2,53 @@
 // SCANNER LOGIC
 // =================================================================================
 
+// refactor: small DOM helpers to eliminate duplicate span creation logic
+function ensureDexStatusSpan(cell) {
+    if (!cell) return null;
+    let statusSpan = cell.querySelector('.dex-status');
+    if (statusSpan) return statusSpan;
+    const strong = cell.querySelector('strong');
+    if (strong) {
+        const br = document.createElement('br');
+        strong.insertAdjacentElement('afterend', br);
+        statusSpan = document.createElement('span');
+        statusSpan.className = 'dex-status';
+        br.insertAdjacentElement('afterend', statusSpan);
+        return statusSpan;
+    }
+    statusSpan = document.createElement('span');
+    statusSpan.className = 'dex-status';
+    cell.appendChild(statusSpan);
+    return statusSpan;
+}
+
+// refactor: normalized setter for error background honoring dark-mode
+function setDexErrorBackground(cell, fallbackColor) {
+    if (!cell) return;
+    // refactor: use shared dark-mode helper
+    const isDark = (typeof window !== 'undefined' && window.isDarkMode && window.isDarkMode()) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode'));
+    cell.style.backgroundColor = fallbackColor || (isDark ? '#651313' : '#ffcccc');
+}
+
+// refactor: global watchdog helpers to avoid duplicate inline implementations
+function getDexWatchdogMap(){
+    if (typeof window === 'undefined') return new Map();
+    window._DEX_WATCHDOGS = window._DEX_WATCHDOGS || new Map();
+    return window._DEX_WATCHDOGS;
+}
+function setDexWatchdog(key, fn, delay){
+    const map = getDexWatchdogMap();
+    if (map.has(key)) clearTimeout(map.get(key));
+    map.set(key, setTimeout(fn, delay));
+}
+function clearDexWatchdog(key){
+    const map = getDexWatchdogMap();
+    if (map.has(key)) { clearTimeout(map.get(key)); map.delete(key); }
+}
+function clearDexWatchdogs(keys){
+    (Array.isArray(keys) ? keys : [keys]).forEach(k => clearDexWatchdog(k));
+}
+
 let animationFrameId;
 let isScanRunning = false;
 
@@ -15,12 +62,18 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     clearInterval(window.__autoRunInterval);
     window.__autoRunInterval = null;
     $('#autoRunCountdown').text(''); // REFACTORED
-    const lastAction = getFromLocalStorage('HISTORY', {});
-    if (lastAction && lastAction.action && lastAction.time) {
-        $('#infoAPP').text(`${lastAction.action} at ${lastAction.time}`);
-    } else {
-        $('#infoAPP').empty();
-    }
+    try {
+        if (typeof getHistoryLog === 'function') {
+            const list = await getHistoryLog();
+            const last = Array.isArray(list) && list.length ? list[list.length - 1] : null;
+            if (last && last.action && (last.time || last.timeISO)) {
+                const t = last.time || new Date(last.timeISO).toLocaleString('id-ID', { hour12: false });
+                $('#infoAPP').text(`${last.action} at ${t}`);
+            } else {
+                $('#infoAPP').empty();
+            }
+        }
+    } catch(_) { $('#infoAPP').empty(); }
 
     const ConfigScan = settings;
     const mMode = getAppMode();
@@ -35,7 +88,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     }
 
     if (!allowedChains || !allowedChains.length) {
-        toastr.warning('Tidak ada Chain yang dipilih. Silakan pilih minimal 1 Chain.');
+        if (typeof toast !== 'undefined' && toast.warning) toast.warning('Tidak ada Chain yang dipilih. Silakan pilih minimal 1 Chain.');
         return;
     }
 
@@ -49,11 +102,22 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     );
 
     if (!flatTokens || flatTokens.length === 0) {
-        toastr.info('Tidak ada token pada chain terpilih untuk dipindai.');
+        if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token pada chain terpilih untuk dipindai.');
         return;
     }
 
     setAppState({ run: 'YES' });
+    try {
+        if (typeof window.updateRunStateCache === 'function') {
+            try { window.updateRunStateCache(getActiveFilterKey(), { run: 'YES' }); } catch(_) {}
+        }
+        if (typeof window.updateRunningChainsBanner === 'function') {
+            const m = getAppMode();
+            const preListed = (m.type === 'single') ? [String(m.chain).toLowerCase()] : (allowedChains || []);
+            window.updateRunningChainsBanner(preListed);
+        }
+        if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
+    } catch(_){}
     $('#startSCAN').prop('disabled', true).text('Running...').addClass('uk-button-disabled');
     $('#infoAPP').html('RUN SCANNING...').show();
     // Keep user's search query intact; do not reset searchInput here.
@@ -61,15 +125,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     $('#sinyal-container [id^="sinyal"]').empty();
     // Hide empty signal cards so none appear at start // REFACTORED
     if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards();
-    // Reset all DEX cells back to default: "DEXNAME [$MODAL]" + lock icon, clearing previous results
-    const selector = `td[id^="${tableBodyId}_"]`; // REFACTORED
-    document.querySelectorAll(selector).forEach(cell => {
-        const strong = cell.querySelector('strong');
-        if (!strong) return;
-        const dexHeaderHtml = strong.outerHTML;
-        cell.innerHTML = `${dexHeaderHtml}<br><span class=\"dex-status uk-text-muted\">🔒</span>`;
-        cell.style.backgroundColor = '';
-    });
+    // Reset all DEX cells back to default
+    resetDexCells(tableBodyId);
     // Apply gating first, then disable globally to ensure edit remains locked during scan
     if (typeof setScanUIGating === 'function') setScanUIGating(true); // REFACTORED
     form_off();
@@ -116,24 +173,9 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 const { id, color, message, swapMessage } = updateData;
                 const cell = document.getElementById(id);
                 if (cell) {
-                    cell.style.backgroundColor = color || '#f39999';
-                    let statusSpan = cell.querySelector('.dex-status');
-                    if (!statusSpan) {
-                        const strong = cell.querySelector('strong');
-                        if (strong) {
-                            const br = document.createElement('br');
-                            strong.insertAdjacentElement('afterend', br);
-                            statusSpan = document.createElement('span');
-                            statusSpan.className = 'dex-status uk-text-danger';
-                           
-                            br.insertAdjacentElement('afterend', statusSpan);
-                        } else {
-                            statusSpan = document.createElement('span');
-                            statusSpan.className = 'dex-status uk-text-danger';
-                           
-                            cell.appendChild(statusSpan);
-                        }
-                    }
+                    setDexErrorBackground(cell, color);
+                    let statusSpan = ensureDexStatusSpan(cell);
+                    if (statusSpan) statusSpan.className = 'dex-status uk-text-danger';
                     statusSpan.classList.remove('uk-text-muted', 'uk-text-warning');
                     statusSpan.classList.add('uk-text-danger');
                     statusSpan.textContent = swapMessage || '[ERROR]';
@@ -175,7 +217,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
             const prices = [DataCEX.priceBuyToken, DataCEX.priceSellToken, DataCEX.priceBuyPair, DataCEX.priceSellPair];
             if (prices.some(p => !isFinite(p) || p <= 0)) {
-                toastr.error(`CEK MANUAL ${token.symbol_in} di ${token.cex}`);
+                if (typeof toast !== 'undefined' && toast.error) toast.error(`CEK MANUAL ${token.symbol_in} di ${token.cex}`);
                 return;
             }
 
@@ -216,23 +258,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     const cell = document.getElementById(idCELL);
                                     if (!cell) return;
                                     cell.style.backgroundColor = '';
-                                    let statusSpan = cell.querySelector('.dex-status');
-                                    if (!statusSpan) {
-                                        const strong = cell.querySelector('strong');
-                                        if (strong) {
-                                            const br = document.createElement('br');
-                                            strong.insertAdjacentElement('afterend', br);
-                                            statusSpan = document.createElement('span');
-                                            statusSpan.className = 'dex-status';
-                           
-                                            br.insertAdjacentElement('afterend', statusSpan);
-                                        } else {
-                                            statusSpan = document.createElement('span');
-                                            statusSpan.className = 'dex-status';
-                           
-                                            cell.appendChild(statusSpan);
-                                        }
-                                    }
+                                    let statusSpan = ensureDexStatusSpan(cell);
                                     statusSpan.removeAttribute('title');
                                     statusSpan.classList.remove('uk-text-muted', 'uk-text-warning', 'uk-text-danger');
                                     if (status === 'checking') {
@@ -243,24 +269,16 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         statusSpan.textContent = 'Check SWOOP';
                                         if (message) statusSpan.title = `Initial Error: ${message}`;
                                     } else if (status === 'error' || status === 'fallback_error') {
-                                        cell.style.backgroundColor = '#ffcccc';
+                                        setDexErrorBackground(cell);
                                         statusSpan.classList.add('uk-text-danger');
                                         statusSpan.textContent = '[ERROR]';
                                         if (message) statusSpan.title = message;
                                     }
                                 };
 
-                                window._DEX_WATCHDOGS = window._DEX_WATCHDOGS || new Map();
                                 const wdKeyCheck = idCELL + ':check';
                                 const wdKeyFallback = idCELL + ':fallback';
-                                const setWatchdog = (key, fn, delay) => {
-                                    if (window._DEX_WATCHDOGS.has(key)) clearTimeout(window._DEX_WATCHDOGS.get(key));
-                                    window._DEX_WATCHDOGS.set(key, setTimeout(fn, delay));
-                                };
-                                const clearAllWatchdogs = () => {
-                                    if (window._DEX_WATCHDOGS.has(wdKeyCheck)) clearTimeout(window._DEX_WATCHDOGS.get(wdKeyCheck));
-                                    if (window._DEX_WATCHDOGS.has(wdKeyFallback)) clearTimeout(window._DEX_WATCHDOGS.get(wdKeyFallback));
-                                };
+                                const clearAllWatchdogs = () => { clearDexWatchdogs([wdKeyCheck, wdKeyFallback]); };
 
                                 const handleSuccess = (dexResponse, isFallback = false) => {
                                     clearAllWatchdogs();
@@ -308,12 +326,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             }
                                         } catch(_) { dexUsd = null; }
 
-                                        // Directional buy/sell mapping (all in USD rate)
-                                        const buyPrice  = isKiri ? (Number(DataCEX.priceBuyToken)||0) : (Number(dexUsd)||0); // TokentoPair: buy CEX, PairtoToken: buy DEX
-                                        const sellPrice = isKiri ? (Number(dexUsd)||0)             : (Number(DataCEX.priceSellToken)||0); // TokentoPair: sell DEX, PairtoToken: sell CEX
-                                        const buyLine = `buy : ${Number(buyPrice||0)}$`;
-                                        const sellLine = `sell : ${Number(sellPrice||0)}$`;
-                                        const pnlLine = `PNL : ${Number(update.profitLoss||0).toFixed(2)}$`;
+                                        // refactor: removed unused local debug variables (buy/sell/pnl lines)
                                         
                                     } catch(_) {}
                                     uiUpdateQueue.push(update);
@@ -324,7 +337,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     const dexConfig = CONFIG_DEXS[dex.toLowerCase()];
                                     if (dexConfig && dexConfig.allowFallback) {
                                         updateDexCellStatus('fallback', dex, initialError?.pesanDEX);
-                                        setWatchdog(wdKeyFallback, () => {
+                                        setDexWatchdog(wdKeyFallback, () => {
                                             const msg = (initialError?.pesanDEX ? `Initial: ${initialError.pesanDEX} | ` : '') + 'SWOOP: Request Timeout';
                                             updateDexCellStatus('fallback_error', dex, msg);
                                         }, 5000);
@@ -336,7 +349,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             token.cex, token.chain, CONFIG_CHAINS[token.chain.toLowerCase()].Kode_Chain, direction
                                         )
                                         .then((fallbackRes) => {
-                                            if (window._DEX_WATCHDOGS.has(wdKeyFallback)) clearTimeout(window._DEX_WATCHDOGS.get(wdKeyFallback));
+                                            clearDexWatchdog(wdKeyFallback);
                                             handleSuccess(fallbackRes, true);
                                         })
                                         .catch((fallbackErr) => {
@@ -364,11 +377,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                         if (stable.includes(inSym) && rate>0) dexUsd = 1 / rate; else if (baseSym && inSym === baseSym && baseUsd>0 && rate>0) dexUsd = baseUsd / rate; else dexUsd = Number(DataCEX.priceSellToken)||0;
                                                     }
                                                 } catch(_) { dexUsd = null; }
-                                                const buyPrice = isKiri ? (Number(DataCEX.priceBuyToken)||0) : (Number(dexUsd)||0);
-                                                const sellPrice = isKiri ? (Number(dexUsd)||0)             : (Number(DataCEX.priceSellToken)||0);
-                                                const buyLine = `buy : ${Number(buyPrice||0)}$`;
-                                                const sellLine = `sell : ${Number(sellPrice||0)}$`;
-                                                const pnlLine = `PNL : N/A (DEX error)`;
+                                                // refactor: removed unused local debug variables (buy/sell/pnl lines)
                                                 
                                             } catch(_) {}
                                         });
@@ -380,11 +389,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             const modalVal = isKiri ? modalKiri : modalKanan;
                                             const modalLine = `modal ${Number(modalVal||0)}$`;
                                             // Align console info with requested orderbook logic
-                                            const buyPrice = isKiri ? DataCEX.priceBuyToken : DataCEX.priceSellToken;
-                                            const sellPrice = isKiri ? DataCEX.priceBuyPair : DataCEX.priceSellToken;
-                                            const buyLine = `buy : ${Number(buyPrice||0)}$`;
-                                            const sellLine = `sell : ${Number(sellPrice||0)}$`;
-                                            const pnlLine = `PNL : N/A (DEX error)`;
+                                            // refactor: removed unused local debug variables (buy/sell/pnl lines)
                                             
                                         } catch(_) {}
                                     }
@@ -392,7 +397,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
                                 updateDexCellStatus('checking', dex);
                                 const dexTimeoutWindow = getJedaDex(dex) + Math.max(speedScan, 4500) + 300;
-                                setWatchdog(wdKeyCheck, () => updateDexCellStatus('error', dex, `${dex.toUpperCase()}: Request Timeout`), dexTimeoutWindow);
+                                setDexWatchdog(wdKeyCheck, () => updateDexCellStatus('error', dex, `${dex.toUpperCase()}: Request Timeout`), dexTimeoutWindow);
 
                                 setTimeout(() => {
                                     getPriceDEX(
@@ -528,6 +533,20 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     processTokens(flatTokens, tableBodyId);
 }
 
+// refactor: helper to reset dex cells back to default locked state
+function resetDexCells(tableBodyId){
+    try {
+        const selector = `td[id^="${tableBodyId}_"]`;
+        document.querySelectorAll(selector).forEach(cell => {
+            const strong = cell.querySelector('strong');
+            if (!strong) return;
+            const dexHeaderHtml = strong.outerHTML;
+            cell.innerHTML = `${dexHeaderHtml}<br><span class=\"dex-status uk-text-muted\">🔒</span>`;
+            cell.style.backgroundColor = '';
+        });
+    } catch(_) {}
+}
+
 /**
  * Stops the currently running scanner.
  */
@@ -538,13 +557,12 @@ async function stopScanner() {
     window.__autoRunInterval = null;
     if (typeof form_on === 'function') form_on(); // REFACTORED
     try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
+    try { setAppState({ run: 'NO' }); } catch(_) { /* ignore */ }
     try {
-        if (typeof saveToLocalStorageAsync === 'function') {
-            await saveToLocalStorageAsync('APP_STATE', Object.assign({}, getAppState(), { run: 'NO' }));
-        } else {
-            setAppState({ run: 'NO' });
-        }
-    } catch(_) { setAppState({ run: 'NO' }); }
+        if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(getActiveFilterKey(), { run: 'NO' }); } catch(_) {} }
+        if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner();
+        if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
+    } catch(_){}
     location.reload(); // REFACTORED
 }
 
@@ -556,7 +574,37 @@ function stopScannerSoft() {
     isScanRunning = false; // REFACTORED
     try { cancelAnimationFrame(animationFrameId); } catch(_) {}
     setAppState({ run: 'NO' }); // REFACTORED
+    try {
+        if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(getActiveFilterKey(), { run: 'NO' }); } catch(_) {} }
+        if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner();
+        if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
+    } catch(_){}
     clearInterval(window.__autoRunInterval); // REFACTORED
     window.__autoRunInterval = null;
     if (typeof form_on === 'function') form_on(); // REFACTORED
 }
+
+// Update info banner with all chains currently running. Optionally seed with a list.
+function updateRunningChainsBanner(seedChains) {
+    try {
+        const setKeys = new Set();
+        if (Array.isArray(seedChains)) seedChains.forEach(c => { if (c) setKeys.add(String(c).toLowerCase()); });
+        const cache = (typeof window.RUN_STATES === 'object' && window.RUN_STATES) ? window.RUN_STATES : {};
+        Object.keys(window.CONFIG_CHAINS || {}).forEach(k => { if (cache[String(k).toLowerCase()]) setKeys.add(String(k).toLowerCase()); });
+        const labels = Array.from(setKeys).map(k => {
+            const cfg = (window.CONFIG_CHAINS || {})[k] || {};
+            return (cfg.Nama_Pendek || cfg.Nama_Chain || k).toString().toUpperCase();
+        });
+        if (labels.length > 0) {
+            $('#infoAPP').html(`RUN SCANNING: ${labels.join(', ')}`).show();
+        } else {
+            // Fallback to default running label if any; otherwise let history updater handle it
+            const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
+            if (String(st.run || 'NO').toUpperCase() === 'YES') {
+                $('#infoAPP').html('RUN SCANNING...').show();
+            }
+        }
+    } catch(_) {}
+}
+
+try { window.updateRunningChainsBanner = window.updateRunningChainsBanner || updateRunningChainsBanner; } catch(_){}

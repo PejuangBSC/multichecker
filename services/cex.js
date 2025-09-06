@@ -42,29 +42,7 @@
     return { priceBuy, priceSell };
 }
 
-  function processOrderBookLAMA(data, limit = 4) {
-      if (!data?.bids || !data?.asks) {
-          console.error("Invalid orderbook data:", data);
-          return { priceBuy: [], priceSell: [] };
-      }
-
-      // bids: sort desc, best bid at index 0
-      const bids = [...data.bids].sort((a, b) => parseFloat(b[0]) - parseFloat(a[0]));
-      // asks: sort asc, best ask at index 0
-      const asks = [...data.asks].sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]));
-
-      const priceBuy = bids.slice(0, limit).map(([price, volume]) => ({
-          price: parseFloat(price),
-          volume: parseFloat(volume) * parseFloat(price)
-      }));
-
-      const priceSell = asks.slice(0, limit).map(([price, volume]) => ({
-          price: parseFloat(price),
-          volume: parseFloat(volume) * parseFloat(price)
-      }));
-
-      return { priceBuy, priceSell };
-  }
+  // Removed legacy processOrderBookLAMA (unused)
 
   // ====== Fungsi Khusus untuk INDODAX ======
   /** Normalize INDODAX orderbook (IDR) to USDT using cached rate. */

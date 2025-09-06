@@ -218,6 +218,21 @@ a:hover, .uk-link:hover {
     transform: scale(1.2);
 }
 
+/* Running state indicator for chain toolbar icons */
+.chain-link { position: relative; }
+#multichain_scanner { position: relative; display: inline-block; }
+.run-dot {
+  position: absolute;
+  top: -2px; right: -2px;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: #2ea043; /* default, overridden inline per-chain */
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+  z-index: 2;
+}
+body.dark-mode .run-dot { border-color: #1c1c1e; box-shadow: 0 0 0 1px rgba(255,255,255,0.12); }
+
 /* Responsive toolbar: horizontal scroll on small screens */
 .toolbar-scroll {
     overflow-x: auto;
@@ -398,8 +413,15 @@ body.dark-mode #pageLoadingOverlay {
 }
 
 .uk-background{
-    background-color: #e9ebee !important; 
+  /* background-color: #e9ebee !important;  */
+    background-color:#d4d8de !important;
     border-bottom: 1px solid #000000 !important;
+}
+
+/* refactor: ensure custom uk-background adapts in dark mode */
+body.dark-mode .uk-background {
+  background-color: #2c2c2e !important;
+  border-bottom: 1px solid #444444 !important;
 }
 
 .buy {
@@ -434,17 +456,17 @@ body.dark-mode {
 .dark-mode .uk-modal-dialog {
     background-color: #2c2c2e; /* Charcoal gray */
     border-color: #444444;
-    color: #d1d1d1;
+    color: #222aef;
 }
 
 .dark-mode h1, .dark-mode h2, .dark-mode h3, .dark-mode h5, .dark-mode h6,
 .dark-mode .uk-modal-title {
-    color: #e8e8e8 !important; /* Brighter white for headings */
+    color: #f0ebeb !important; /* Brighter white for headings */
 }
 
 .dark-mode .uk-button-default {
     background-color: #3a3a3c;
-    color: #d1d1d1;
+    color: #edebeb;
     border-color: #555;
 }
 
@@ -485,26 +507,32 @@ body.dark-mode {
 }
 
 .dark-mode .uk-table thead th {
-    background: #1c1c1e;
-    border-bottom: 2px solid #4a90e2; /* Accent border */
-    color: #e8e8e8;
+    background: #1c1c1e !important;
+    border-bottom: 1px solid #444444 !important; /* Subtle border in dark */
+    color: #e8e8e8 !important;
+}
+
+/* Explicitly override inline header background for monitoring tables in dark-mode */
+body.dark-mode #main-table thead,
+body.dark-mode #single-chain-table thead {
+    background: #1c1c1e !important;
 }
 
 .dark-mode .uk-table tbody td {
-    border-color: #444444;
-    color: #c0c0c0; /* Readable light gray for table text */
+    border-color: #121b6d;
+    color: #e7e7ec; /* Readable light gray for table text */
 }
 
 .dark-mode .uk-table tbody tr {
-    background-color: #2c2c2e; /* Same as container bg */
+    background-color: #373738; /* Same as container bg */
 }
 
 .dark-mode .uk-table tbody tr:nth-child(even) {
-    background-color: #3a3a3c; /* Subtle stripe */
+    background-color: #0a0a0a; /* Subtle stripe */
 }
 
 .dark-mode .uk-table tbody tr:hover {
-    background-color: #4a4a4c;
+    background-color: #49494b;
 }
 
 .dark-mode .uk-modal-header {
@@ -553,6 +581,13 @@ body.dark-mode {
     text-align: center;
     vertical-align: middle;
     color: #f8fafb;
+}
+
+.dark-mode .dex-cell-highlight {
+  /* refactor: enforce putih sebagai highlight di dark-mode */
+  background-color: #ffffff !important;
+  color: #000 !important;
+  font-weight: bolder;
 }
 
 .dark-mode .dex-slot-empty {

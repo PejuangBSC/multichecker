@@ -14,31 +14,31 @@ let originalTokens = [];
 var SavedSettingData = getFromLocalStorage('SETTING_SCANNER', {});
 let activeSingleChainKey = null; // To track the currently active single-chain view
 
-// Configure Toastr to avoid top-right where toolbar resides
-// Configure Toastr if available (no try/catch) // REFACTORED
-if (typeof window !== 'undefined' && window.toastr) {
-    window.toastr.options = Object.assign({}, window.toastr.options || {}, {
-        positionClass: 'toast-top-right',
-        preventDuplicates: true,
-        newestOnTop: true,
-        closeButton: true,
-        progressBar: true,
-        timeOut: 3500
-    });
-}
+// refactor: Toastr is centrally configured in js/notify-shim.js
 
 // --- Application Initialization ---
 
-// Unified app state stored in one key: { run: 'YES'|'NO', darkMode: boolean, lastChain: string }
+// Per-mode app state is merged into FILTER_<CHAIN> / FILTER_MULTICHAIN
+// Fields: { run: 'YES'|'NO', darkMode: boolean, sort: 'A'|'Z', pnl: number, ... }
 function getAppState() {
-    const s = getFromLocalStorage('APP_STATE', {});
-    return (s && typeof s === 'object') ? s : {};
+    try {
+        const key = (typeof getActiveFilterKey === 'function') ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+        const f = getFromLocalStorage(key, {}) || {};
+        return {
+            run: (f.run || 'NO'),
+            darkMode: !!f.darkMode,
+            lastChain: f.lastChain
+        };
+    } catch(_) { return { run: 'NO', darkMode: false }; }
 }
 function setAppState(patch) {
-    const cur = getAppState();
-    const next = Object.assign({}, cur, patch || {});
-    saveToLocalStorage('APP_STATE', next);
-    return next;
+    try {
+        const key = (typeof getActiveFilterKey === 'function') ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+        const cur = getFromLocalStorage(key, {}) || {};
+        const next = Object.assign({}, cur, patch || {});
+        saveToLocalStorage(key, next);
+        return next;
+    } catch(_) { return patch || {}; }
 }
 
 // Floating scroll-to-top button for monitoring table (robust across browsers)
@@ -159,7 +159,7 @@ $(document).off('click.globalDelete').on('click.globalDelete', '.delete-token-bu
             setTokensChain(mode.chain, list);
             if (list.length < before) {
                 try { setLastAction('HAPUS KOIN'); } catch(_) {}
-                toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
+                if (typeof toast !== 'undefined' && toast.info) toast.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
             }
             try { $el.closest('tr').addClass('row-hidden'); } catch(_) {}
         } else {
@@ -169,23 +169,23 @@ $(document).off('click.globalDelete').on('click.globalDelete', '.delete-token-bu
             setTokensMulti(list);
             if (list.length < before) {
                 try { setLastAction('HAPUS KOIN'); } catch(_) {}
-                toastr.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
+                if (typeof toast !== 'undefined' && toast.info) toast.info(`PROSES HAPUS KOIN ${symIn} VS ${symOut} BERHASIL`);
             }
             try { $el.closest('tr').addClass('row-hidden'); } catch(_) {}
         }
-    } catch(e) { console.error('Delete error:', e); toastr.error('Gagal menghapus koin'); }
+    } catch(e) { console.error('Delete error:', e); if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal menghapus koin'); }
 });
 
 // Also bind a delegated edit handler so newly rendered rows always work
 $(document).off('click.globalEdit').on('click.globalEdit', '.edit-token-button', function(){
     try {
         const id = String($(this).data('id') || '');
-        if (!id) { toastr.error('ID token tidak ditemukan'); return; }
+        if (!id) { if (typeof toast !== 'undefined' && toast.error) toast.error('ID token tidak ditemukan'); return; }
         if (typeof openEditModalById === 'function') openEditModalById(id);
-        else toastr.error('Fungsi edit tidak tersedia');
+        else if (typeof toast !== 'undefined' && toast.error) toast.error('Fungsi edit tidak tersedia');
     } catch (e) {
         console.error('Gagal membuka modal edit:', e);
-        toastr.error('Gagal membuka form edit');
+        if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal membuka form edit');
     }
 });
 
@@ -387,9 +387,11 @@ function bootApp() {
         if (typeof cekDataAwal === 'function') { cekDataAwal(); } else { console.warn('cekDataAwal() not available'); }
     } else {
         if (window.toastr) {
-            if (state === 'MISSING_SETTINGS') toastr.warning('Lengkapi SETTING terlebih dahulu');
-            else if (state === 'MISSING_TOKENS') toastr.warning('Tambah/Import/Sinkronisasi KOIN terlebih dahulu');
-            else toastr.error('LAKUKAN SETTING APLIASI & LENGKAPI DATA KOIN TOKEN');
+            if (typeof toast !== 'undefined') {
+                if (state === 'MISSING_SETTINGS' && toast.warning) toast.warning('Lengkapi SETTING terlebih dahulu');
+                else if (state === 'MISSING_TOKENS' && toast.warning) toast.warning('Tambah/Import/Sinkronisasi KOIN terlebih dahulu');
+                else if (toast.error) toast.error('LAKUKAN SETTING APLIASI & LENGKAPI DATA KOIN TOKEN');
+            }
         }
     }
 }
@@ -407,7 +409,7 @@ function cekDataAwal() {
 
   if (!Array.isArray(DataTokens) || DataTokens.length === 0) {
     errorMessages.push("❌ Tidak ada data token yang tersedia.");
-    toastr.error("Tidak ada data token yang tersedia");
+    if (typeof toast !== 'undefined' && toast.error) toast.error("Tidak ada data token yang tersedia");
     if(typeof scanner_form_off !== 'undefined') scanner_form_off();
     info = false;
   }
@@ -446,10 +448,7 @@ function cekDataAwal() {
     $("#infoAPP").show().html(errorMessages.join("<br/>"));
   }
 
-  const dataACTION = getFromLocalStorage('HISTORY');
-  if (dataACTION && dataACTION.time) {
-    $("#infoAPP").show().text(`${dataACTION.action} at ${dataACTION.time}`);
-  }
+  try { updateInfoFromHistory(); } catch(_) {}
 }
 
 
@@ -567,10 +566,12 @@ async function deferredInit() {
                 if (addCex.length) parts.push(`+CEX: ${addCex.join(', ')}`);
                 if (delCex.length) parts.push(`-CEX: ${delCex.join(', ')}`);
                 const msg = parts.length ? parts.join(' | ') : `Filter MULTI diperbarui: CHAIN=${chains.length}, CEX=${cex.length}`;
-                try { toastr.info(msg); } catch(_){ }
+                try { if (typeof toast !== 'undefined' && toast.info) toast.info(msg); } catch(_){ }
 
                 // Clear both monitoring and management search boxes after filter change
                 try { $('#searchInput').val(''); $('#mgrSearchInput').val(''); } catch(_){}
+                // Also clear any existing signal cards produced by a previous scan
+                try { if (typeof window.clearSignalCards === 'function') window.clearSignalCards(); } catch(_) {}
                 refreshTokensTable();
                 try { renderTokenManagementList(); } catch(_) {}
                 renderFilterCard();
@@ -652,9 +653,11 @@ async function deferredInit() {
                 if (pDel.length) parts.push(`-PAIR: ${pDel.join(', ')}`);
                 const label = String(chain).toUpperCase();
                 const msg = parts.length ? `[${label}] ${parts.join(' | ')}` : `[${label}] Filter diperbarui: CEX=${c.length}, PAIR=${p.length}`;
-                try { toastr.info(msg); } catch(_){ }
+                try { if (typeof toast !== 'undefined' && toast.info) toast.info(msg); } catch(_){ }
                 // Clear both monitoring and management search boxes after filter change
                 try { $('#searchInput').val(''); $('#mgrSearchInput').val(''); } catch(_){}
+                // Also clear any existing signal cards produced by a previous scan
+                try { if (typeof window.clearSignalCards === 'function') window.clearSignalCards(); } catch(_) {}
                 loadAndDisplaySingleChainTokens();
                 try { renderTokenManagementList(); } catch(_) {}
                 renderFilterCard();
@@ -758,11 +761,16 @@ async function deferredInit() {
     // Removed localStorage 'storage' event listener; app state is now IDB-only.
 
     $('#darkModeToggle').on('click', function() {
+        // Block toggling while scanning is running
+        try {
+            const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
+            if (String(st.run||'NO').toUpperCase() === 'YES') return; // refactor: disable dark-mode toggle during scan
+        } catch(_) {}
         const body = $('body');
         body.toggleClass('dark-mode uk-dark');
         const isDark = body.hasClass('dark-mode');
-        setAppState({ darkMode: isDark });
-        updateDarkIcon(isDark);
+        setAppState({ darkMode: isDark }); // saved into FILTER_*
+        if (typeof applyThemeForMode === 'function') applyThemeForMode();
         try { if (typeof window.updateSignalTheme === 'function') window.updateSignalTheme(); } catch(_) {}
     });
 
@@ -807,7 +815,9 @@ async function deferredInit() {
         try {
             setPNLFilter(clean);
             $(this).val(clean);
-            try { toastr.info(`PNL Filter diset: $${clean}`); } catch(_) {}
+            try { if (typeof toast !== 'undefined' && toast.info) toast.info(`PNL Filter diset: $${clean}`); } catch(_) {}
+            // Clear previously displayed scan signal cards when PNL filter changes
+            try { if (typeof window.clearSignalCards === 'function') window.clearSignalCards(); } catch(_) {}
         } catch(_) {}
     });
 
@@ -856,12 +866,12 @@ async function deferredInit() {
     $('.posisi-check').on('change', function () {
         if ($('.posisi-check:checked').length === 0) {
             $(this).prop('checked', true);
-            toastr.error("Minimal salah satu POSISI harus aktif!");
+            if (typeof toast !== 'undefined' && toast.error) toast.error("Minimal salah satu POSISI harus aktif!");
             return;
         }
         const label = $(this).val() === 'Actionkiri' ? 'KIRI' : 'KANAN';
         const status = $(this).is(':checked') ? 'AKTIF' : 'NONAKTIF';
-        toastr.info(`POSISI ${label} ${status}`);
+        if (typeof toast !== 'undefined' && toast.info) toast.info(`POSISI ${label} ${status}`);
     });
 
 $("#reload").click(function () {
@@ -1039,7 +1049,7 @@ $("#reload").click(function () {
             const cfg = (typeof window !== 'undefined' ? (window.CONFIG_CEX || {}) : (CONFIG_CEX || {}));
             const valid = (selected || []).map(x => String(x).toUpperCase()).filter(cx => !!cfg[cx]);
             if (!valid.length) {
-                toastr.error('Pilih minimal 1 CEX pada filter sebelum update wallet.');
+                if (typeof toast !== 'undefined' && toast.error) toast.error('Pilih minimal 1 CEX pada filter sebelum update wallet.');
                 try { setLastAction('UPDATE WALLET EXCHANGER', 'error', { reason: 'NO_CEX_SELECTED' }); } catch(_) {}
                 return;
             }
@@ -1126,7 +1136,7 @@ $("#startSCAN").click(function () {
             } catch(_) {}
 
             if (!Array.isArray(flatTokens) || flatTokens.length === 0) {
-                toastr.info('Tidak ada token pada filter per‑chain untuk dipindai.');
+                if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token pada filter per‑chain untuk dipindai.');
                 return;
             }
             startScanner(flatTokens, settings, 'single-chain-table-body');
@@ -1142,7 +1152,7 @@ $("#startSCAN").click(function () {
             }
         } catch(_) {}
         if (!Array.isArray(toScan) || toScan.length === 0) {
-            toastr.info('Tidak ada token yang cocok dengan hasil pencarian/fitur filter untuk dipindai.');
+            if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token yang cocok dengan hasil pencarian/fitur filter untuk dipindai.');
             return;
         }
         startScanner(toScan, settings, 'dataTableBody');
@@ -1160,7 +1170,7 @@ $("#startSCAN").click(function () {
     $(document).on('submit', '#multiTokenForm', function (e) {
         e.preventDefault();
         const id = $('#multiTokenIndex').val();
-        if (!id) return toastr.error('ID token tidak ditemukan.');
+        if (!id) return (typeof toast !== 'undefined' && toast.error) ? toast.error('ID token tidak ditemukan.') : undefined;
 
         const updatedToken = {
             id,
@@ -1176,8 +1186,8 @@ $("#startSCAN").click(function () {
             ...readDexSelectionFromForm()
         };
 
-        if (!updatedToken.symbol_in || !updatedToken.symbol_out) return toastr.warning('Symbol Token & Pair tidak boleh kosong');
-        if (updatedToken.selectedDexs.length > 4) return toastr.warning('Maksimal 4 DEX yang dipilih');
+        if (!updatedToken.symbol_in || !updatedToken.symbol_out) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Symbol Token & Pair tidak boleh kosong') : undefined;
+        if (updatedToken.selectedDexs.length > 4) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Maksimal 4 DEX yang dipilih') : undefined;
 
         const m = getAppMode();
         let tokens = (m.type === 'single') ? getTokensChain(m.chain) : getTokensMulti();
@@ -1200,7 +1210,7 @@ $("#startSCAN").click(function () {
         }
 
         if (m.type === 'single') setTokensChain(m.chain, tokens); else setTokensMulti(tokens);
-        toastr.success(idx !== -1 ? 'Perubahan token berhasil disimpan' : 'Token baru berhasil ditambahkan');
+        if (typeof toast !== 'undefined' && toast.success) toast.success(idx !== -1 ? 'Perubahan token berhasil disimpan' : 'Token baru berhasil ditambahkan');
         // Refresh both monitoring and management views according to mode
         try {
             if (m.type === 'single') { loadAndDisplaySingleChainTokens(); }
@@ -1219,7 +1229,7 @@ $("#startSCAN").click(function () {
     $(document).on('click', '#HapusEditkoin', function (e) {
         e.preventDefault();
         const id = $('#multiTokenIndex').val();
-        if (!id) return toastr.error('ID token tidak ditemukan.');
+        if (!id) return (typeof toast !== 'undefined' && toast.error) ? toast.error('ID token tidak ditemukan.') : undefined;
 
         // Compose detailed confirmation message
         const symIn  = String(($('#inputSymbolToken').val() || '')).trim().toUpperCase();
@@ -1242,7 +1252,7 @@ $("#startSCAN").click(function () {
 
         if (confirm(detailMsg)) {
             deleteTokenById(id);
-            toastr.success(`KOIN TERHAPUS`);
+            if (typeof toast !== 'undefined' && toast.success) toast.success(`KOIN TERHAPUS`);
             if (window.UIkit?.modal) UIkit.modal('#FormEditKoinModal').hide();
             // Live refresh current view without reloading page (works during scanning)
             try {
@@ -1259,7 +1269,7 @@ $("#startSCAN").click(function () {
         try {
             const mode = getAppMode();
             if (mode.type !== 'single') {
-                toastr.info('Tombol ini hanya tersedia pada mode per-chain.');
+                if (typeof toast !== 'undefined' && toast.info) toast.info('Tombol ini hanya tersedia pada mode per-chain.');
                 return;
             }
             const chainKey = String(mode.chain).toLowerCase();
@@ -1282,8 +1292,8 @@ $("#startSCAN").click(function () {
                 ...readDexSelectionFromForm()
             };
 
-            if (!tokenObj.symbol_in || !tokenObj.symbol_out) return toastr.warning('Symbol Token & Pair tidak boleh kosong');
-            if ((tokenObj.selectedDexs||[]).length > 4) return toastr.warning('Maksimal 4 DEX yang dipilih');
+            if (!tokenObj.symbol_in || !tokenObj.symbol_out) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Symbol Token & Pair tidak boleh kosong') : undefined;
+            if ((tokenObj.selectedDexs||[]).length > 4) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Maksimal 4 DEX yang dipilih') : undefined;
 
             // Build dataCexs preserving previous per-chain CEX details if available
             const dataCexs = {};
@@ -1305,11 +1315,12 @@ $("#startSCAN").click(function () {
                 multi.push(tokenObj);
             }
             setTokensMulti(multi);
-            toastr.success('Koin berhasil disalin ke mode Multichain');
+            if (typeof toast !== 'undefined' && toast.success) toast.success('Koin berhasil disalin ke mode Multichain');
+            $('#FormEditKoinModal').hide();
             try { if (typeof renderFilterCard === 'function') renderFilterCard(); } catch(_){}
         } catch(e) {
             console.error('Copy to Multichain failed:', e);
-            toastr.error('Gagal menyalin ke Multichain');
+            if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal menyalin ke Multichain');
         }
     });
 
@@ -1319,11 +1330,11 @@ $("#startSCAN").click(function () {
             if (id) {
                 openEditModalById(id);
             } else {
-                toastr.error('ID token tidak ditemukan pada tombol edit.');
+                if (typeof toast !== 'undefined' && toast.error) toast.error('ID token tidak ditemukan pada tombol edit.');
             }
         } catch (e) {
             console.error('Gagal membuka modal edit dari manajemen list:', e);
-            toastr.error('Gagal membuka form edit.');
+            if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal membuka form edit.');
         }
     });
 
@@ -1336,7 +1347,7 @@ $("#startSCAN").click(function () {
         if (idx !== -1) {
             tokens[idx].status = val;
             if (m.type === 'single') setTokensChain(m.chain, tokens); else setTokensMulti(tokens);
-            toastr.success(`Status diubah ke ${val ? 'ACTIVE' : 'INACTIVE'}`);
+            if (typeof toast !== 'undefined' && toast.success) toast.success(`Status diubah ke ${val ? 'ACTIVE' : 'INACTIVE'}`);
             try {
                 const chainLbl = String(tokens[idx]?.chain || (m.type==='single'? m.chain : 'all')).toUpperCase();
                 const pairLbl = `${String(tokens[idx]?.symbol_in||'').toUpperCase()}/${String(tokens[idx]?.symbol_out||'').toUpperCase()}`;
@@ -1392,10 +1403,10 @@ $("#startSCAN").click(function () {
 
     // Token Sync Modal Logic
     $(document).on('click', '#sync-tokens-btn', async function() {
-        if (!activeSingleChainKey) return toastr.error("No active chain selected.");
+        if (!activeSingleChainKey) return (typeof toast !== 'undefined' && toast.error) ? toast.error("No active chain selected.") : undefined;
 
         const chainConfig = CONFIG_CHAINS[activeSingleChainKey];
-        if (!chainConfig || !chainConfig.DATAJSON) return toastr.error(`No datajson URL for ${activeSingleChainKey}`);
+        if (!chainConfig || !chainConfig.DATAJSON) return (typeof toast !== 'undefined' && toast.error) ? toast.error(`No datajson URL for ${activeSingleChainKey}`) : undefined;
 
         $('#sync-modal-chain-name').text(chainConfig.Nama_Chain || activeSingleChainKey.toUpperCase());
         const modalBody = $('#sync-modal-tbody').empty().html('<tr><td colspan="4">Loading...</td></tr>');
@@ -1403,7 +1414,7 @@ $("#startSCAN").click(function () {
 
         try {
             // Progress info to user
-            try { toastr.info('Mengambil data koin dari server...'); } catch(_) {}
+            try { if (typeof toast !== 'undefined' && toast.info) toast.info('Mengambil data koin dari server...'); } catch(_) {}
             const remoteTokens = await $.getJSON(chainConfig.DATAJSON);
             const savedTokens = getTokensChain(activeSingleChainKey);
 
@@ -1415,7 +1426,7 @@ $("#startSCAN").click(function () {
             else if (remoteTokens && Array.isArray(remoteTokens.token)) raw = remoteTokens.token;
             else {
                 raw = [];
-                toastr.warning('Struktur JSON tidak sesuai: array token tidak ditemukan.');
+                if (typeof toast !== 'undefined' && toast.warning) toast.warning('Struktur JSON tidak sesuai: array token tidak ditemukan.');
             }
 
             raw.forEach((t,i) => { try { t._idx = i; } catch(_){} });
@@ -1428,7 +1439,7 @@ $("#startSCAN").click(function () {
             // Initial render
             renderSyncTable(activeSingleChainKey);
 
-            try { toastr.success(`Berhasil memuat ${raw.length} koin dari server`); } catch(_) {}
+            try { if (typeof toast !== 'undefined' && toast.success) toast.success(`Berhasil memuat ${raw.length} koin dari server`); } catch(_) {}
 
             // Debug logs for fetch result
             try {
@@ -1463,13 +1474,13 @@ $("#startSCAN").click(function () {
                 const text = error?.statusText || error?.message || '';
                 if (status) reason = `HTTP ${status}${text?` - ${text}`:''}`;
             } catch(_) {}
-            toastr.error(`Gagal mengambil data dari server${reason?`: ${reason}`:''}. Cek koneksi atau URL DATAJSON.`);
+            if (typeof toast !== 'undefined' && toast.error) toast.error(`Gagal mengambil data dari server${reason?`: ${reason}`:''}. Cek koneksi atau URL DATAJSON.`);
         }
     });
 
     // Save synced tokens
     $(document).on('click', '#sync-save-btn', async function() {
-        if (!activeSingleChainKey) return toastr.error("No active chain selected.");
+        if (!activeSingleChainKey) return (typeof toast !== 'undefined' && toast.error) ? toast.error("No active chain selected.") : undefined;
 
         const $modal = $('#sync-modal');
         const remoteTokens = $modal.data('remote-raw') || [];
@@ -1493,11 +1504,11 @@ $("#startSCAN").click(function () {
             dataDexsGlobal[dx] = { left: isNaN(leftVal)?0:leftVal, right: isNaN(rightVal)?0:rightVal };
         });
         if (selectedDexsGlobal.length < 1) {
-            toastr.warning('Pilih minimal 1 DEX.');
+            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Pilih minimal 1 DEX.');
             return;
         }
         if (selectedDexsGlobal.length > 4) {
-            toastr.warning('Pilih maksimal 4 DEX.');
+            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Pilih maksimal 4 DEX.');
             return;
         }
 
@@ -1598,7 +1609,7 @@ $("#startSCAN").click(function () {
 
         // Validate at least 1 token selected
         if (selectedTokens.length === 0) {
-            toastr.info('Pilih minimal 1 koin untuk disimpan.');
+            if (typeof toast !== 'undefined' && toast.info) toast.info('Pilih minimal 1 koin untuk disimpan.');
             return;
         }
 
@@ -1637,13 +1648,13 @@ $("#startSCAN").click(function () {
 
         if (ok) {
             try { setLastAction('SINKRONISASI KOIN'); } catch(_) {}
-            toastr.success(`Disimpan: ${selectedTokens.length} koin (${added} baru, ${replaced} diperbarui) untuk ${activeSingleChainKey}.`);
+            if (typeof toast !== 'undefined' && toast.success) toast.success(`Disimpan: ${selectedTokens.length} koin (${added} baru, ${replaced} diperbarui) untuk ${activeSingleChainKey}.`);
             UIkit.modal('#sync-modal').hide();
             // Full reload to ensure a clean state and updated filters
             location.reload();
         } else {
             const reason = (window.LAST_STORAGE_ERROR ? `: ${window.LAST_STORAGE_ERROR}` : '');
-            toastr.error(`Gagal menyimpan ke penyimpanan lokal${reason}`);
+            if (typeof toast !== 'undefined' && toast.error) toast.error(`Gagal menyimpan ke penyimpanan lokal${reason}`);
             try { $btn.prop('disabled', false).text(prevLabel); } catch(_) {}
         }
         console.timeEnd('SYNC_SAVE_WRITE');
@@ -1698,6 +1709,31 @@ $(document).ready(function() {
         }
     }
 
+    // In-memory cache of run states to avoid stale storage reads across tabs
+    window.RUN_STATES = window.RUN_STATES || {};
+    function updateRunStateCache(filterKey, val){
+        try {
+            const key = String(filterKey||'');
+            const up = key.toUpperCase();
+            if (!up.startsWith('FILTER_')) return;
+            const isMulti = (up === 'FILTER_MULTICHAIN');
+            const k = isMulti ? 'multichain' : key.replace(/^FILTER_/i,'').toLowerCase();
+            const runVal = (val && typeof val==='object' && Object.prototype.hasOwnProperty.call(val,'run')) ? val.run : (getFromLocalStorage(key, {})||{}).run;
+            const r = String(runVal||'NO').toUpperCase() === 'YES';
+            window.RUN_STATES[k] = r;
+        } catch(_) {}
+    }
+    try { window.updateRunStateCache = window.updateRunStateCache || updateRunStateCache; } catch(_) {}
+    function initRunStateCache(){
+        try { updateRunStateCache('FILTER_MULTICHAIN'); } catch(_) {}
+        try { Object.keys(CONFIG_CHAINS||{}).forEach(k => updateRunStateCache(`FILTER_${String(k).toUpperCase()}`)); } catch(_) {}
+    }
+    try {
+        if (window.whenStorageReady && typeof window.whenStorageReady.then === 'function') {
+            window.whenStorageReady.then(initRunStateCache);
+        } else { initRunStateCache(); }
+    } catch(_) { initRunStateCache(); }
+
     const appStateInit = getAppState();
     applyRunUI(appStateInit.run === 'YES');
     // Re-apply once IndexedDB cache is fully warmed to avoid false negatives
@@ -1712,52 +1748,72 @@ $(document).ready(function() {
         }
     } catch(_) {}
 
-    // Cross-tab run state sync via BroadcastChannel
-    // REFACTORED: Cross-tab APP_STATE listener without try/catch
+    // Cross-tab run state sync via BroadcastChannel (per FILTER_* key)
     if (window.__MC_BC) {
         window.__MC_BC.addEventListener('message', function(ev){
             const msg = ev?.data;
-            if (!msg || msg.type !== 'kv') return;
-            if (String(msg.key).toUpperCase() !== 'APP_STATE') return;
-            const r = (msg.val && msg.val.run) ? String(msg.val.run).toUpperCase() : 'NO';
-            applyRunUI(r === 'YES');
-            if (r === 'NO') {
-                const running = (typeof isScanRunning !== 'undefined') ? !!isScanRunning : false;
-                if (running) {
-                    if (typeof stopScannerSoft === 'function') stopScannerSoft();
-                    location.reload();
-                }
+            if (!msg) return;
+            if (msg.type === 'kv') {
+                try {
+                    const keyStr = String(msg.key || '');
+                    const keyUpper = keyStr.toUpperCase();
+                    if (!keyUpper.startsWith('FILTER_')) return; // only react to FILTER_* changes
+
+                    // Update in-memory cache first
+                    try { updateRunStateCache(keyUpper, msg.val || {}); } catch(_) {}
+
+                    // Refresh toolbar indicators and running banner for ANY filter change
+                    try { if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner(); } catch(_) {}
+                    try { if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators(); } catch(_) {}
+
+                    // If this update is for the ACTIVE filter key, also apply run/theme locally
+                    const activeKey = (typeof getActiveFilterKey === 'function') ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+                    if (keyUpper === String(activeKey).toUpperCase()) {
+                        const hasRun = msg.val && Object.prototype.hasOwnProperty.call(msg.val, 'run');
+                        const hasDark = msg.val && Object.prototype.hasOwnProperty.call(msg.val, 'darkMode');
+                        if (hasRun) {
+                            const r = String(msg.val.run || 'NO').toUpperCase();
+                            applyRunUI(r === 'YES');
+                            if (r === 'NO') {
+                                const running = (typeof isScanRunning !== 'undefined') ? !!isScanRunning : false;
+                                if (running) {
+                                    if (typeof stopScannerSoft === 'function') stopScannerSoft();
+                                    location.reload();
+                                }
+                            }
+                        }
+                        if (hasDark && typeof applyThemeForMode === 'function') {
+                            applyThemeForMode();
+                        }
+                    }
+                } catch(_) {}
+                return;
+            }
+            if (msg.type === 'history' || msg.type === 'history_clear' || msg.type === 'history_delete') {
+                try { updateInfoFromHistory(); } catch(_) {}
             }
         });
     }
 
-    const isDark = !!appStateInit.darkMode;
-    if (isDark) {
-        $('body').addClass('dark-mode uk-dark').removeClass('uk-light');
-    } else {
-        $('body').removeClass('dark-mode uk-dark');
-    }
+    // Apply themed background + dark mode per state
+    if (typeof applyThemeForMode === 'function') applyThemeForMode();
 
     // $('#namachain').text("MULTICHECKER");
     $('#sinyal-container').css('color', 'black');
-    $('h4#daftar,h4#judulmanajemenkoin').css({ 'color': 'white', 'background': `linear-gradient(to right, #5c9513, #ffffff)`, 'padding-left': '7px', 'border-radius': '5px' });
-
-    updateDarkIcon(isDark);
 
     // --- Defer heavy initialization ---
-    // Apply themed background as early as possible so per-chain color appears before overlay hides // REFACTORED
-    if (typeof applyThemeForMode === 'function') applyThemeForMode();
+    // applyThemeForMode already executed above to paint early
     setTimeout(deferredInit, 0);
 
     // --- Report Database Status (IndexedDB) --- // REFACTORED
     async function reportDatabaseStatus(){
         const payload = await (window.exportIDB ? window.exportIDB() : Promise.resolve(null));
         if (!payload || !Array.isArray(payload.items)) {
-            if (window.toastr) toastr.warning('Database belum tersedia atau tidak dapat diakses.');
+            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Database belum tersedia atau tidak dapat diakses.');
             return;
         }
         const n = payload.items.length;
-        if (window.toastr) toastr.info(`TERHUBUNG DATABASE...`);
+        if (typeof toast !== 'undefined' && toast.info) toast.info(`TERHUBUNG DATABASE...`);
         else console.info('Database siap. Items:', n);
     }
     if (window.whenStorageReady && typeof window.whenStorageReady.then === 'function') {
@@ -1875,15 +1931,68 @@ $(document).ready(function() {
             const width = isActive ? 30 : 22;
             const icon = chain.ICON || '';
             const name = chain.Nama_Chain || chainKey.toUpperCase();
+            // Determine running state for this chain
+            let running = false;
+            try {
+                const f = getFromLocalStorage(`FILTER_${String(chainKey).toUpperCase()}`, {}) || {};
+                running = String(f.run || 'NO').toUpperCase() === 'YES';
+            } catch(_) {}
+            const ring = running ? `box-shadow: 0 0 0 2px ${chain.WARNA || '#5c9514'}; border-radius:50%;` : '';
             const linkHTML = `
-                <span class="chain-link icon" style="display:inline-block; ${style} margin-right:4px;">
+                <span class="chain-link icon" data-chain="${chainKey}" style="display:inline-block; ${style} margin-right:4px;">
                     <a href="${currentPage}?chain=${encodeURIComponent(chainKey)}" title="${name}">
-                        <img src="${icon}" alt="${name} icon" width="${width}">
+                        <img src="${icon}" alt="${name} icon" width="${width}" style="${ring}">
                     </a>
                 </span>`;
             $wrap.append(linkHTML);
         });
+        try { updateToolbarRunIndicators(); } catch(_) {}
     }
+
+    // Update toolbar indicators (multichain + per-chain) based on current FILTER_* run states
+    function updateToolbarRunIndicators(){
+        try {
+            // Multichain icon reflect multi run
+            const runMulti = !!(window.RUN_STATES && window.RUN_STATES.multichain);
+            const $mcImg = $('#multichain_scanner img');
+            if ($mcImg.length) {
+                $mcImg.css('filter', runMulti ? 'drop-shadow(0 0 6px #5c9514)' : '')
+                      .css('opacity', runMulti ? '1' : '');
+                // Add/remove run dot on multichain icon
+                const $mc = $('#multichain_scanner');
+                let $dot = $mc.find('span.run-dot');
+                if (runMulti) {
+                    if (!$dot.length) $mc.append('<span class="run-dot" style="background:#5c9514;"></span>');
+                    else $dot.show();
+                } else {
+                    if ($dot.length) $dot.remove();
+                }
+            }
+            // Per-chain icons
+            Object.keys(CONFIG_CHAINS || {}).forEach(chainKey => {
+                const cfg = CONFIG_CHAINS[chainKey] || {};
+                const running = !!(window.RUN_STATES && window.RUN_STATES[String(chainKey).toLowerCase()]);
+                const sel = `.chain-link[data-chain="${chainKey}"] img`;
+                const $img = $(sel);
+                const ring = running ? `0 0 0 2px ${cfg.WARNA || '#5c9514'}` : '';
+                $img.css('box-shadow', ring).css('border-radius', running ? '50%' : '');
+                // Add small dot indicator on the host span
+                const $host = $(`.chain-link[data-chain="${chainKey}"]`);
+                let $dot = $host.find('span.run-dot');
+                if (running) {
+                    const color = cfg.WARNA || '#5c9514';
+                    if (!$dot.length) {
+                        $host.append(`<span class="run-dot" style="background:${color};"></span>`);
+                    } else {
+                        $dot.css('background', color).show();
+                    }
+                } else {
+                    if ($dot.length) $dot.remove();
+                }
+            });
+        } catch(_) {}
+    }
+    try { window.updateToolbarRunIndicators = window.updateToolbarRunIndicators || updateToolbarRunIndicators; } catch(_) {}
 
     // Single-chain filter builders are removed (unified filter card is used)
     // function renderSingleChainFilters(chainKey) { ... }
@@ -2089,6 +2198,21 @@ function readDexSelectionFromForm() {
         setLastAction("UBAH KOIN");
     }
 
+async function updateInfoFromHistory() {
+    try {
+        if (typeof getHistoryLog === 'function') {
+            const list = await getHistoryLog();
+            const last = Array.isArray(list) && list.length ? list[list.length - 1] : null;
+            if (last && last.action && (last.time || last.timeISO)) {
+                const t = last.time || new Date(last.timeISO).toLocaleString('id-ID', { hour12: false });
+                $("#infoAPP").show().text(`${last.action} at ${t}`);
+                return;
+            }
+        }
+    } catch(_) {}
+    try { $("#infoAPP").empty(); } catch(_) {}
+}
+
 function setLastAction(action, statusOrMeta, maybeMeta) {
     const formattedTime = new Date().toLocaleString('id-ID', { hour12: false });
     // Build action label consistently with history (append [CHAIN] unless excluded)
@@ -2109,15 +2233,17 @@ function setLastAction(action, statusOrMeta, maybeMeta) {
         }
     } catch(_) {}
 
-    const lastAction = { time: formattedTime, action: displayAction };
-    try { saveToLocalStorage("HISTORY", lastAction); } catch(_) {}
-    try { $("#infoAPP").html(`${lastAction.action} at ${lastAction.time}`); } catch(_) {}
-    // Also append to HISTORY_LOG in IndexedDB with same label
+    // Update info label immediately
+    try { $("#infoAPP").html(`${displayAction} at ${formattedTime}`); } catch(_) {}
+
+    // Append to HISTORY_LOG in IndexedDB with same label (single source of truth)
     try {
         const status = (typeof statusOrMeta === 'string') ? statusOrMeta : 'success';
         const meta = (typeof statusOrMeta === 'object' && statusOrMeta) ? statusOrMeta : (maybeMeta || undefined);
         if (typeof addHistoryEntry === 'function') addHistoryEntry(displayAction, status, meta, { includeChain: false });
     } catch(_) {}
+    // Update info label from history log
+    try { updateInfoFromHistory(); } catch(_) {}
 }
 
 // getManagedChains is defined in utils.js (deduplicated)
@@ -2172,37 +2298,37 @@ $(document).on('click', '#histSelectAll', function(){ const on=this.checked; $('
 $(document).on('click', '#histDeleteSelected', async function(){
   try {
     const ids = $('#histTbody .histRowChk:checked').map(function(){ return $(this).closest('tr').data('id'); }).get();
-    if (!ids.length) { toastr.info('Pilih data riwayat terlebih dahulu.'); return; }
+    if (!ids.length) { if (typeof toast !== 'undefined' && toast.info) toast.info('Pilih data riwayat terlebih dahulu.'); return; }
     const res = await (window.deleteHistoryByIds ? window.deleteHistoryByIds(ids) : Promise.resolve({ ok:false }));
-    if (res.ok) { toastr.success(`Hapus ${res.removed||ids.length} entri riwayat.`); renderHistoryTable(); }
-    else { toastr.error('Gagal menghapus riwayat.'); }
-  } catch(e) { toastr.error('Error saat menghapus riwayat.'); }
+    if (res.ok) { if (typeof toast !== 'undefined' && toast.success) toast.success(`Hapus ${res.removed||ids.length} entri riwayat.`); renderHistoryTable(); }
+    else { if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal menghapus riwayat.'); }
+  } catch(e) { if (typeof toast !== 'undefined' && toast.error) toast.error('Error saat menghapus riwayat.'); }
 });
 $(document).on('click', '#histClearAll', async function(){
   try {
     if (!confirm('Bersihkan semua riwayat?')) return;
     const ok = await (window.clearHistoryLog ? window.clearHistoryLog() : Promise.resolve(false));
-    if (ok) { toastr.success('Riwayat dibersihkan.'); renderHistoryTable(); }
-    else { toastr.error('Gagal membersihkan riwayat.'); }
-  } catch(e) { toastr.error('Error saat membersihkan riwayat.'); }
+    if (ok) { if (typeof toast !== 'undefined' && toast.success) toast.success('Riwayat dibersihkan.'); renderHistoryTable(); }
+    else { if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal membersihkan riwayat.'); }
+  } catch(e) { if (typeof toast !== 'undefined' && toast.error) toast.error('Error saat membersihkan riwayat.'); }
 });
 // No export/save from History per request
     $(document).on('click', '#btnBackupDb', async function(){
         try {
             const payload = await (window.exportIDB ? window.exportIDB() : Promise.resolve(null));
-            if (!payload || !payload.items) { toastr.error('Gagal membuat backup.'); return; }
+            if (!payload || !payload.items) { if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal membuat backup.'); return; }
             const filename = `MULTICHECKER_BACKUP_${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
             const ok = window.downloadJSON ? window.downloadJSON(filename, payload) : false;
             if (ok) {
-                toastr.success(`Backup berhasil. ${payload.count||payload.items.length} item disalin.`);
+                if (typeof toast !== 'undefined' && toast.success) toast.success(`Backup berhasil. ${payload.count||payload.items.length} item disalin.`);
                 try { setLastAction('BACKUP DATABASE'); } catch(_) {}
                 try { $('#backupSummary').text(`Backup: ${payload.items.length} item pada ${new Date().toLocaleString('id-ID',{hour12:false})}`); } catch(_) {}
             } else {
-                toastr.error('Gagal mengunduh file backup.');
+                if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal mengunduh file backup.');
             }
         } catch(e) {
             console.error('Backup error:', e);
-            toastr.error('Terjadi kesalahan saat backup.');
+            if (typeof toast !== 'undefined' && toast.error) toast.error('Terjadi kesalahan saat backup.');
             try { setLastAction('BACKUP DATABASE', 'error', { error: String(e && e.message || e) }); } catch(_) {}
         }
     });
@@ -2217,29 +2343,29 @@ $(document).on('click', '#histClearAll', async function(){
                 const json = JSON.parse(text);
                 // Validasi dasar payload backup
                 if (!json || typeof json !== 'object' || json.schema !== 'kv-v1' || !Array.isArray(json.items)) {
-                    toastr.error('File backup tidak valid atau schema tidak dikenali.');
+                    if (typeof toast !== 'undefined' && toast.error) toast.error('File backup tidak valid atau schema tidak dikenali.');
                     return;
                 }
                 // Info jika DB/Store berbeda (tetap lanjut restore)
                 try {
                     if (json.db && String(json.db) !== 'MULTICHECKER_DB') {
-                        toastr.warning(`Nama database berbeda: ${json.db}`);
+                        if (typeof toast !== 'undefined' && toast.warning) toast.warning(`Nama database berbeda: ${json.db}`);
                     }
                     if (json.store && String(json.store) !== 'MULTICHECKER_KV') {
-                        toastr.warning(`Nama store berbeda: ${json.store}`);
+                        if (typeof toast !== 'undefined' && toast.warning) toast.warning(`Nama store berbeda: ${json.store}`);
                     }
                 } catch(_) {}
                 const res = await (window.restoreIDB ? window.restoreIDB(json) : Promise.resolve({ ok:0, fail:0 }));
                 try { setLastAction('RESTORE DATABASE'); } catch(_) {}
                 const msg = `Restore selesai. OK: ${res.ok}, Fail: ${res.fail}`;
-                try { toastr.success(`✅ ${msg}`); } catch(_) {}
+                try { if (typeof toast !== 'undefined' && toast.success) toast.success(`✅ ${msg}`); } catch(_) {}
                 try { $('#backupSummary').text(`Restore OK: ${res.ok}, Fail: ${res.fail}`); } catch(_) {}
                 // Tampilkan alert sukses dan reload halaman agar data hasil restore terpakai penuh
                 try { alert(`✅ ${msg}\nHalaman akan di-reload untuk menerapkan perubahan.`); } catch(_) {}
                 try { location.reload(); } catch(_) {}
             } catch(err){
                 console.error('Restore parse error:', err);
-                toastr.error('File tidak valid. Pastikan format JSON benar.');
+                if (typeof toast !== 'undefined' && toast.error) toast.error('File tidak valid. Pastikan format JSON benar.');
                 try { setLastAction('RESTORE DATABASE', 'error', { error: String(err && err.message || err) }); } catch(_) {}
             } finally {
                 try { ev.target.value = ''; } catch(_) {}

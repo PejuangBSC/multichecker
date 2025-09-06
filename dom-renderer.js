@@ -3,6 +3,105 @@
  * Also refreshes DEX signal cards when rendering main table.
  */
 function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
+    // refactor: pecah rendering row menjadi helper kecil agar lebih mudah dibaca/dirawat.
+    function buildOrderbookCell(side, data, idPrefix, warnaCex) {
+        const arrow = side === 'LEFT' ? `${(data.symbol_in||'').toUpperCase()} → ${(data.symbol_out||'').toUpperCase()}`
+                                      : `${(data.symbol_out||'').toUpperCase()} → ${(data.symbol_in||'').toUpperCase()}`;
+        const id = `${idPrefix}${side}_${data.cex}_${data.symbol_in}_${data.symbol_out}_${String(data.chain).toUpperCase()}`;
+        return `
+            <td class="td-orderbook" style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
+                <span id="${id}">
+                    <b>${arrow}<br>${data.cex}</b> 🔒
+                </span>
+            </td>`;
+    }
+
+    function buildDexSlots(direction, data, maxSlots, idPrefix) {
+        const isLeft = direction === 'LEFT';
+        let html = '';
+        for (let i = 0; i < maxSlots; i++) {
+            if (data.dexs && data.dexs[i]) {
+                const dexName = data.dexs[i].dex || '-';
+                const modal = isLeft ? (data.dexs[i].left ?? 0) : (data.dexs[i].right ?? 0);
+                const idCell = isLeft
+                    ? `${data.cex.toUpperCase()}_${dexName.toUpperCase()}_${data.symbol_in}_${data.symbol_out}_${String(data.chain).toUpperCase()}`
+                    : `${data.cex}_${dexName.toUpperCase()}_${data.symbol_out}_${data.symbol_in}_${String(data.chain).toUpperCase()}`;
+                html += `
+                    <td id="${idPrefix}${idCell}" style="text-align: center; vertical-align: middle;">
+                        <strong class="uk-align-center" style="display:inline-block; margin:0;">${dexName.toUpperCase()} [$${modal}]</strong></br>
+                        <span class="dex-status uk-text-muted" >🔒</span>
+                    </td>`;
+            } else {
+                html += '<td class="dex-slot-empty">-</td>';
+            }
+        }
+        return html;
+    }
+
+    function buildDetailCell(data, chainConfig, idPrefix, warnaChain) {
+        const urlScIn = chainConfig.URL_Chain ? `${chainConfig.URL_Chain}/token/${data.sc_in}` : '#';
+        const urlScOut = chainConfig.URL_Chain ? `${chainConfig.URL_Chain}/token/${data.sc_out}` : '#';
+        const urlsCEX = GeturlExchanger(data.cex, data.symbol_in, data.symbol_out) || {};
+        const tradeTokenUrl = safeUrl(urlsCEX.tradeToken, urlScIn);
+        const tradePairUrl  = safeUrl(urlsCEX.tradePair,  urlScOut);
+        const withdrawTokenUrl = safeUrl(urlsCEX.withdrawTokenUrl || urlsCEX.withdrawUrl, urlScIn);
+        const depositTokenUrl  = safeUrl(urlsCEX.depositTokenUrl  || urlsCEX.depositUrl,  urlScIn);
+        const withdrawPairUrl  = safeUrl(urlsCEX.withdrawPairUrl  || urlsCEX.withdrawUrl, urlScOut);
+        const depositPairUrl   = safeUrl(urlsCEX.depositPairUrl   || urlsCEX.depositUrl,  urlScOut);
+
+        const linkToken = createHoverLink(tradeTokenUrl, (data.symbol_in||'').toUpperCase());
+        const linkPair  = createHoverLink(tradePairUrl,  (data.symbol_out||'').toUpperCase());
+        const WD_TOKEN = linkifyStatus(data.withdrawToken, 'WD', withdrawTokenUrl);
+        const DP_TOKEN = linkifyStatus(data.depositToken,  'DP', depositTokenUrl);
+        const WD_PAIR  = linkifyStatus(data.withdrawPair,  'WD', withdrawPairUrl);
+        const DP_PAIR  = linkifyStatus(data.depositPair,   'DP', depositPairUrl);
+
+        const chainData = getChainData(data.chain);
+        const walletObj = chainData?.CEXCHAIN?.[data.cex] || {};
+        const chainCEX  = (walletObj?.chainCEX || '').toUpperCase();
+        const symbolIn  = (data.symbol_in||'').toUpperCase();
+        const symbolOut = (data.symbol_out||'').toUpperCase();
+
+        const linkStokToken = chainCEX ? `<b>${chainCEX}:</b> ${symbolIn}` : `${symbolIn}`;
+        const linkStokPair  = chainCEX ? `<b>${chainCEX}:</b> ${symbolOut}`: `${symbolOut}`;
+
+        const linkSCtoken = chainConfig.URL_Chain ? `<a href="${chainConfig.URL_Chain}/token/${data.sc_in}" target="_blank">SC_TOKEN</a>` : 'SC_TOKEN';
+        const linkSCpair  = chainConfig.URL_Chain ? `<a href="${chainConfig.URL_Chain}/token/${data.sc_out}" target="_blank">SC_PAIR</a>` : 'SC_PAIR';
+
+        const linkUNIDEX = generateDexLink('unidex', chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
+        const linkOKDEX  = generateDexLink('okx',    chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
+        const linkDEFIL  = generateDexLink('defillama', chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
+        const linkLiFi   = generateDexLink('lifi',   chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
+
+        return `
+            <td style="vertical-align: middle;">
+                <span class="uk-text-small uk-text-muted">
+                    <span id="${idPrefix}EditMulti-${data.id}"
+                          data-id="${data.id}"
+                          data-chain="${String(data.chain).toLowerCase()}"
+                          data-cex="${String(data.cex).toUpperCase()}"
+                          data-symbol-in="${String(data.symbol_in).toUpperCase()}"
+                          data-symbol-out="${String(data.symbol_out).toUpperCase()}"
+                          title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span></span>
+                <span class="detail-line"><span style="color: ${warnaChain}; font-weight:bolder;">${linkToken} </span>
+                ⇄ <span style="color: ${warnaChain}; font-weight:bolder;">${linkPair} </span>
+                <span id="${idPrefix}DelMulti-${data.id}"
+                      data-id="${data.id}"
+                      data-chain="${String(data.chain).toLowerCase()}"
+                      data-cex="${String(data.cex).toUpperCase()}"
+                      data-symbol-in="${String(data.symbol_in).toUpperCase()}"
+                      data-symbol-out="${String(data.symbol_out).toUpperCase()}"
+                      title="HAPUS DATA KOIN"
+                      uk-icon="icon: trash; ratio: 0.6"
+                      class="uk-text-danger uk-text-bolder delete-token-button"
+                      style="cursor:pointer;"></span></span>
+               
+                <span class="detail-line uk-text-bolder">${WD_TOKEN}~ ${DP_TOKEN} | ${WD_PAIR}~ ${DP_PAIR}</span>
+                <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_in||'').toUpperCase()}</span> ${linkSCtoken} : ${linkStokToken}</span>
+                <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_out||'').toUpperCase()}</span> ${linkSCpair} : ${linkStokPair}</span>
+                <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}</span>
+            </td>`;
+    }
     if (tableBodyId === 'dataTableBody') {
         RenderCardSignal();
     }
@@ -54,29 +153,11 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
 
         const idPrefix = tableBodyId + '_';
 
-        // Orderbook Left (Token -> Pair)
-        rowHtml += `
-            <td class="td-orderbook" style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
-                <span id="${idPrefix}LEFT_${data.cex}_${data.symbol_in}_${data.symbol_out}_${data.chain.toUpperCase()}">
-                    <b>${(data.symbol_in||'').toUpperCase()} → ${(data.symbol_out||'').toUpperCase()}<br>${data.cex}</b> 🔒
-                </span>
-            </td>`;
+        // refactor: gunakan helper kecil untuk orderbook kiri
+        rowHtml += buildOrderbookCell('LEFT', data, idPrefix, warnaCex);
 
-        // CEX -> DEX (Left)
-        for (let i = 0; i < maxSlots; i++) {
-            if (data.dexs && data.dexs[i]) {
-                const dexName = data.dexs[i].dex || '-';
-                const modalLeft = data.dexs[i].left ?? 0;
-                const idCELL = `${data.cex.toUpperCase()}_${dexName.toUpperCase()}_${data.symbol_in}_${data.symbol_out}_${(data.chain).toUpperCase()}`;
-                rowHtml += `
-                    <td id="${idPrefix}${idCELL}" style="text-align: center; vertical-align: middle;">
-                        <strong class="uk-align-center" style="display:inline-block; margin:0;">${dexName.toUpperCase()} [$${modalLeft}]</strong></br>
-                        <span class="dex-status uk-text-muted" >🔒</span>
-                    </td>`;
-            } else {
-                rowHtml += '<td class="dex-slot-empty">-</td>';
-            }
-        }
+        // refactor: render slot DEX kiri via helper
+        rowHtml += buildDexSlots('LEFT', data, maxSlots, idPrefix);
 
         // Detail Info
         const urlScIn = chainConfig.URL_Chain ? `${chainConfig.URL_Chain}/token/${data.sc_in}` : '#';
@@ -149,29 +230,11 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
                 <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}</span>
             </td>`;
 
-        // DEX -> CEX (Right)
-        for (let i = 0; i < maxSlots; i++) {
-            if (data.dexs && data.dexs[i]) {
-                const dexName = data.dexs[i].dex || '-';
-                const modalRight = data.dexs[i].right ?? 0;
-                const idCELL = `${data.cex}_${dexName.toUpperCase()}_${data.symbol_out}_${data.symbol_in}_${data.chain.toUpperCase()}`;
-                rowHtml += `
-                    <td id="${idPrefix}${idCELL}" style="text-align: center; vertical-align: middle;">
-                        <strong class="uk-align-center" style="display:inline-block; margin:0; padding:0;">${dexName.toUpperCase()} [$${modalRight}]</strong></br>
-                        <span class="dex-status uk-text-muted" >🔒</span>
-                    </td>`;
-            } else {
-                rowHtml += '<td class="dex-slot-empty">-</td>';
-            }
-        }
+        // refactor: render slot DEX kanan via helper
+        rowHtml += buildDexSlots('RIGHT', data, maxSlots, idPrefix);
 
-        // Orderbook Right (Pair -> Token)
-        rowHtml += `
-            <td class="td-orderbook" style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
-                <span id="${idPrefix}RIGHT_${data.cex}_${data.symbol_in}_${data.symbol_out}_${data.chain.toUpperCase()}">
-                   <b>${(data.symbol_out||'').toUpperCase()} → ${(data.symbol_in||'').toUpperCase()}<br>${data.cex}</b> 🔒
-                </span>
-            </td>`;
+        // refactor: gunakan helper kecil untuk orderbook kanan
+        rowHtml += buildOrderbookCell('RIGHT', data, idPrefix, warnaCex);
 
         // End row
         rowHtml += '</tr>';
@@ -504,29 +567,7 @@ function updateTableVolCEX(finalResult, cex, tableBodyId = 'dataTableBody') {
 }
 
 // Helper: convert HEX or named color to RGBA with given alpha; fall back to greenish
-function hexToRgba(hex, alpha) {
-  try {
-    if (!hex) return `rgba(148, 250, 149, ${alpha})`;
-    const h = String(hex).trim();
-    // If already rgba/hsla or rgb, just replace alpha when possible
-    if (h.startsWith('rgba')) {
-      return h.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, `rgba($1,$2,$3,${alpha})`);
-    }
-    if (h.startsWith('rgb')) {
-      const m = h.match(/rgb\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\)/);
-      if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
-    }
-    let c = h.replace('#','');
-    if (c.length === 3) c = c.split('').map(x => x + x).join('');
-    const r = parseInt(c.slice(0,2), 16);
-    const g = parseInt(c.slice(2,4), 16);
-    const b = parseInt(c.slice(4,6), 16);
-    if ([r,g,b].some(Number.isNaN)) return `rgba(148, 250, 149, ${alpha})`;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  } catch(_) {
-    return `rgba(148, 250, 149, ${alpha})`;
-  }
-}
+// Use global utils.hexToRgba to avoid duplication
 
 // Helper: resolve chain color hex from config or chainData
 function getChainColorHexByName(chainName) { // REFACTORED
@@ -539,12 +580,12 @@ function getChainColorHexByName(chainName) { // REFACTORED
 
 // Helper: detect dark mode (basic). Overrideable if app provides getTheme/getDarkMode
 function isDarkMode() { // REFACTORED
+  // refactor: delegate to shared helper when available, with sensible fallbacks
+  try { if (typeof window !== 'undefined' && window.isDarkMode) return !!window.isDarkMode(); } catch(_) {}
+  try { if (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode')) return true; } catch(_) {}
   if (typeof getTheme === 'function') return String(getTheme()).toLowerCase().includes('dark');
   if (typeof getDarkMode === 'function') return !!getDarkMode();
-  // CSS class or media query fallback
-  if (typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  }
+  if (typeof window !== 'undefined' && window.matchMedia) return window.matchMedia('(prefers-color-scheme: dark)').matches;
   return false;
 }
 
@@ -685,8 +726,11 @@ function DisplayPNL(data) {
 
   const shouldHighlight = isHighlight || (pnl > feeAll);
   const chainColorHexHL = getChainColorHexByName(nameChain);
-  // In dark mode: keep a lighter green; else use chain color alpha
-  const hlBg = isDarkMode() ? hexToRgba('#7fffa0', 0.25) : hexToRgba(chainColorHexHL, 0.24);
+  // refactor: dark-mode highlight pakai putih agar lebih kontras
+  const hlBg = isDarkMode() ? '#d8ff41' : hexToRgba(chainColorHexHL, 0.24);
+  // Tambahkan kelas agar CSS bisa override tambahan saat dark-mode
+  if (shouldHighlight) { try { $mainCell.addClass('dex-cell-highlight'); } catch(_) {}
+  } else { try { $mainCell.removeClass('dex-cell-highlight'); } catch(_) {} }
   $mainCell.attr('style', shouldHighlight
     ? `border:1px solid #222;background-color:${hlBg}!important;font-weight:bolder!important;color:#000!important;vertical-align:middle!important;text-align:center!important;`
     : 'text-align:center;vertical-align:middle;');
@@ -738,7 +782,8 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
   const warnaCEX = getWarnaCEX(cex);
   const warnaTeksArah = (trx === "TokentoPair") ? "uk-text-success" : "uk-text-danger";
   const baseId = `${cex.toUpperCase()}_${DEXPLUS.toUpperCase()}_${NameToken}_${NamePair}_${String(nameChain).toUpperCase()}`;
-  const signalBg = isDarkMode() ? hexToRgba('#7fffa0', 0.25) : hexToRgba(warnaChain, 0.24);
+  // refactor: dark-mode signal chip pakai putih (bukan warna chain)
+  const signalBg = isDarkMode() ? '#d8ff41' : hexToRgba(warnaChain, 0.24);
   const highlightStyle = (Number(PNL) > filterPNLValue)
     ? `background-color:${signalBg}; font-weight:bolder;`
     : "";
@@ -751,7 +796,7 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
   const sLink = `
     <div class="signal-item uk-flex uk-flex-middle uk-flex-nowrap uk-text-small uk-padding-remove-vertical" >
       <a href="#${idPrefix}${baseId}" class="uk-link-reset" style="text-decoration:none; font-size:12px; margin-top:2px; margin-left:4px;">
-        <span style="color:${warnaCEX}; ${highlightStyle}; display:inline-block;">
+        <span class="${Number(PNL) > filterPNLValue ? 'signal-highlight' : ''}" style="color:${warnaCEX}; ${highlightStyle}; display:inline-block;">
           🔸 ${String(cex).slice(0,3).toUpperCase()}X
           <span class="uk-text-dark">:${modal}</span>
           <span class="${warnaTeksArah}"> ${NameToken}->${NamePair}</span>${chainPart}:
@@ -809,7 +854,8 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     const linkDEX = generateDexLink(dextype,nameChain,codeChain,Name_in,sc_input, Name_out, sc_output);
 
     if (!linkDEX) {
-        try { if (typeof notify === 'function') notify('error', `DEX Type "${dextype}" tidak valid atau belum didukung.`); else if (typeof toastr !== 'undefined') toastr.error(`DEX Type "${dextype}" tidak valid atau belum didukung.`); } catch(_) {}
+        // refactor: use notify directly; shim ensures availability
+        try { if (typeof notify === 'function') notify('error', `DEX Type "${dextype}" tidak valid atau belum didukung.`); } catch(_) {}
         try { console.error(`DEX Type "${dextype}" tidak valid atau belum didukung.`); } catch(_) {}
         return { type: 'error', id: idPrefix + baseId, message: `DEX Type "${dextype}" tidak valid.` };
     }

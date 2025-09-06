@@ -10,12 +10,29 @@
             return new Promise((resolve, reject)=>{
                 if (db) return resolve(db);
                 try{
-                    const req = indexedDB.open(DB_NAME, 1);
+                    // Open without explicit version to avoid VersionError when DB was upgraded elsewhere
+                    const req = indexedDB.open(DB_NAME);
                     req.onupgradeneeded = (ev)=>{
                         const d = ev.target.result;
                         if (!d.objectStoreNames.contains(STORE_KV)) d.createObjectStore(STORE_KV, { keyPath:'key' });
                     };
-                    req.onsuccess = (ev)=>{ db = ev.target.result; resolve(db); };
+                    req.onsuccess = (ev)=>{
+                        const d = ev.target.result;
+                        // Ensure required store exists; if not, perform lightweight upgrade to add it
+                        if (!d.objectStoreNames.contains(STORE_KV)){
+                            const nextVersion = (d.version || 1) + 1;
+                            d.close();
+                            const up = indexedDB.open(DB_NAME, nextVersion);
+                            up.onupgradeneeded = (e2)=>{
+                                const udb = e2.target.result;
+                                if (!udb.objectStoreNames.contains(STORE_KV)) udb.createObjectStore(STORE_KV, { keyPath:'key' });
+                            };
+                            up.onsuccess = (e2)=>{ db = e2.target.result; resolve(db); };
+                            up.onerror = (e2)=>{ reject(e2.target.error || new Error('IDB upgrade failed')); };
+                        } else {
+                            db = d; resolve(db);
+                        }
+                    };
                     req.onerror = (ev)=>{ reject(ev.target.error || new Error('IDB open failed')); };
                 } catch(e){ reject(e); }
             });
@@ -426,8 +443,9 @@
                     } else if (typeof notifyAfterReload === 'function') {
                         notify('success', `✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`, null, { persist: true });
                         location.reload();
-                    } else if (typeof toastr !== 'undefined') {
-                        toastr.success(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
+                    } else if (typeof toast !== 'undefined' && toast.success) {
+                        // refactor: route via toast helper
+                        toast.success(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
                         location.reload();
                     } else {
                         alert(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
@@ -438,7 +456,7 @@
             } catch (error) {
                 console.error("Error parsing CSV:", error);
                 try { setLastAction('IMPORT DATA KOIN', 'error', { error: String(error && error.message || error) }); } catch(_) {}
-                toastr.error("Format file CSV tidak valid!");
+                if (typeof toast !== 'undefined' && toast.error) toast.error("Format file CSV tidak valid!"); else alert("Format file CSV tidak valid!");
             }
         };
         reader.readAsText(file);

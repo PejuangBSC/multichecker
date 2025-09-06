@@ -248,42 +248,52 @@ const CONFIG_CHAINS = {
     }       
 };
 
-const CONFIG_DEXS = {
-    kyberswap: {
-        STRATEGY: 'kyberswap',
-        builder: ({ chainName, tokenAddress, pairAddress }) => `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
-        allowFallback: false,
-    },
-    '0x': {
-        STRATEGY: '0x',
-        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => `https://matcha.xyz/tokens/${chainName}/${tokenAddress.toLowerCase()}?buyChain=${chainCode}&buyAddress=${pairAddress.toLowerCase()}`,
-        allowFallback: false,
-    },
-    odos: {
-        STRATEGY: 'odos',
-        builder: () => `https://app.odos.xyz`,
-        allowFallback: true,
-    },
-    okx: {
-        STRATEGY: 'okx',
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
-        allowFallback: false,
-    },
-    '1inch': {
-        STRATEGY: '1inch',
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
-        //allowFallback: true,
-    },
-    lifi: {
-        STRATEGY: 'lifi',
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://jumper.exchange/?fromChain=${chainCode}&fromToken=${tokenAddress}&toChain=${chainCode}&toToken=${pairAddress}`,
-       // allowFallback: true,
-    },
-};
+// CONFIG_DEXS moved to dex-config.js to avoid duplication and keep this file data-centric
      
 // Expose globals for runtime consumers (registry/services)
 window.CONFIG_CEX = window.CONFIG_CEX || CONFIG_CEX;
 window.CONFIG_CHAINS = window.CONFIG_CHAINS || CONFIG_CHAINS;
+
+// Optional proxy settings for DEX/network calls
+const CONFIG_PROXY = {
+    PREFIX: 'https://proxykanan.awokawok.workers.dev/?'
+};
+try { if (typeof window !== 'undefined') { window.CONFIG_PROXY = window.CONFIG_PROXY || CONFIG_PROXY; } } catch(_){}
+
+// DEX builder config (moved from dex-config.js)
+const CONFIG_DEXS = {
+    kyberswap: {
+        proxy: true,
+        builder: ({ chainName, tokenAddress, pairAddress }) => `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
+        allowFallback: true,
+    },
+    '0x': {
+        proxy: false,
+        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => `https://matcha.xyz/tokens/${chainName}/${String(tokenAddress||'').toLowerCase()}?buyChain=${chainCode}&buyAddress=${String(pairAddress||'').toLowerCase()}`,
+        allowFallback: true,
+    },
+    odos: {
+        proxy: true,
+        builder: () => `https://app.odos.xyz`,
+        allowFallback: true,
+    },
+    okx: {
+        proxy: true,
+        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
+        allowFallback: true,
+    },
+    '1inch': {
+        proxy: true,
+        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
+        // allowFallback intentionally disabled for 1inch
+    },
+    lifi: {
+        proxy: true,
+        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://jumper.exchange/?fromChain=${chainCode}&fromToken=${tokenAddress}&toChain=${chainCode}&toToken=${pairAddress}`,
+        // allowFallback intentionally disabled for lifi direct
+    },
+};
+try { if (typeof window !== 'undefined') { window.CONFIG_DEXS = window.CONFIG_DEXS || CONFIG_DEXS; } } catch(_){}
 
 // Centralized chain synonyms mapping used to normalize CEX network labels
 const CHAIN_SYNONYMS = {

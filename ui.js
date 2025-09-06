@@ -77,7 +77,7 @@ function applyControlsFor(state) {
         $('#infoAPP').html('⚠️ Lengkapi <b>SETTING</b> terlebih dahulu. Form pengaturan dibuka otomatis.').show();
         // Disable all inputs globally then re-enable only the settings form controls
         try {
-            $('input, select, textarea, button').prop('disabled', true);
+            $('input, select, textarea, button').not('#btn-scroll-top').prop('disabled', true);
             $('#form-setting-app').find('input, select, textarea, button').prop('disabled', false);
         } catch(_) {}
 
@@ -206,7 +206,7 @@ function RenderCardSignal() {
 
     // BODY lebih ramping (tipis atas-bawah + sempit kiri-kanan)
     const cardBody = document.createElement('div');
-    cardBody.className = 'uk-card-body uk-padding-small uk-padding-remove-vertical';
+    cardBody.className = 'uk-card-body uk-padding-small uk-padding-remove-vertical uk-card-hover';
     cardBody.style.paddingLeft = '6px';
     cardBody.style.paddingRight = '6px';
     cardBody.id = bodyId;
@@ -249,7 +249,7 @@ function RenderCardSignal() {
               </div>
             </div>
           </div>
-          <div class="uk-card-body uk-padding-small uk-padding-remove-vertical" style="padding-left:6px; padding-right:6px;">
+          <div class="uk-card-body uk-padding-small uk-padding-remove-vertical uk-card-hover" style="padding-left:6px; padding-right:6px;">
             <div class="uk-text-center uk-text-bold" style="color:#e53935; font-size:13px;">MASIH BELUM ADA INFO SELISIH HARGA</div>
           </div>
         </div>`;
@@ -262,7 +262,8 @@ function RenderCardSignal() {
 // Expose updater to switch theme for signal cards when dark mode toggles
 window.updateSignalTheme = function() {
     try {
-        const isDark = document.body.classList.contains('dark-mode');
+        // refactor: use shared dark-mode helper
+        const isDark = (window.isDarkMode && window.isDarkMode()) || (document.body && document.body.classList.contains('dark-mode'));
         let chainColor = '#5c9514';
         const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
         if (m.type === 'single') {
@@ -274,18 +275,18 @@ window.updateSignalTheme = function() {
         const cards = container.querySelectorAll('.uk-card');
         cards.forEach(card => {
             // Body warna: putih (light), abu-abu gelap (dark)
-            card.style.background = isDark ? '#e8e5e5ff' : '#ffffffff';
-            card.style.color = isDark ? '#ffffff' : '#000000';
+            card.style.background = isDark ? '#424743ff' : '#ffffffff';
+            card.style.color = isDark ? '#d8ff41' : '#000000';
             card.style.borderColor = chainColor;
             const header = card.querySelector('.uk-card-header');
             if (header) {
                 // Header warna: chainColor (light), hitam (dark)
                 header.style.backgroundColor = isDark ? '#000000' : chainColor;
-                header.style.color = '#ffffff';
+                header.style.color = '#d8ff41';
                 header.style.borderBottom = isDark ? '1px solid #000000' : `1px solid ${chainColor}`;
             }
             const span = card.querySelector('[id^="sinyal"]');
-            if (span) span.style.color = isDark ? '#ffffff' : '#000000';
+            if (span) span.style.color = isDark ? '#d8ff41' : '#000000';
         });
     } catch(_) {}
 };
@@ -344,6 +345,20 @@ window.hideEmptySignalCards = function() {
   } catch(_) {}
 };
 
+/**
+ * Clear all rendered signal contents and hide empty cards.
+ * Use this when filters change so previous scan results are removed.
+ */
+window.clearSignalCards = function() {
+  try {
+    const container = document.getElementById('sinyal-container');
+    if (!container) return;
+    const spans = container.querySelectorAll('[id^="sinyal"]');
+    spans.forEach(sp => { try { sp.innerHTML = ''; } catch(_){} });
+    if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards();
+  } catch(_) {}
+};
+
 /** Open and populate the 'Edit Koin' modal by token id. */
 function openEditModalById(id) {
     const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
@@ -351,7 +366,8 @@ function openEditModalById(id) {
                                          : getFromLocalStorage('TOKEN_MULTICHAIN', []);
     const token = (Array.isArray(tokens) ? tokens : []).find(t => String(t.id) === String(id));
     if (!token) {
-        toastr.error('Data token tidak ditemukan');
+        // refactor: use toast helper
+        if (typeof toast !== 'undefined' && toast.error) toast.error('Data token tidak ditemukan');
         return;
     }
 
@@ -497,17 +513,18 @@ function buildDexCheckboxForKoin(token = {}) {
     container.off('change.max4').on('change.max4', '.dex-edit-checkbox', function(){
         if (container.find('.dex-edit-checkbox:checked').length > 4) {
             this.checked = false;
-            toastr.warning('Maksimal 4 DEX dipilih');
+            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Maksimal 4 DEX dipilih');
         }
     });
 }
 
 /** Disable all form inputs globally. */
 function form_off() {
-    $('input, select, textarea, button').prop('disabled', true);
+    $('input, select, textarea, button').not('#btn-scroll-top').prop('disabled', true);
     // Whitelist critical controls to remain interactive during scanning
     try {
-        $('#stopSCAN, #reload, #darkModeToggle, #autoScrollCheckbox').prop('disabled', false);
+        // refactor: dark mode toggle juga ikut nonaktif saat scan
+        $('#stopSCAN, #reload, #autoScrollCheckbox').prop('disabled', false);
     } catch(_) {}
 }
 
