@@ -1907,16 +1907,70 @@ $(document).ready(function() {
             return;
         }
 
+        // Debug logging: show tokens that already exist in DB and any internal DB duplicates
+        try {
+            // Remote vs DB intersection (for current filters)
+            const dupRemote = [];
+            (filtered || []).forEach((token, idx) => {
+                const cexUp = String(token.cex || '').toUpperCase();
+                const symIn = String(token.symbol_in || '').toUpperCase();
+                const symOut = String(token.symbol_out || '').toUpperCase();
+                const saved = (Array.isArray(savedTokens) ? savedTokens : []).find(s => {
+                    const inMatch  = String(s.symbol_in || '').toUpperCase() === symIn;
+                    const outMatch = String(s.symbol_out || '').toUpperCase() === symOut;
+                    const cexList  = Array.isArray(s.selectedCexs) ? s.selectedCexs.map(x => String(x).toUpperCase()) : [];
+                    const cexTop   = String(s.cex || '').toUpperCase();
+                    const cexMatch = (cexList.length ? cexList.includes(cexUp) : (cexTop === cexUp));
+                    return inMatch && outMatch && cexMatch;
+                });
+                if (saved) dupRemote.push({ idx: (token._idx ?? idx), cex: cexUp, symbol_in: symIn, symbol_out: symOut, savedId: saved.id || '-' });
+            });
+            console.groupCollapsed(`SYNC DUPLICATES • in DB (filtered): ${dupRemote.length}`);
+            if (dupRemote.length) console.table(dupRemote); else console.log('None');
+            console.groupEnd();
+
+            // Internal DB duplicates (per-chain), expanded per selected CEX
+            const keyCounts = {};
+            (Array.isArray(savedTokens) ? savedTokens : []).forEach(s => {
+                const symIn = String(s.symbol_in || '').toUpperCase();
+                const symOut = String(s.symbol_out || '').toUpperCase();
+                const cexes = (Array.isArray(s.selectedCexs) && s.selectedCexs.length ? s.selectedCexs : [s.cex])
+                    .filter(Boolean)
+                    .map(x => String(x).toUpperCase());
+                cexes.forEach(cx => {
+                    const k = `${cx}__${symIn}__${symOut}`;
+                    keyCounts[k] = (keyCounts[k] || 0) + 1;
+                });
+            });
+            const dbDup = Object.entries(keyCounts)
+              .filter(([, cnt]) => cnt > 1)
+              .map(([k, cnt]) => { const [cx, si, so] = k.split('__'); return { cex: cx, symbol_in: si, symbol_out: so, count: cnt }; });
+            console.groupCollapsed(`DB DUPLICATES • per-chain: ${dbDup.length}`);
+            if (dbDup.length) console.table(dbDup); else console.log('None');
+            console.groupEnd();
+        } catch(e) { console.warn('SYNC duplicate logging failed', e); }
+
         filtered.forEach((token, index) => {
             const cexUp = String(token.cex || '').toUpperCase();
             const symIn = String(token.symbol_in || '').toUpperCase();
             const symOut = String(token.symbol_out || '').toUpperCase();
-            const saved = savedTokens.find(s => String(s.cex).toUpperCase() === cexUp && s.symbol_in === symIn && s.symbol_out === symOut);
+            // Cek apakah koin sudah ada di database (per-chain)
+            const saved = (Array.isArray(savedTokens) ? savedTokens : []).find(s => {
+                const inMatch  = String(s.symbol_in || '').toUpperCase() === symIn;
+                const outMatch = String(s.symbol_out || '').toUpperCase() === symOut;
+                const cexList  = Array.isArray(s.selectedCexs) ? s.selectedCexs.map(x => String(x).toUpperCase()) : [];
+                const cexTop   = String(s.cex || '').toUpperCase(); // fallback if legacy structure exists
+                const cexMatch = (cexList.length ? cexList.includes(cexUp) : (cexTop === cexUp));
+                return inMatch && outMatch && cexMatch;
+            });
             const isChecked = !!saved;
+            const statusBadge = saved
+              ? ' <span class="uk-label uk-label-success" style="font-size:10px;" title="Koin sudah tersimpan di database">[ SUDAH DIPILIH ]</span>'
+              : '';
             const row = `
                 <tr>
                     <td><input type="checkbox" class="uk-checkbox sync-token-checkbox" data-index="${token._idx ?? index}" ${isChecked ? 'checked' : ''}></td>
-                    <td>${symIn}</td>
+                    <td>${symIn}${statusBadge}</td>
                     <td>${symOut}${pairDefs[symOut] ? '' : ' <span class="uk-text-danger uk-text-bold">[NON]</span>'}</td>
                     <td>${cexUp}</td>
                 </tr>`;
