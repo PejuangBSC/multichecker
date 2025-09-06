@@ -41,18 +41,88 @@ function setAppState(patch) {
     return next;
 }
 
-// Floating scroll-to-top button for monitoring table
-document.addEventListener('DOMContentLoaded', function(){
-    try {
-        const btn = document.getElementById('btn-scroll-top');
-        if (!btn) return;
-        btn.addEventListener('click', function(){
-            const container = document.getElementById('monitoring-scroll');
-            if (container) container.scrollTo({ top: 0, behavior: 'smooth' });
-            else window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-    } catch(_) {}
-});
+// Floating scroll-to-top button for monitoring table (robust across browsers)
+(function initScrollTopButton(){
+    function bindScrollTop() {
+        try {
+            const btn = document.getElementById('btn-scroll-top');
+            if (!btn) return;
+            // Ensure the button is enabled and avoid duplicate bindings
+            try { btn.disabled = false; btn.style.pointerEvents = ''; btn.style.opacity = ''; } catch(_){}
+            if (btn.dataset.bound === '1') return;
+            btn.dataset.bound = '1';
+
+            function isVisible(el){
+                if (!el) return false;
+                const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+                const displayOK = !style || style.display !== 'none';
+                const visibleOK = !style || style.visibility !== 'hidden' && style.opacity !== '0';
+                const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { width:1, height:1 };
+                const sizeOK = (rect.width > 0 && rect.height > 0);
+                return displayOK && visibleOK && sizeOK;
+            }
+
+            function findScrollableContainer(){
+                // Priority 1: Monitoring (multi-chain)
+                const mon = document.getElementById('monitoring-scroll');
+                if (mon && isVisible(mon) && mon.scrollHeight > mon.clientHeight) return mon;
+
+                // Priority 2: Single-chain view overflow container
+                const scView = document.getElementById('single-chain-view');
+                if (scView && isVisible(scView)) {
+                    // Try explicit selector first
+                    let nodes = scView.querySelectorAll('.uk-overflow-auto, [style*="overflow"]');
+                    for (let i = 0; i < nodes.length; i++) {
+                        const n = nodes[i];
+                        const cs = window.getComputedStyle ? window.getComputedStyle(n) : null;
+                        const overflowY = cs ? cs.overflowY : '';
+                        const scrollable = (overflowY === 'auto' || overflowY === 'scroll' || n.style.overflow === 'auto' || n.style.overflow === 'scroll');
+                        if (isVisible(n) && (scrollable || n.scrollHeight > n.clientHeight)) return n;
+                    }
+                }
+                return null;
+            }
+
+            btn.addEventListener('click', function(){
+                try {
+                    const container = findScrollableContainer();
+                    const useContainer = !!container;
+
+                    if (useContainer) {
+                        if (typeof $ === 'function') {
+                            $(container).stop(true).animate({ scrollTop: 0 }, 250);
+                        } else if (typeof container.scrollTo === 'function') {
+                            container.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+                        } else {
+                            container.scrollTop = 0;
+                        }
+                    } else {
+                        if (typeof $ === 'function') {
+                            $('html, body').stop(true).animate({ scrollTop: 0 }, 250);
+                        } else if (typeof window.scrollTo === 'function') {
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            try { document.documentElement.scrollTop = 0; } catch(_){}
+                            try { document.body.scrollTop = 0; } catch(_){}
+                        } else {
+                            try { document.documentElement.scrollTop = 0; } catch(_){}
+                            try { document.body.scrollTop = 0; } catch(_){}
+                        }
+                    }
+                } catch(_) {}
+            });
+        } catch(_) {}
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindScrollTop);
+        window.addEventListener('load', bindScrollTop);
+    } else {
+        // DOM is already ready; bind immediately
+        bindScrollTop();
+        // Also attach as a fallback in case of late reflows
+        setTimeout(bindScrollTop, 0);
+    }
+})();
 
 // Storage helpers moved to utils.js for modular use across app.
 
@@ -301,8 +371,8 @@ function bootApp() {
         if ($('#form-setting-app').length && $('#form-setting-app')[0] && typeof $('#form-setting-app')[0].scrollIntoView === 'function') {
             $('#form-setting-app')[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-        // Disable everything except settings form controls // REFACTORED
-        $('input, select, textarea, button').prop('disabled', true);
+        // Disable everything except settings form controls and scroll-to-top button // REFACTORED
+        $('input, select, textarea, button').not('#btn-scroll-top').prop('disabled', true);
         $('#form-setting-app').find('input, select, textarea, button').prop('disabled', false);
         // On first run, prevent closing the form accidentally
         $('#btn-cancel-setting').prop('disabled', true);
