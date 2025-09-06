@@ -45,8 +45,8 @@ const CONFIG_CEX = {
         LINKS: {
             tradeToken: ({ token }) => `https://www.kucoin.com/trade/${String(token||'').toUpperCase()}-USDT`,
             tradePair:  ({ pair })  => `https://www.kucoin.com/trade/${String(pair||'').toUpperCase()}-USDT`,
-            withdraw:   ({ token }) => `https://www.kucoin.com/assets/withdraw?currency=${String(token||'').toUpperCase()}`,
-            deposit:    ({ token }) => `https://www.kucoin.com/assets/deposit?currency=${String(token||'').toUpperCase()}`
+            withdraw:   ({ token }) => `https://www.kucoin.com/assets/withdraw/${String(token||'').toUpperCase()}?isDefault=true`,
+            deposit:    ({ token }) => `https://www.kucoin.com/assets/coin/${String(token||'').toUpperCase()}`
         },
         ORDERBOOK: {
             // KuCoin returns { data: { bids:[[price, size]], asks:[[price, size]] } }
