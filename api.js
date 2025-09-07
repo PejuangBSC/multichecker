@@ -149,7 +149,7 @@ function sendTelegramHTML(message) {
 }
 
 function sendStatusTELE(user, status) {
-    const message = `<b>#MULTISCHECKER</b>\n<b>USER:</b> ${user ? user.toUpperCase() : '-'}[<b>${status ? status.toUpperCase() : '-'}]</b>`;
+    const message = `<b>#MULTICHECKER</b>\n<b>USER:</b> ${user ? user.toUpperCase() : '-'}[<b>${status ? status.toUpperCase() : '-'}]</b>`;
     sendTelegramHTML(message);
 }
 
@@ -196,7 +196,7 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
     } catch(_) {}
     const f = (v) => (v===true ? '✅' : (v===false ? '❌' : '❓'));
 
-    const message = `<b>#MULTISCHECKER #${chainConfig.Nama_Chain.toUpperCase()}</b>\n`+
+    const message = `<b>#MULTICHECKER #${chainConfig.Nama_Chain.toUpperCase()}</b>\n`+
     `<b>USER:</b> ~ ${nickname||'-'}\n`+
     `-----------------------------------------\n`+
     `<b>MARKET:</b> ${linkCEX} VS ${dexTradeLink}\n`+
@@ -216,8 +216,25 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
 // Helpers
 // =================================================================================
 const clean = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-function infoSet(msg){ try{$('#infoAPP').html(msg);}catch(_){} console.log('📢', msg); }
-function infoAdd(msg){ try{$('#infoAPP').html(`${$('#infoAPP').html()}<br>${msg}`);}catch(_){} console.log('📌', msg); }
+function infoSet(msg){
+  try {
+    // Respect RUN banner: if any run state is active, do not override
+    const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
+    const anyRun = (String(st.run||'NO').toUpperCase() === 'YES') || (window.RUN_STATES && Object.values(window.RUN_STATES).some(Boolean));
+    if (anyRun) { if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner(); return; }
+  } catch(_) {}
+  try{$('#infoAPP').html(msg);}catch(_){}
+  console.log('📢', msg);
+}
+function infoAdd(msg){
+  try {
+    const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
+    const anyRun = (String(st.run||'NO').toUpperCase() === 'YES') || (window.RUN_STATES && Object.values(window.RUN_STATES).some(Boolean));
+    if (anyRun) { if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner(); return; }
+  } catch(_) {}
+  try{$('#infoAPP').html(`${$('#infoAPP').html()}<br>${msg}`);}catch(_){}
+  console.log('📌', msg);
+}
 
 // =================================================================================
 // CEX Shims (final override to delegate to services)

@@ -62,18 +62,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     clearInterval(window.__autoRunInterval);
     window.__autoRunInterval = null;
     $('#autoRunCountdown').text(''); // REFACTORED
-    try {
-        if (typeof getHistoryLog === 'function') {
-            const list = await getHistoryLog();
-            const last = Array.isArray(list) && list.length ? list[list.length - 1] : null;
-            if (last && last.action && (last.time || last.timeISO)) {
-                const t = last.time || new Date(last.timeISO).toLocaleString('id-ID', { hour12: false });
-                $('#infoAPP').text(`${last.action} at ${t}`);
-            } else {
-                $('#infoAPP').empty();
-            }
-        }
-    } catch(_) { $('#infoAPP').empty(); }
+    // Do not use infoAPP for history while scanning; the banner is reserved for RUN status
 
     const ConfigScan = settings;
     const mMode = getAppMode();
@@ -119,7 +108,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
     } catch(_){}
     $('#startSCAN').prop('disabled', true).text('Running...').addClass('uk-button-disabled');
-    $('#infoAPP').html('RUN SCANNING...').show();
+    // Standardized banner will be updated by updateRunningChainsBanner
     // Keep user's search query intact; do not reset searchInput here.
     // Clear previous signals (container uses <div id="sinyal...">)
     $('#sinyal-container [id^="sinyal"]').empty();
@@ -499,7 +488,17 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         $('#startSCAN').prop('disabled', false).text('Start').removeClass('uk-button-disabled');
         // Release gating via centralized helper
         if (typeof setScanUIGating === 'function') setScanUIGating(false); // REFACTORED
-        setAppState({ run: 'NO' });
+        // Persist run=NO reliably before any potential next action
+        try {
+            const key = (typeof getActiveFilterKey === 'function') ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+            const cur = (typeof getFromLocalStorage === 'function') ? (getFromLocalStorage(key, {}) || {}) : {};
+            if (typeof saveToLocalStorageAsync === 'function') {
+                await saveToLocalStorageAsync(key, Object.assign({}, cur, { run: 'NO' }));
+            } else {
+                setAppState({ run: 'NO' });
+            }
+            if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(key, { run: 'NO' }); } catch(_) {} }
+        } catch(_) { try { setAppState({ run: 'NO' }); } catch(__) {} }
 
         // Schedule autorun if enabled
         try {
@@ -557,7 +556,17 @@ async function stopScanner() {
     window.__autoRunInterval = null;
     if (typeof form_on === 'function') form_on(); // REFACTORED
     try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
-    try { setAppState({ run: 'NO' }); } catch(_) { /* ignore */ }
+    // Persist run=NO before reloading to avoid stale run state after refresh
+    try {
+        const key = (typeof getActiveFilterKey === 'function') ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+        const cur = (typeof getFromLocalStorage === 'function') ? (getFromLocalStorage(key, {}) || {}) : {};
+        if (typeof saveToLocalStorageAsync === 'function') {
+            await saveToLocalStorageAsync(key, Object.assign({}, cur, { run: 'NO' }));
+        } else {
+            setAppState({ run: 'NO' });
+        }
+        if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(key, { run: 'NO' }); } catch(_) {} }
+    } catch(_) { try { setAppState({ run: 'NO' }); } catch(__) {} }
     try {
         if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(getActiveFilterKey(), { run: 'NO' }); } catch(_) {} }
         if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner();
@@ -596,13 +605,10 @@ function updateRunningChainsBanner(seedChains) {
             return (cfg.Nama_Pendek || cfg.Nama_Chain || k).toString().toUpperCase();
         });
         if (labels.length > 0) {
-            $('#infoAPP').html(`RUN SCANNING: ${labels.join(', ')}`).show();
+            $('#infoAPP').html(`[ RUN SCANNING: ${labels.join(', ')} ]`).show();
         } else {
-            // Fallback to default running label if any; otherwise let history updater handle it
-            const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
-            if (String(st.run || 'NO').toUpperCase() === 'YES') {
-                $('#infoAPP').html('RUN SCANNING...').show();
-            }
+            // No running chains → clear banner
+            $('#infoAPP').text('').hide();
         }
     } catch(_) {}
 }

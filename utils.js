@@ -846,13 +846,16 @@ function setScanUIGating(isRunning) {
             $allToolbar.css({ pointerEvents: 'none', opacity: 0.4 });
             // Allow only reload (dark mode toggle ikut dinonaktifkan saat scan)
             $('#reload').css({ pointerEvents: 'auto', opacity: 1 });
+            // Allow chain selection icons remain active during scan (including their img.icon children)
+            $('#chain-links-container a, #chain-links-container .chain-link, #chain-links-container .icon, #multichain_scanner, #multichain_scanner .icon')
+                .css({ pointerEvents: 'auto', opacity: 1 });
             // Disable scanner config controls and filter card inputs
             $('#scanner-config').find('input, select, button, textarea').not('#btn-scroll-top').prop('disabled', true);
             $('#filter-card').find('input, select, button, textarea').not('#btn-scroll-top').prop('disabled', true);
             // Keep Auto Scroll checkbox enabled and clickable during scanning
             $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: 1 });
-            // Some extra clickable items in page
-            $('.sort-toggle, .edit-token-button, #chain-links-container a').css({ pointerEvents: 'none', opacity: 0.4 });
+            // Some extra clickable items in page (keep chain links enabled)
+            $('.sort-toggle, .edit-token-button').css({ pointerEvents: 'none', opacity: 0.4 });
             // Keep delete buttons active during scanning as requested
             $('.delete-token-button').css({ pointerEvents: 'auto', opacity: 1 });
             // Lock token management & edit modal during scan

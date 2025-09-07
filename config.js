@@ -248,42 +248,179 @@ const CONFIG_CHAINS = {
     }       
 };
 
-const CONFIG_DEXS = {
-    kyberswap: {
-        STRATEGY: 'kyberswap',
-        builder: ({ chainName, tokenAddress, pairAddress }) => `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
-        allowFallback: false,
-    },
-    '0x': {
-        STRATEGY: '0x',
-        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => `https://matcha.xyz/tokens/${chainName}/${tokenAddress.toLowerCase()}?buyChain=${chainCode}&buyAddress=${pairAddress.toLowerCase()}`,
-        allowFallback: false,
-    },
-    odos: {
-        STRATEGY: 'odos',
-        builder: () => `https://app.odos.xyz`,
-        allowFallback: true,
-    },
-    okx: {
-        STRATEGY: 'okx',
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
-        allowFallback: false,
-    },
-    '1inch': {
-        STRATEGY: '1inch',
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
-        //allowFallback: true,
-    },
-    lifi: {
-        STRATEGY: 'lifi',
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://jumper.exchange/?fromChain=${chainCode}&fromToken=${tokenAddress}&toChain=${chainCode}&toToken=${pairAddress}`,
-       // allowFallback: true,
-    },
-};
+// CONFIG_DEXS moved to dex-config.js to avoid duplication and keep this file data-centric
      
 // Expose globals for runtime consumers (registry/services)
 window.CONFIG_CEX = window.CONFIG_CEX || CONFIG_CEX;
 window.CONFIG_CHAINS = window.CONFIG_CHAINS || CONFIG_CHAINS;
+
+// Optional proxy settings for DEX/network calls
+// Define a list of CORS proxy servers; one will be chosen at random per access
+const serverCORS = [
+    // Add or replace with your own proxies
+     "https://server1.ciwayeh967.workers.dev/?",
+        "https://yazid3.yazidcrypto7.workers.dev/?",
+        "https://yazid5.bustomi.workers.dev/?",
+        "https://yazid4.yazidcrypto3.workers.dev/?",
+        "https://yoeazd2.yoeaz2324.workers.dev/?",
+        "https://server6.hejij49077.workers.dev/?",
+        "https://server7.gejac16482.workers.dev/?",
+        "https://server8.xotolo5853.workers.dev/?",
+        "https://server9.dopacer193.workers.dev/?",
+        "https://server10.samoker104.workers.dev/?",
+        "https://worker-bold-meadow-ab0a.xaraho1024.workers.dev/?",
+        "https://worker-cool-truth-c06e.nomege1872.workers.dev/?",
+        "https://worker-floral-river-e85c.tenimik318.workers.dev/?",
+        "https://worker-royal-sound-0576.koban78574.workers.dev/?",
+        "https://worker-curly-credit-2c73.viyeva7164.workers.dev/?",
+        "https://worker-royal-haze-a135.lisolo3133.workers.dev/?",
+        "https://worker-shy-cloud-27ca.vanogo6423.workers.dev/?",
+        "https://worker-withered-sky-ed3e.vifeci7919.workers.dev/?",
+        "https://worker-sweet-sound-e261.jaxet60213.workers.dev/?",
+        "https://worker-shiny-sun-08f7.xabenic669.workers.dev/?",
+        "https://worker-frosty-darkness-4f91.lobowev486.workers.dev/?",
+        "https://worker-silent-boat-3c2e.celov42704.workers.dev/?",
+        "https://worker-round-star-6bf9.yalayo9082.workers.dev/?",
+        "https://worker-cool-dream-e973.gocon75635.workers.dev/?",
+        "https://worker-winter-sound-52bd.pedig30998.workers.dev/?",
+        "https://worker-super-lake-198e.kevaraj359.workers.dev/?",
+        "https://worker-soft-dawn-b769.robiho8355.workers.dev/?",
+        "https://worker-weathered-forest-2a2e.fiwala7986.workers.dev/?",
+        "https://worker-still-tooth-553b.sewis68418.workers.dev/?",
+        "https://worker-solitary-waterfall-f039.fomev71287.workers.dev/?",
+        "https://server4.dajom23364.workers.dev/?",
+        "https://server3.hopevap663.workers.dev/?",
+        "https://worker-blue-mountain-bee9.hibes27870.workers.dev/?",
+        "https://worker-still-morning-642c.kehoc99044.workers.dev/?",
+        "https://myserver4.lamowa2709.workers.dev/?",
+        "https://myserver5.mohafe9330.workers.dev/?",
+        "https://worker-young-bush-ce2e.micejiy771.workers.dev/?",
+        "https://worker-sparkling-silence-9d41.federi4672.workers.dev/?",
+        "https://worker-polished-cloud-77bd.renel72768.workers.dev/?",
+        "https://worker-sweet-darkness-d1c0.risiv74771.workers.dev/?",
+        "https://worker-jolly-wildflower-c305.kacito9688.workers.dev/?",
+        "https://worker-dawn-king-f162.kekam96808.workers.dev/?",
+        "https://worker-shrill-bonus-9ca6.wipihoh336.workers.dev/?",
+        "https://worker-tiny-bar-013f.gicot48223.workers.dev/?",
+        "https://worker-tight-violet-dbda.xemojos811.workers.dev/?",
+        "https://worker-tight-lab-9cc4.fetec22957.workers.dev/?",
+        "https://server2.holabaj699.workers.dev/?",
+        "https://myserver3.ceteg74201.workers.dev/?",
+        "https://1.iiknrbtxoz.workers.dev/?",
+        "https://2.5iz3h20guj.workers.dev/?",
+        "https://3.g5l3krmasa-bda.workers.dev/?",
+        "https://4.7gggrv7tyo.workers.dev/?",
+        "https://5.1mynz671ti.workers.dev/?",
+        "https://6.6dn6rtqjng.workers.dev/?",
+        "https://7.zk3dvkv4pp.workers.dev/?",
+        "https://8.c58qvb11ew.workers.dev/?",
+        "https://9.n9zkqpbdpb.workers.dev/?",
+        "https://10.tximoyq5se.workers.dev/?",
+        "https://server11.jiser33752.workers.dev/?",
+        "https://server12.yitijex843.workers.dev/?",
+        "https://server13.lovah68689.workers.dev/?",
+        "https://server14.setopit195.workers.dev/?",
+        "https://server15.povaf41444.workers.dev/?",
+        "https://server16.niromaf426.workers.dev/?",
+        "https://server17.kasoda9624.workers.dev/?",
+        "https://server18.befim19137.workers.dev/?",
+        "https://server19.gafigaf751.workers.dev/?",
+        "https://server20.gayomep515.workers.dev/?",
+        "https://worker-plain-shape-e4c4.dilexid433.workers.dev/?",
+        "https://worker-weathered-bar-d4fa.dadiyo8115.workers.dev/?",
+        "https://myserver3.ceteg74201.workers.dev/?",
+        "https://server21.becibov328.workers.dev/?",
+        "https://server22.togid93865.workers.dev/?",
+        "https://server24.yaleve6056.workers.dev/?",
+        "https://server23.bagotof270.workers.dev/?",
+        "https://new1.gisot33558.workers.dev/?",
+        "https://new2.sober27867.workers.dev/?",
+        "https://new3.micipiy438.workers.dev/?",
+        "https://new3.rayepar467.workers.dev/?",
+        "https://new4.xebidi4752.workers.dev/?",
+        "https://new5.cibiyec145.workers.dev/?",
+        "https://worker-frosty-star-71a8.cesaxem416.workers.dev/?",
+        "https://worker-sweet-dust-96ef.payat56154.workers.dev/?",
+        "https://new5.nafeyis928.workers.dev/?",
+        "https://worker-broad-tree-49bb.cekah58754.workers.dev/?",
+        "https://worker-ancient-hill-fad1.xejab72348.workers.dev/?",
+        "https://cors.gemul-putra.workers.dev/?",
+        "https://worker-damp-glitter-db50.gameco3780.workers.dev/?",
+        "https://worker-blue-hall-1d14.xinevo2786.workers.dev/?",
+        "https://worker-tiny-dust-22f2.capaji8287.workers.dev/?",
+        "https://worker-old-disk-8a9a.kehaxa7686.workers.dev/?",
+        "https://worker-yellow-wood-677d.lanafi2429.workers.dev/?",
+        "https://worker-cool-tree-07c7.kifira7062.workers.dev/?",
+        "https://myserver6.bafayi9378.workers.dev/?",
+        "https://myserver7.yiwaj21571.workers.dev/?",
+        "https://myserver7.yiwaj21571.workers.dev/?",
+        "https://myserver5.mohafe9330.workers.dev/?",
+        "https://worker-weathered-bar-d4fa.dadiyo8115.workers.dev/?"
+];
+
+const CONFIG_PROXY = {
+    LIST: serverCORS
+};
+
+// Backward-compatible dynamic getter: each access returns a random prefix
+try {
+  Object.defineProperty(CONFIG_PROXY, 'PREFIX', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      try {
+        const list = Array.isArray(CONFIG_PROXY.LIST) ? CONFIG_PROXY.LIST : [];
+        if (!list.length) return '';
+        const idx = Math.floor(Math.random() * list.length);
+        return String(list[idx] || '');
+      } catch(_) { return ''; }
+    }
+  });
+} catch(_) {}
+
+try {
+  if (typeof window !== 'undefined') {
+    window.serverCORS = window.serverCORS || serverCORS;
+    window.CONFIG_PROXY = window.CONFIG_PROXY || CONFIG_PROXY;
+    // Convenience helper
+    window.getRandomProxy = window.getRandomProxy || function(){ return CONFIG_PROXY.PREFIX; };
+  }
+} catch(_){}
+
+// DEX builder config (moved from dex-config.js)
+const CONFIG_DEXS = {
+    kyberswap: {
+        proxy: true,
+        builder: ({ chainName, tokenAddress, pairAddress }) => `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
+        allowFallback: true,
+    },
+    '0x': {
+        proxy: false,
+        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => `https://matcha.xyz/tokens/${chainName}/${String(tokenAddress||'').toLowerCase()}?buyChain=${chainCode}&buyAddress=${String(pairAddress||'').toLowerCase()}`,
+        allowFallback: true,
+    },
+    odos: {
+        proxy: true,
+        builder: () => `https://app.odos.xyz`,
+        allowFallback: true,
+    },
+    okx: {
+        proxy: false,
+        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
+        allowFallback: true,
+    },
+    '1inch': {
+        proxy: true,
+        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
+        // allowFallback intentionally disabled for 1inch
+    },
+    lifi: {
+        proxy: true,
+        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://jumper.exchange/?fromChain=${chainCode}&fromToken=${tokenAddress}&toChain=${chainCode}&toToken=${pairAddress}`,
+        // allowFallback intentionally disabled for lifi direct
+    },
+};
+try { if (typeof window !== 'undefined') { window.CONFIG_DEXS = window.CONFIG_DEXS || CONFIG_DEXS; } } catch(_){}
 
 // Centralized chain synonyms mapping used to normalize CEX network labels
 const CHAIN_SYNONYMS = {

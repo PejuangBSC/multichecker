@@ -1696,7 +1696,8 @@ $(document).ready(function() {
         if (isRunning) {
             try { form_off(); } catch(_) {}
             $('#startSCAN').prop('disabled', true).attr('aria-busy','true').text('Running...').addClass('uk-button-disabled');
-            $('#infoAPP').html('RUN SCANNING...').show();
+            // Show standardized running banner: [ RUN SCANNING: <CHAINS> ]
+            try { if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner(); } catch(_) {}
             $('#stopSCAN').show().prop('disabled', false);
             $('#reload').prop('disabled', false);
             //$('#infoAPP').html('⚠️ Proses sebelumnya tidak selesai. Tekan tombol <b>RESET PROSES</b> untuk memulai ulang.').show();
@@ -1705,6 +1706,8 @@ $(document).ready(function() {
         } else {
             $('#startSCAN').prop('disabled', false).removeAttr('aria-busy').text('Start').removeClass('uk-button-disabled');
             $('#stopSCAN').hide();
+            // Clear banner when not running
+            try { $('#infoAPP').text('').hide(); } catch(_) {}
             try { if (typeof setScanUIGating === 'function') setScanUIGating(false); } catch(_) {}
         }
     }
@@ -1937,7 +1940,8 @@ $(document).ready(function() {
                 const f = getFromLocalStorage(`FILTER_${String(chainKey).toUpperCase()}`, {}) || {};
                 running = String(f.run || 'NO').toUpperCase() === 'YES';
             } catch(_) {}
-            const ring = running ? `box-shadow: 0 0 0 2px ${chain.WARNA || '#5c9514'}; border-radius:50%;` : '';
+            // Do not apply ring or enlargement; small dot indicator handled elsewhere
+            const ring = '';
             const linkHTML = `
                 <span class="chain-link icon" data-chain="${chainKey}" style="display:inline-block; ${style} margin-right:4px;">
                     <a href="${currentPage}?chain=${encodeURIComponent(chainKey)}" title="${name}">
@@ -1956,9 +1960,8 @@ $(document).ready(function() {
             const runMulti = !!(window.RUN_STATES && window.RUN_STATES.multichain);
             const $mcImg = $('#multichain_scanner img');
             if ($mcImg.length) {
-                $mcImg.css('filter', runMulti ? 'drop-shadow(0 0 6px #5c9514)' : '')
-                      .css('opacity', runMulti ? '1' : '');
-                // Add/remove run dot on multichain icon
+                // Do not enlarge or add glow; only attach a small dot indicator
+                $mcImg.css('filter', '').css('opacity', '');
                 const $mc = $('#multichain_scanner');
                 let $dot = $mc.find('span.run-dot');
                 if (runMulti) {
@@ -1974,8 +1977,8 @@ $(document).ready(function() {
                 const running = !!(window.RUN_STATES && window.RUN_STATES[String(chainKey).toLowerCase()]);
                 const sel = `.chain-link[data-chain="${chainKey}"] img`;
                 const $img = $(sel);
-                const ring = running ? `0 0 0 2px ${cfg.WARNA || '#5c9514'}` : '';
-                $img.css('box-shadow', ring).css('border-radius', running ? '50%' : '');
+                // Do not add ring or enlarge the icon during scan; only show small dot
+                $img.css('box-shadow', '').css('border-radius', '');
                 // Add small dot indicator on the host span
                 const $host = $(`.chain-link[data-chain="${chainKey}"]`);
                 let $dot = $host.find('span.run-dot');
@@ -2200,6 +2203,18 @@ function readDexSelectionFromForm() {
 
 async function updateInfoFromHistory() {
     try {
+        // Do not override RUN banner while scanning
+        try {
+            const anyRun = (function(){
+                const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
+                if (String(st.run||'NO').toUpperCase() === 'YES') return true;
+                if (window.RUN_STATES) {
+                    return Object.values(window.RUN_STATES).some(Boolean);
+                }
+                return false;
+            })();
+            if (anyRun) { if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner(); return; }
+        } catch(_) {}
         if (typeof getHistoryLog === 'function') {
             const list = await getHistoryLog();
             const last = Array.isArray(list) && list.length ? list[list.length - 1] : null;
@@ -2233,8 +2248,16 @@ function setLastAction(action, statusOrMeta, maybeMeta) {
         }
     } catch(_) {}
 
-    // Update info label immediately
-    try { $("#infoAPP").html(`${displayAction} at ${formattedTime}`); } catch(_) {}
+    // Do not override RUN banner while scanning
+    try {
+        const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
+        const anyRun = (String(st.run||'NO').toUpperCase() === 'YES') || (window.RUN_STATES && Object.values(window.RUN_STATES).some(Boolean));
+        if (!anyRun) {
+            $("#infoAPP").html(`${displayAction} at ${formattedTime}`);
+        } else {
+            if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner();
+        }
+    } catch(_) {}
 
     // Append to HISTORY_LOG in IndexedDB with same label (single source of truth)
     try {
