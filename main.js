@@ -12,7 +12,7 @@ let sortOrder = {};
 let filteredTokens = [];
 let originalTokens = [];
 var SavedSettingData = getFromLocalStorage('SETTING_SCANNER', {});
-let activeSingleChainKey = null; // To track the currently active single-chain view
+let activeSingleChainKey = null; // Active chain key (single mode)
 
 // refactor: Toastr is centrally configured in js/notify-shim.js
 
@@ -63,23 +63,9 @@ function setAppState(patch) {
             }
 
             function findScrollableContainer(){
-                // Priority 1: Monitoring (multi-chain)
+                // Unified table scroll container
                 const mon = document.getElementById('monitoring-scroll');
                 if (mon && isVisible(mon) && mon.scrollHeight > mon.clientHeight) return mon;
-
-                // Priority 2: Single-chain view overflow container
-                const scView = document.getElementById('single-chain-view');
-                if (scView && isVisible(scView)) {
-                    // Try explicit selector first
-                    let nodes = scView.querySelectorAll('.uk-overflow-auto, [style*="overflow"]');
-                    for (let i = 0; i < nodes.length; i++) {
-                        const n = nodes[i];
-                        const cs = window.getComputedStyle ? window.getComputedStyle(n) : null;
-                        const overflowY = cs ? cs.overflowY : '';
-                        const scrollable = (overflowY === 'auto' || overflowY === 'scroll' || n.style.overflow === 'auto' || n.style.overflow === 'scroll');
-                        if (isVisible(n) && (scrollable || n.scrollHeight > n.clientHeight)) return n;
-                    }
-                }
                 return null;
             }
 
@@ -196,6 +182,7 @@ function refreshTokensTable() {
     const fm = getFilterMulti();
     const chainsSel = (fm.chains || []).map(c => String(c).toLowerCase());
     const cexSel = (fm.cex || []).map(c => String(c).toUpperCase());
+    const dexSel = (fm.dex || []).map(d => String(d).toLowerCase());
 
     // Ambil data ter-flatten dan terurut dari IndexedDB berdasarkan symbol_in (ASC/DESC)
     let flatTokens = (typeof getFlattenedSortedMulti === 'function') ? getFlattenedSortedMulti() : flattenDataKoin(getTokensMulti());
@@ -204,10 +191,12 @@ function refreshTokensTable() {
     if (!filtersActive) {
         // First load (no saved FILTER_MULTICHAIN): show all
         filteredByChain = flatTokens;
-    } else if (chainsSel.length > 0 && cexSel.length > 0) {
+    } else if (chainsSel.length > 0 && cexSel.length > 0 && dexSel.length > 0) {
         // Combined filter: require both CHAIN and CEX selections
-        filteredByChain = flatTokens.filter(t => chainsSel.includes(String(t.chain || '').toLowerCase()))
-                                    .filter(t => cexSel.includes(String(t.cex || '').toUpperCase()));
+        filteredByChain = flatTokens
+            .filter(t => chainsSel.includes(String(t.chain || '').toLowerCase()))
+            .filter(t => cexSel.includes(String(t.cex || '').toUpperCase()))
+            .filter(t => (t.dexs||[]).some(d => dexSel.includes(String(d.dex||'').toLowerCase())));
     } else {
         // One or both groups empty → show none
         filteredByChain = [];
@@ -242,11 +231,12 @@ function loadAndDisplaySingleChainTokens() {
         const filters = getFilterChain(activeSingleChainKey);
         const selCex = (filters.cex || []).map(x=>String(x).toUpperCase());
         const selPair = (filters.pair || []).map(x=>String(x).toUpperCase());
+        const selDex = (filters.dex || []).map(x=>String(x).toLowerCase());
 
-        // Combined filter: if no saved filters yet → show all; otherwise require both CEX and PAIR
+        // Combined filter: if no saved filters yet → show all; otherwise require CEX, PAIR and DEX
         if (!rawSaved) {
             // keep all
-        } else if (selCex.length > 0 && selPair.length > 0) {
+        } else if (selCex.length > 0 && selPair.length > 0 && selDex.length > 0) {
             flatTokens = flatTokens.filter(t => selCex.includes(String(t.cex).toUpperCase()));
             flatTokens = flatTokens.filter(t => {
                 const chainCfg = CONFIG_CHAINS[(t.chain||'').toLowerCase()]||{};
@@ -255,6 +245,7 @@ function loadAndDisplaySingleChainTokens() {
                 const mapped = pairDefs[p]?p:'NON';
                 return selPair.includes(mapped);
             });
+            flatTokens = flatTokens.filter(t => (t.dexs||[]).some(d => selDex.includes(String(d.dex||'').toLowerCase())));
         } else {
             flatTokens = [];
         }
@@ -263,7 +254,7 @@ function loadAndDisplaySingleChainTokens() {
 
     // Expose current list for search-aware scanning (keep sorted order)
     try { window.singleChainTokensCurrent = Array.isArray(flatTokens) ? [...flatTokens] : []; } catch(_){}
-    loadKointoTable(flatTokens, 'single-chain-table-body');
+    loadKointoTable(flatTokens, 'dataTableBody');
     try { applySortToggleState(); } catch(_) {}
     attachEditButtonListeners(); // Re-attach listeners after table render
 }
@@ -365,7 +356,7 @@ function bootApp() {
         // REFACTORED
         if (typeof renderSettingsForm === 'function') renderSettingsForm();
         $('#form-setting-app').show();
-        $('#filter-card, #scanner-config, #single-chain-view, #token-management, #iframe-container').hide();
+        $('#filter-card, #scanner-config, #token-management, #iframe-container').hide();
         // REFACTORED
         if ($('#dataTableBody').length) { $('#dataTableBody').closest('.uk-overflow-auto').hide(); }
         if ($('#form-setting-app').length && $('#form-setting-app')[0] && typeof $('#form-setting-app')[0].scrollIntoView === 'function') {
@@ -500,10 +491,18 @@ async function deferredInit() {
             // FIX: Don't default to all chains, respect the user's saved empty selection.
             const chainsSel = fmNow.chains || [];
             const cexSel = fmNow.cex || [];
+            const dexSel = (fmNow.dex || []).map(x=>String(x).toLowerCase());
             const flat = flattenDataKoin(getTokensMulti()) || [];
             const byChain = flat.reduce((a,t)=>{const k=String(t.chain||'').toLowerCase(); a[k]=(a[k]||0)+1; return a;},{});
             const byCex = flat.filter(t=> (chainsSel.length === 0 || chainsSel.includes(String(t.chain||'').toLowerCase())))
                                .reduce((a,t)=>{const k=String(t.cex||'').toUpperCase(); a[k]=(a[k]||0)+1; return a;},{});
+            const flatForDex = flat
+              .filter(t => (chainsSel.length === 0 || chainsSel.includes(String(t.chain||'').toLowerCase())))
+              .filter(t => (cexSel.length === 0 || cexSel.includes(String(t.cex||'').toUpperCase())));
+            const byDex = flatForDex.reduce((a,t)=>{
+                (t.dexs || []).forEach(d => { const k = String(d.dex||'').toLowerCase(); a[k] = (a[k]||0)+1; });
+                return a;
+            },{});
             const $secChain = $('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>CHAIN:</b></div>');
             Object.keys(CONFIG_CHAINS||{}).forEach(k=>{
                 const short=(CONFIG_CHAINS[k].Nama_Pendek||k.substr(0,3)).toUpperCase();
@@ -517,15 +516,23 @@ async function deferredInit() {
                 const id=`fc-cex-${cx}`; const cnt=byCex[cx]||0; if (cnt===0) return; const checked=cexSel.includes(cx.toUpperCase());
                 $secCex.append(chipHtml('fc-cex',id,cx,CONFIG_CEX[cx].WARNA,cnt,checked, cx, false));
             });
+            const $secDex = $('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>DEX:</b></div>');
+            Object.keys(CONFIG_DEXS||{}).forEach(dx=>{
+                const key = String(dx).toLowerCase();
+                const id=`fc-dex-${key}`; const cnt=byDex[key]||0; if (cnt===0) return; const checked=dexSel.includes(key);
+                $secDex.append(chipHtml('fc-dex',id,dx.toUpperCase(),'#333',cnt,checked, key, false));
+            });
             if ($headLabels.length)
-            $wrap.append($secChain).append($('<div class=\"uk-text-muted\">|</div>')).append($secCex);
+            $wrap.append($secChain).append($('<div class=\"uk-text-muted\">|</div>')).append($secCex).append($('<div class=\"uk-text-muted\">|</div>')).append($secDex);
             const saved = getFromLocalStorage('FILTER_MULTICHAIN', null);
             let total = 0;
             if (!saved) {
                 total = flat.length;
-            } else if (chainsSel.length > 0 && cexSel.length > 0) {
+            } else if (chainsSel.length > 0 && cexSel.length > 0 && ((fmNow.dex||[]).length > 0)) {
                 total = flat.filter(t => chainsSel.includes(String(t.chain||'').toLowerCase()))
-                            .filter(t => cexSel.includes(String(t.cex||'').toUpperCase())).length;
+                            .filter(t => cexSel.includes(String(t.cex||'').toUpperCase()))
+                            .filter(t => (t.dexs||[]).some(d => (dexSel||[]).includes(String(d.dex||'').toLowerCase())))
+                            .length;
             } else {
                 total = 0;
             }
@@ -545,26 +552,32 @@ async function deferredInit() {
                     $('#sync-tokens-btn').removeClass('cta-sync');
                 }
             } catch(_) {}
-            $wrap.off('change.multif').on('change.multif','label.fc-chain input, label.fc-cex input',function(){
+            $wrap.off('change.multif').on('change.multif','label.fc-chain input, label.fc-cex input, label.fc-dex input',function(){
                 const prev = getFilterMulti();
                 const prevChains = (prev.chains||[]).map(s=>String(s).toLowerCase());
                 const prevCex = (prev.cex||[]).map(s=>String(s).toUpperCase());
+                const prevDex = (prev.dex||[]).map(s=>String(s).toLowerCase());
 
                 const chains=$wrap.find('label.fc-chain input:checked').map(function(){return $(this).closest('label').attr('data-val').toLowerCase();}).get();
                 const cex=$wrap.find('label.fc-cex input:checked').map(function(){return $(this).closest('label').attr('data-val').toUpperCase();}).get();
+                const dex=$wrap.find('label.fc-dex input:checked').map(function(){return $(this).closest('label').attr('data-val').toLowerCase();}).get();
 
-                setFilterMulti({ chains, cex });
+                setFilterMulti({ chains, cex, dex });
 
                 // Build detailed toast message
                 const addChains = chains.filter(x => !prevChains.includes(x)).map(x=>x.toUpperCase());
                 const delChains = prevChains.filter(x => !chains.includes(x)).map(x=>x.toUpperCase());
                 const addCex = cex.filter(x => !prevCex.includes(x));
                 const delCex = prevCex.filter(x => !cex.includes(x));
+                const addDex = dex.filter(x => !prevDex.includes(x)).map(x=>x.toUpperCase());
+                const delDex = prevDex.filter(x => !dex.includes(x)).map(x=>x.toUpperCase());
                 const parts = [];
                 if (addChains.length) parts.push(`+CHAIN: ${addChains.join(', ')}`);
                 if (delChains.length) parts.push(`-CHAIN: ${delChains.join(', ')}`);
                 if (addCex.length) parts.push(`+CEX: ${addCex.join(', ')}`);
                 if (delCex.length) parts.push(`-CEX: ${delCex.join(', ')}`);
+                if (addDex.length) parts.push(`+DEX: ${addDex.join(', ')}`);
+                if (delDex.length) parts.push(`-DEX: ${delDex.join(', ')}`);
                 const msg = parts.length ? parts.join(' | ') : `Filter MULTI diperbarui: CHAIN=${chains.length}, CEX=${cex.length}`;
                 try { if (typeof toast !== 'undefined' && toast.info) toast.info(msg); } catch(_){ }
 
@@ -582,6 +595,7 @@ async function deferredInit() {
             const saved = getFilterChain(chain);
             const cexSel = saved.cex || [];
             const pairSel = saved.pair || [];
+            const dexSel = (saved.dex || []).map(x=>String(x).toLowerCase());
 
             const flat = flattenDataKoin(getTokensChain(chain))||[];
             const byCex = flat.reduce((a,t)=>{const k=String(t.cex||'').toUpperCase(); a[k]=(a[k]||0)+1; return a;},{});
@@ -609,12 +623,24 @@ async function deferredInit() {
                 const checked=pairSel.includes(p);
                 $secPair.append(chipHtml('sc-pair',id,p,'',cnt,checked, undefined, false));
             });
+            // DEX chips based on chain-allowed DEXes and filtered dataset
+            const $secDex=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>DEX:</b></div>');
+            const dexAllowed = ((CONFIG_CHAINS[chain]||{}).DEXS || []).map(x=>String(x).toLowerCase());
+            const byDex = flatPair.reduce((a,t)=>{
+                (t.dexs||[]).forEach(d => { const k=String(d.dex||'').toLowerCase(); if (!dexAllowed.includes(k)) return; a[k]=(a[k]||0)+1; });
+                return a;
+            },{});
+            dexAllowed.forEach(dx => {
+                const id=`sc-dex-${dx}`; const cnt=byDex[dx]||0; if (cnt===0) return; const checked=dexSel.includes(dx);
+                $secDex.append(chipHtml('sc-dex',id,dx.toUpperCase(),'#333',cnt,checked, dx, false));
+            });
             if ($headLabels.length)
-            $wrap.append($secCex).append($('<div class=\"uk-text-muted\">|</div>')).append($secPair);
+            $wrap.append($secCex).append($('<div class=\"uk-text-muted\">|</div>')).append($secPair).append($('<div class=\"uk-text-muted\">|</div>')).append($secDex);
             let totalSingle = 0;
-            if ((cexSel && cexSel.length) && (pairSel && pairSel.length)) {
+            if ((cexSel && cexSel.length) && (pairSel && pairSel.length) && (dexSel && dexSel.length)) {
                 const filtered = flat.filter(t => cexSel.includes(String(t.cex||'').toUpperCase()))
-                                     .filter(t => { const p = String(t.symbol_out||'').toUpperCase(); const key = pairDefs[p] ? p : 'NON'; return pairSel.includes(key); });
+                                     .filter(t => { const p = String(t.symbol_out||'').toUpperCase(); const key = pairDefs[p] ? p : 'NON'; return pairSel.includes(key); })
+                                     .filter(t => (t.dexs||[]).some(d => dexSel.includes(String(d.dex||'').toLowerCase())));
                 totalSingle = filtered.length;
             } else {
                 totalSingle = 0;
@@ -632,25 +658,31 @@ async function deferredInit() {
                     $sync.removeClass('cta-sync');
                 }
             } catch(_) {}
-            $wrap.off('change.scf').on('change.scf','label.sc-cex input, label.sc-pair input',function(){
+            $wrap.off('change.scf').on('change.scf','label.sc-cex input, label.sc-pair input, label.sc-dex input',function(){
                 const prev = getFilterChain(chain);
                 const prevC = (prev.cex||[]).map(String);
                 const prevP = (prev.pair||[]).map(x=>String(x).toUpperCase());
+                const prevD = (prev.dex||[]).map(x=>String(x).toLowerCase());
 
                 const c=$wrap.find('label.sc-cex input:checked').map(function(){return $(this).closest('label').attr('data-val');}).get();
                 const p=$wrap.find('label.sc-pair input:checked').map(function(){return $(this).closest('label').attr('data-val');}).get();
-                setFilterChain(chain, { cex:c, pair:p });
+                const d=$wrap.find('label.sc-dex input:checked').map(function(){return $(this).closest('label').attr('data-val').toLowerCase();}).get();
+                setFilterChain(chain, { cex:c, pair:p, dex:d });
                 // Detailed toast
                 const cAdd = c.filter(x => !prevC.includes(x));
                 const cDel = prevC.filter(x => !c.includes(x));
                 const pU = p.map(x=>String(x).toUpperCase());
                 const pAdd = pU.filter(x => !prevP.includes(x));
                 const pDel = prevP.filter(x => !pU.includes(x));
+                const dAdd = d.filter(x=>!prevD.includes(x)).map(x=>x.toUpperCase());
+                const dDel = prevD.filter(x=>!d.includes(x)).map(x=>x.toUpperCase());
                 const parts = [];
                 if (cAdd.length) parts.push(`+CEX: ${cAdd.join(', ')}`);
                 if (cDel.length) parts.push(`-CEX: ${cDel.join(', ')}`);
                 if (pAdd.length) parts.push(`+PAIR: ${pAdd.join(', ')}`);
                 if (pDel.length) parts.push(`-PAIR: ${pDel.join(', ')}`);
+                if (dAdd.length) parts.push(`+DEX: ${dAdd.join(', ')}`);
+                if (dDel.length) parts.push(`-DEX: ${dDel.join(', ')}`);
                 const label = String(chain).toUpperCase();
                 const msg = parts.length ? `[${label}] ${parts.join(' | ')}` : `[${label}] Filter diperbarui: CEX=${c.length}, PAIR=${p.length}`;
                 try { if (typeof toast !== 'undefined' && toast.info) toast.info(msg); } catch(_){ }
@@ -704,7 +736,7 @@ async function deferredInit() {
                 try { $('#dataTableBody').closest('.uk-overflow-auto').hide(); } catch(_) {}
                 $('#iframe-container').hide();
                 $('#form-setting-app').hide();
-                $('#single-chain-view').hide();
+            
                 $('#token-management').show();
                 renderTokenManagementList();
             }
@@ -742,13 +774,9 @@ async function deferredInit() {
             activeSingleChainKey = m.chain;
             const chainCfg = (window.CONFIG_CHAINS||{})[m.chain] || {};
             const chainName = chainCfg.Nama_Chain || m.chain.toUpperCase();
-            // Hide multi components
-           // $('#sinyal-container, #header-table').hide();
-            $('#dataTableBody').closest('.uk-overflow-auto').hide();
+            // Unified table: keep main table visible and render filtered rows
             $('#token-management').hide();
-            // Show single view
-            $('#single-chain-title').text(`Scanner: ${chainName}`);
-            $('#single-chain-view').show();
+            $('#dataTableBody').closest('.uk-overflow-auto').show();
             loadAndDisplaySingleChainTokens();
         } catch(e) {
             console.warn('autoOpenSingleChainIfNeeded error', e);
@@ -915,7 +943,7 @@ $("#reload").click(function () {
 
     $("#SettingConfig").on("click", function () {
         // Hide all other sections to prevent stacking when opening Settings
-        $('#filter-card, #scanner-config, #single-chain-view, #token-management, #iframe-container, #sinyal-container, #header-table').hide();
+        $('#filter-card, #scanner-config, #token-management, #iframe-container, #sinyal-container, #header-table').hide();
         try { $('#dataTableBody').closest('.uk-overflow-auto').hide(); } catch(_) {}
         $('#form-setting-app').show();
         try { document.getElementById('form-setting-app').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(_) {}
@@ -929,7 +957,7 @@ $("#reload").click(function () {
       $('#dataTableBody').closest('.uk-overflow-auto').hide();
       $('#iframe-container').hide();
       $('#form-setting-app').hide();
-      $('#single-chain-view').hide();
+      // unified table; nothing to hide
       $('#token-management').show();
       renderTokenManagementList();
     });
@@ -949,7 +977,6 @@ $("#reload").click(function () {
             }
         };
         filterTable('dataTableBody');
-        filterTable('single-chain-table-body');
 
         // Build scan candidates based on search and current mode
         try {
@@ -1139,7 +1166,7 @@ $("#startSCAN").click(function () {
                 if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token pada filter per‑chain untuk dipindai.');
                 return;
             }
-            startScanner(flatTokens, settings, 'single-chain-table-body');
+            startScanner(flatTokens, settings, 'dataTableBody');
             return;
         }
 
@@ -1359,26 +1386,11 @@ $("#startSCAN").click(function () {
     function showMainScannerView() {
         $('#iframe-container').hide();
         $('#token-management').hide();
-        $('#single-chain-view').hide();
         $('#scanner-config, #sinyal-container, #header-table').show();
         $('#dataTableBody').closest('.uk-overflow-auto').show();
     }
 
-    // Single Chain Mode Handler
-    $(document).on('click', '.single-chain-trigger', function(e) {
-        e.preventDefault();
-        activeSingleChainKey = $(this).data('chain-key');
-        const chainName = $(this).data('chain-name');
-
-        showMainScannerView();
-        // Keep scanner-config visible, hide the rest
-        $('#sinyal-container, #header-table, .uk-overflow-auto').first().hide();
-
-        $('#single-chain-title').text(`Scanner: ${chainName}`);
-        $('#single-chain-view').show();
-
-        loadAndDisplaySingleChainTokens();
-    });
+    // Single Chain Mode Handler removed (unified table)
 
     // Iframe View Handler
     $(document).on('click', '.iframe-modal-trigger', function(e) {
@@ -1391,7 +1403,6 @@ $("#startSCAN").click(function () {
         $('#scanner-config, #sinyal-container, #header-table, #form-setting-app').hide();
         $('#dataTableBody').closest('.uk-overflow-auto').hide();
         $('#token-management').hide();
-        $('#single-chain-view').hide();
 
         // Show iframe view
         //$('#iframe-title').text(viewTitle);
@@ -1871,8 +1882,7 @@ $(document).ready(function() {
         renderChainLinks(requested || 'all');
 
         if (!requested || requested === 'all') {
-            // Multichain view
-            $('#single-chain-view').hide();
+            // Multichain view (unified table)
             $('#scanner-config, #sinyal-container, #header-table').show();
             $('#dataTableBody').closest('.uk-overflow-auto').show();
             activeSingleChainKey = null;
@@ -1890,16 +1900,12 @@ $(document).ready(function() {
             return;
         }
 
-        // Per-chain view
+        // Per-chain view (unified table): keep main table visible and render single-chain data into it
         activeSingleChainKey = requested;
         const chainConfig = CONFIG_CHAINS[requested];
         $('#scanner-config, #sinyal-container, #header-table').show();
-        $('#dataTableBody').closest('.uk-overflow-auto').hide();
-        // Filter card handles UI
-        $('#single-chain-title').text(`Scanner: ${chainConfig.Nama_Chain || requested.toUpperCase()}`);
-        $('#single-chain-view').show();
+        $('#dataTableBody').closest('.uk-overflow-auto').show();
         setHomeHref(requested);
-        // try { renderSingleChainFilters(requested); } catch(_) {} // Legacy filter - REMOVED
         try { loadAndDisplaySingleChainTokens(); } catch(e) { console.error('single-chain init error', e); }
         try { applySortToggleState(); } catch(_) {}
         try { syncPnlInputFromStorage(); } catch(_) {}

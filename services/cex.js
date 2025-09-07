@@ -685,11 +685,14 @@
           UIkit.notification({ message: '✅ BERHASIL UPDATE WALLET EXCHANGER', status: 'success' });
       } catch(_) { alert('✅ SEBAGIAN BERHASIL UPDATE WALLET EXCHANGER,SILAKAN CEK STATUS DEPOSIT & WITHDRAW, EXCHANGER YANG GAGAL UPDATE'); }
 
-      if ($('#single-chain-view').is(':visible')) {
-          if (typeof loadAndDisplaySingleChainTokens === 'function') loadAndDisplaySingleChainTokens();
-      } else {
-          if (typeof refreshTokensTable === 'function') refreshTokensTable();
-      }
+      try {
+          const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+          if (m.type === 'single') {
+              if (typeof loadAndDisplaySingleChainTokens === 'function') loadAndDisplaySingleChainTokens();
+          } else {
+              if (typeof refreshTokensTable === 'function') refreshTokensTable();
+          }
+      } catch(_) { if (typeof refreshTokensTable === 'function') refreshTokensTable(); }
 
       $('#loadingOverlay').fadeOut(150);
 

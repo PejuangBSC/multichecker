@@ -194,22 +194,8 @@
     </div>
 
     <div class="uk-overflow-auto uk-margin-small-top" id="monitoring-scroll" style="max-height: calc(100vh - 220px); overflow: auto;">
-        <table id="main-table" class="uk-table uk-table-hover uk-table-small uk-table-striped" >
-            <thead style="background: #5c9514;">
-                <tr style="border-bottom: 1px solid black;">                    
-                    <th class="uk-text-center uk-text-bolder" style="color: white; width:120px;">ORDERBOOK</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 1</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 2</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 3</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 4</th>
-                    <th class="uk-text-center uk-text-bolder" style="color: white; width:280px;">DETAIL TOKEN</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 1</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 2</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 3</th>
-                    <th class="uk-text-center uk-text-small" style="color:white; ">DEX 4</th>
-                    <th class="uk-text-center uk-text-bolder" style="color: white; width:120px;">ORDERBOOK</th>
-                </tr>
-            </thead>
+        <table id="tabel-monitoring" class="uk-table uk-table-hover uk-table-small uk-table-striped" >
+            <thead id="monitoring-thead" style="background: #5c9514;"></thead>
             <tbody id="dataTableBody">
                 <!-- Baris-baris data akan ditambahkan secara dinamis -->
             </tbody>
@@ -319,36 +305,7 @@
     </section>
 
 
-    <!-- SECTION: SINGLE CHAIN SCANNER -->
-    <section id="single-chain-view" style="display: none;">
-        <!-- Table for this view -->
-        <div class="uk-overflow-auto uk-margin-small-top">
-            <table id="single-chain-table" class="uk-table uk-table-hover uk-table-small uk-table-striped">
-                <thead style="background: #5c9514;">
-                    <tr style="border-bottom: 1px solid black;">
-                        <th rowspan="2" class="uk-text-center uk-text-bolder" style=" color: white !important; width:120px;">
-                            ORDERBOOK
-                        </th>
-                        <th colspan="4" class="uk-text-center uk-text-bolder" style=" color: white !important;">
-                            CEX → DEX
-                        </th>
-                        <th rowspan="2" class="uk-text-center uk-text-bolder" style="color: white !important; width:280px;">
-                            DETAIL TOKEN
-                        </th>
-                        <th colspan="4" class="uk-text-center uk-text-bolder" style="color: white !important;">
-                            DEX → CEX
-                        </th>
-                        <th rowspan="2" class="uk-text-center uk-text-bolder" style="color: white !important; width:120px;">
-                            ORDERBOOK
-                        </th>
-                    </tr>
-                </thead>
-                <tbody id="single-chain-table-body">
-                    <!-- Rows will be populated by the single-chain scanning logic -->
-                </tbody>
-            </table>
-        </div>
-    </section>
+    <!-- SINGLE CHAIN SCANNER SECTION REMOVED: merged into #tabel-monitoring -->
   
 </div>
 <!-- Modal UIKIT EDIT KOIN -->

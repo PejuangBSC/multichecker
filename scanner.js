@@ -50,6 +50,7 @@ function clearDexWatchdogs(keys){
 }
 
 let animationFrameId;
+let uiTimeoutId;
 let isScanRunning = false;
 
 /**
@@ -85,10 +86,16 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     window.SavedSettingData = ConfigScan;
     window.CURRENT_CHAINS = allowedChains;
 
-    // Use the passed parameter directly, and filter by the currently allowed chains
-    const flatTokens = tokensToScan.filter(t =>
-        allowedChains.includes(String(t.chain).toLowerCase())
-    );
+    // Resolve active DEX selection
+    let allowedDexs = [];
+    try { allowedDexs = (typeof window.resolveActiveDexList === 'function') ? window.resolveActiveDexList() : []; } catch(_) { allowedDexs = []; }
+
+    // Use the passed parameter directly, and filter by the currently allowed chains and DEX selection (token must have at least one selected DEX)
+    const flatTokens = tokensToScan
+        .filter(t => allowedChains.includes(String(t.chain).toLowerCase()))
+        .filter(t => {
+            try { return (Array.isArray(t.dexs) && t.dexs.some(d => allowedDexs.includes(String(d.dex||'').toLowerCase()))); } catch(_) { return true; }
+        });
 
     if (!flatTokens || flatTokens.length === 0) {
         if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token pada chain terpilih untuk dipindai.');
@@ -178,9 +185,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             if ((now - start) >= budgetMs) break; // yield to next frame
         }
 
-        // If page is hidden, slow down update loop to save CPU
+        // Schedule next tick; when hidden, avoid rAF (it's paused) and use setTimeout fallback
         if (document.hidden) {
-            setTimeout(() => { animationFrameId = requestAnimationFrame(processUiUpdates); }, 100);
+            try { if (uiTimeoutId) clearTimeout(uiTimeoutId); } catch(_) {}
+            uiTimeoutId = setTimeout(processUiUpdates, 250);
         } else {
             animationFrameId = requestAnimationFrame(processUiUpdates);
         }
@@ -212,6 +220,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
             if (token.dexs && Array.isArray(token.dexs)) {
                 token.dexs.forEach((dexData) => {
+                            // Skip DEX not included in active selection
+                            try { if (!allowedDexs.includes(String(dexData.dex||'').toLowerCase())) return; } catch(_) {}
                             const dex = dexData.dex.toLowerCase();
                             const modalKiri = dexData.left;
                             const modalKanan = dexData.right;
@@ -318,7 +328,12 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         // refactor: removed unused local debug variables (buy/sell/pnl lines)
                                         
                                     } catch(_) {}
-                                    uiUpdateQueue.push(update);
+                                    if (document.hidden) {
+                                        // Apply immediately when tab hidden to avoid throttled rAF
+                                        try { DisplayPNL(update); } catch(_) { uiUpdateQueue.push(update); }
+                                    } else {
+                                        uiUpdateQueue.push(update);
+                                    }
                                 };
 
                                 const handleError = (initialError) => {
@@ -482,7 +497,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
         updateProgress(tokensToProcess.length, tokensToProcess.length, startTime, 'SELESAI');
         isScanRunning = false;
-        cancelAnimationFrame(animationFrameId);
+        try { cancelAnimationFrame(animationFrameId); } catch(_) {}
+        try { if (uiTimeoutId) clearTimeout(uiTimeoutId); } catch(_) {}
         form_on();
         $("#stopSCAN").hide().prop("disabled", true);
         $('#startSCAN').prop('disabled', false).text('Start').removeClass('uk-button-disabled');

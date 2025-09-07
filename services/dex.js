@@ -11,7 +11,7 @@
   const App = root.App || (root.App = {});
 
   const dexStrategies = {
-    kyberswap: {
+    kyber: {
       buildRequest: ({ chainName, sc_input, sc_output, amount_in_big }) => {
         const kyberUrl = `https://aggregator-api.kyberswap.com/${chainName.toLowerCase()}/api/v1/routes?tokenIn=${sc_input}&tokenOut=${sc_output}&amountIn=${amount_in_big}&gasInclude=true`;
         return { url: kyberUrl, method: 'GET' };
@@ -21,7 +21,7 @@
         return {
           amount_out: response.data.routeSummary.amountOut / Math.pow(10, des_output),
           FeeSwap: parseFloat(response.data.routeSummary.gasUsd) || getFeeSwap(chainName),
-          dexTitle: 'KYBERSWAP'
+          dexTitle: 'KYBER'
         };
       }
     },
@@ -129,8 +129,10 @@
       }
     }
   };
-  // alias
+  // aliases
   dexStrategies.lifi = dexStrategies['1inch'];
+  // Backwards-compat: old name maps to kyber implementation
+  dexStrategies.kyberswap = dexStrategies.kyber;
 
   /**
    * Quote swap output from a DEX aggregator.
@@ -262,6 +264,11 @@
         const d = root.CONFIG_DEXS[k] || {};
         DexAPI.register(k, { builder: d.builder, allowFallback: !!d.allowFallback, strategy: d.STRATEGY || null, proxy: !!d.proxy });
       });
+      // Back-compat alias: ensure 'kyberswap' resolves to same config as 'kyber'
+      if (REG.has('kyber') && !REG.has('kyberswap')) {
+        const base = REG.get('kyber');
+        REG.set('kyberswap', Object.assign({}, base, { strategy: 'kyber' }));
+      }
     } catch(_){}
 
     root.DEX = DexAPI;

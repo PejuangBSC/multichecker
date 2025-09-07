@@ -120,7 +120,7 @@ const CONFIG_CHAINS = {
         BaseFEEDEX : "MATICUSDT", // Corrected from POLUSDT
         RPC: 'https://polygon-pokt.nodies.app',
         GASLIMIT: 80000,
-        DEXS: ["1inch", "odos", "kyberswap", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
         LINKS: {
             explorer: {
                 token: (address) => `https://polygonscan.com/token/${address}`,
@@ -144,7 +144,6 @@ const CONFIG_CHAINS = {
            "NON": { symbolPair: "NON", scAddressPair: "0x", desPair: "18" }
         }
     },
-    // Other chains remain the same...
     arbitrum: { 
         Kode_Chain: 42161, Nama_Chain: "arbitrum", Nama_Pendek: "arb", URL_Chain: "https://arbiscan.io", WARNA:"#a6b0c3", ICON:"https://wiki.dextrac.com:3443/images/1/11/Arbitrum_Logo.png", DATAJSON: 'https://multichecker.vercel.app/DATAJSON/arb.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://arbitrum-one-rpc.publicnode.com', GASLIMIT: 100000,
         LINKS: {
@@ -154,7 +153,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://arbiscan.io/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyberswap", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'ARBITRUM' },
             BINANCE: { address : '0x290275e3db66394C52272398959845170E4DCb88', address2 : '0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245', chainCEX : 'ARBITRUM' },
@@ -178,7 +177,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://etherscan.io/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyberswap", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'ETH' },
             BINANCE: { address : '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', address2 : '0x28C6c06298d514Db089934071355E5743bf21d60', address3 : '0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', chainCEX : 'ETH' },
@@ -204,7 +203,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://bscscan.com/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyberswap", "0x", "lifi", "okx"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "lifi", "okx"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'BSC' },
             BINANCE: { address : '0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', address2 : '0xe2fc31F816A9b94326492132018C3aEcC4a93aE1', chainCEX : 'BSC' },
@@ -230,7 +229,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://basescan.org/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyberswap", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
         WALLET_CEX: {
             GATE: { address: '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX: 'BASE' },
             BINANCE: { address: '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', address2: '0x28C6c06298d514Db089934071355E5743bf21d60', chainCEX: 'BASE' },
@@ -389,7 +388,7 @@ try {
 
 // DEX builder config (moved from dex-config.js)
 const CONFIG_DEXS = {
-    kyberswap: {
+    kyber: {
         proxy: true,
         builder: ({ chainName, tokenAddress, pairAddress }) => `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
         allowFallback: true,

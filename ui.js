@@ -152,7 +152,7 @@ function updateDarkIcon(isDark) {
 
 /** Render signal card containers per configured DEX. */
 function RenderCardSignal() {
-  const dexList = Object.keys(CONFIG_DEXS || {});
+  const dexList = (typeof window.resolveActiveDexList === 'function') ? window.resolveActiveDexList() : Object.keys(CONFIG_DEXS || {});
   const sinyalContainer = document.getElementById('sinyal-container');
   if (!sinyalContainer) return;
 

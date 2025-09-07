@@ -3,6 +3,33 @@
  * Also refreshes DEX signal cards when rendering main table.
  */
 function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
+    function getActiveDexList() {
+        try {
+            if (typeof window.resolveActiveDexList === 'function') return window.resolveActiveDexList();
+            const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+            if (m.type === 'single') {
+                const arr = ((window.CONFIG_CHAINS || {})[m.chain] || {}).DEXS || [];
+                return (Array.isArray(arr) ? arr : []).map(x => String(x).toLowerCase());
+            }
+            return Object.keys(window.CONFIG_DEXS || {}).map(x => String(x).toLowerCase());
+        } catch (_) {
+            return Object.keys(window.CONFIG_DEXS || {}).map(x => String(x).toLowerCase());
+        }
+    }
+
+    function renderMonitoringHeader(dexList) {
+        try {
+            const thead = document.querySelector('#tabel-monitoring thead');
+            if (!thead) return;
+            const cells = [];
+            cells.push('<th class="uk-text-center uk-text-bolder th-orderbook">ORDERBOOK</th>');
+            dexList.forEach(d => cells.push(`<th class="uk-text-center uk-text-small th-dex">${String(d).toUpperCase()}</th>`));
+            cells.push('<th class="uk-text-center uk-text-bolder th-detail">DETAIL TOKEN</th>');
+            dexList.forEach(d => cells.push(`<th class="uk-text-center uk-text-small th-dex">${String(d).toUpperCase()}</th>`));
+            cells.push('<th class="uk-text-center uk-text-bolder th-orderbook">ORDERBOOK</th>');
+            thead.innerHTML = `<tr style="border-bottom: 1px solid black;">${cells.join('')}</tr>`;
+        } catch(_) {}
+    }
     // refactor: pecah rendering row menjadi helper kecil agar lebih mudah dibaca/dirawat.
     function buildOrderbookCell(side, data, idPrefix, warnaCex) {
         const arrow = side === 'LEFT' ? `${(data.symbol_in||'').toUpperCase()} → ${(data.symbol_out||'').toUpperCase()}`
@@ -16,25 +43,30 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
             </td>`;
     }
 
-    function buildDexSlots(direction, data, maxSlots, idPrefix) {
+    function buildDexSlots(direction, data, dexList, idPrefix) {
         const isLeft = direction === 'LEFT';
         let html = '';
-        for (let i = 0; i < maxSlots; i++) {
-            if (data.dexs && data.dexs[i]) {
-                const dexName = data.dexs[i].dex || '-';
-                const modal = isLeft ? (data.dexs[i].left ?? 0) : (data.dexs[i].right ?? 0);
+        const lowerDexs = (data.dexs || []).map(d => ({
+            dex: String(d.dex || '').toLowerCase(),
+            left: d.left, right: d.right
+        }));
+        dexList.forEach(dexKey => {
+            const found = lowerDexs.find(x => x.dex === String(dexKey).toLowerCase());
+            if (found) {
+                const dexName = String(dexKey);
+                const modal = isLeft ? (found.left ?? 0) : (found.right ?? 0);
                 const idCell = isLeft
                     ? `${data.cex.toUpperCase()}_${dexName.toUpperCase()}_${data.symbol_in}_${data.symbol_out}_${String(data.chain).toUpperCase()}`
                     : `${data.cex}_${dexName.toUpperCase()}_${data.symbol_out}_${data.symbol_in}_${String(data.chain).toUpperCase()}`;
                 html += `
-                    <td id="${idPrefix}${idCell}" style="text-align: center; vertical-align: middle;">
+                    <td class="td-dex" id="${idPrefix}${idCell}" style="text-align: center; vertical-align: middle;">
                         <strong class="uk-align-center" style="display:inline-block; margin:0;">${dexName.toUpperCase()} [$${modal}]</strong></br>
-                        <span class="dex-status uk-text-muted" >🔒</span>
+                        <span class="dex-status uk-text-muted">🔒</span>
                     </td>`;
             } else {
-                html += '<td class="dex-slot-empty">-</td>';
+                html += '<td class="td-dex dex-slot-empty">-</td>';
             }
-        }
+        });
         return html;
     }
 
@@ -102,9 +134,9 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
                 <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}</span>
             </td>`;
     }
-    if (tableBodyId === 'dataTableBody') {
-        RenderCardSignal();
-    }
+    const dexList = getActiveDexList();
+    if (tableBodyId === 'dataTableBody') { RenderCardSignal(); }
+    renderMonitoringHeader(dexList);
     const $tableBody = $('#' + tableBodyId);
     // Manage concurrent renders per table body // REFACTORED
     if (typeof window !== 'undefined') {
@@ -123,7 +155,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         return;
     }
 
-    const maxSlots = 4;
+    const maxSlots = dexList.length;
 
     // Incremental chunked rendering to avoid blocking on large datasets
     if ($tableBody.length) $tableBody.html('');
@@ -157,7 +189,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         rowHtml += buildOrderbookCell('LEFT', data, idPrefix, warnaCex);
 
         // refactor: render slot DEX kiri via helper
-        rowHtml += buildDexSlots('LEFT', data, maxSlots, idPrefix);
+        rowHtml += buildDexSlots('LEFT', data, dexList, idPrefix);
 
         // Detail Info
         const urlScIn = chainConfig.URL_Chain ? `${chainConfig.URL_Chain}/token/${data.sc_in}` : '#';
@@ -231,7 +263,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
             </td>`;
 
         // refactor: render slot DEX kanan via helper
-        rowHtml += buildDexSlots('RIGHT', data, maxSlots, idPrefix);
+        rowHtml += buildDexSlots('RIGHT', data, dexList, idPrefix);
 
         // refactor: gunakan helper kecil untuk orderbook kanan
         rowHtml += buildOrderbookCell('RIGHT', data, idPrefix, warnaCex);
@@ -268,13 +300,14 @@ function renderTokenManagementList() {
     // This variable will hold the list of tokens after applying chain/cex/pair filters.
     let filteredForStats = [...allTokens];
 
-    // Apply active filters (Chain, CEX, Pair) to determine the base list for stats
+    // Apply active filters (Chain, CEX, Pair, DEX) to determine the base list for stats
     if (m.type === 'single') {
         const chainKey = m.chain;
-        const filters = getFilterChain(chainKey) || { cex: [], pair: [] };
+        const filters = getFilterChain(chainKey) || { cex: [], pair: [], dex: [] };
         const hasCex = Array.isArray(filters.cex) && filters.cex.length > 0;
         const hasPair = Array.isArray(filters.pair) && filters.pair.length > 0;
-        if (hasCex && hasPair) {
+        const hasDex = Array.isArray(filters.dex) && filters.dex.length > 0;
+        if (hasCex && hasPair && hasDex) {
             const upperCexFilters = filters.cex.map(c => String(c).toUpperCase());
             const pairDefs = (CONFIG_CHAINS?.[chainKey] || {}).PAIRDEXS || {};
             filteredForStats = filteredForStats
@@ -283,25 +316,28 @@ function renderTokenManagementList() {
                     const p = String(t.symbol_out || '').toUpperCase();
                     const key = pairDefs[p] ? p : 'NON';
                     return filters.pair.includes(key);
-                });
+                })
+                .filter(t => (t.selectedDexs || []).some(d => filters.dex.includes(String(d).toLowerCase())));
         } else {
             filteredForStats = [];
         }
     } else { // multi-chain mode
         const saved = getFromLocalStorage('FILTER_MULTICHAIN', null);
-        const filters = getFilterMulti() || { chains: [], cex: [] };
+        const filters = getFilterMulti() || { chains: [], cex: [], dex: [] };
         const hasChains = Array.isArray(filters.chains) && filters.chains.length > 0;
         const hasCex = Array.isArray(filters.cex) && filters.cex.length > 0;
+        const hasDex = Array.isArray(filters.dex) && filters.dex.length > 0;
         if (!saved) {
             // no saved filter → keep all
-        } else if (!(hasChains && hasCex)) {
+        } else if (!(hasChains && hasCex && hasDex)) {
             filteredForStats = [];
         } else {
             const lowerChainFilters = filters.chains.map(c => String(c).toLowerCase());
             const upperCexFilters = filters.cex.map(c => String(c).toUpperCase());
             filteredForStats = filteredForStats
                 .filter(t => lowerChainFilters.includes(String(t.chain || '').toLowerCase()))
-                .filter(t => (t.selectedCexs || []).some(c => upperCexFilters.includes(String(c).toUpperCase())));
+                .filter(t => (t.selectedCexs || []).some(c => upperCexFilters.includes(String(c).toUpperCase())))
+                .filter(t => (t.selectedDexs || []).some(d => filters.dex.includes(String(d).toLowerCase())));
         }
     }
 
