@@ -470,15 +470,13 @@ function renderTokenManagementList() {
         </div>
       `;
 
-        const names = (r.selectedDexs || []).slice(0, 4);
-        while (names.length < 4) names.push(null);
-        const dexHtml = names.map(name => {
-            if (!name) return `<span class="dex-chip dex-empty">-</span>`;
+        const names = (r.selectedDexs || []);
+        const dexHtml = names.length ? names.map(name => {
             const k = String(name);
             const l = r?.dataDexs?.[k]?.left ?? r?.dataDexs?.[k.toLowerCase()]?.left ?? 0;
             const rgt = r?.dataDexs?.[k]?.right ?? r?.dataDexs?.[k.toLowerCase()]?.right ?? 0;
             return `<span class="dex-chip"><b>${k.toUpperCase()}</b> [<span class="dex-mini">${l}</span>~<span class="dex-mini">${rgt}</span>]</span>`;
-        }).join(' ');
+        }).join(' ') : `<span class="dex-chip dex-empty">-</span>`;
 
         // Resolve display SC for NON/placeholder '0x'
         let scInDisp = r.sc_in || '';

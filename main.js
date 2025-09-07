@@ -1214,7 +1214,7 @@ $("#startSCAN").click(function () {
         };
 
         if (!updatedToken.symbol_in || !updatedToken.symbol_out) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Symbol Token & Pair tidak boleh kosong') : undefined;
-        if (updatedToken.selectedDexs.length > 4) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Maksimal 4 DEX yang dipilih') : undefined;
+        // Removed 4-DEX selection cap: allow any number of DEX
 
         const m = getAppMode();
         let tokens = (m.type === 'single') ? getTokensChain(m.chain) : getTokensMulti();
@@ -1320,7 +1320,7 @@ $("#startSCAN").click(function () {
             };
 
             if (!tokenObj.symbol_in || !tokenObj.symbol_out) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Symbol Token & Pair tidak boleh kosong') : undefined;
-            if ((tokenObj.selectedDexs||[]).length > 4) return (typeof toast !== 'undefined' && toast.warning) ? toast.warning('Maksimal 4 DEX yang dipilih') : undefined;
+            // Removed 4-DEX selection cap: allow any number of DEX
 
             // Build dataCexs preserving previous per-chain CEX details if available
             const dataCexs = {};
@@ -1497,7 +1497,7 @@ $("#startSCAN").click(function () {
         const remoteTokens = $modal.data('remote-raw') || [];
         const savedTokens = $modal.data('saved-tokens') || [];
 
-        // Build selected tokens with DEX configs (global, up to 4 DEX)
+        // Build selected tokens with DEX configs (global, unlimited DEX)
         const chainKey = activeSingleChainKey.toLowerCase();
         const chainCfg = CONFIG_CHAINS[chainKey] || {};
         const pairDefs = chainCfg.PAIRDEXS || {};
@@ -1518,10 +1518,7 @@ $("#startSCAN").click(function () {
             if (typeof toast !== 'undefined' && toast.warning) toast.warning('Pilih minimal 1 DEX.');
             return;
         }
-        if (selectedDexsGlobal.length > 4) {
-            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Pilih maksimal 4 DEX.');
-            return;
-        }
+        // Removed 4-DEX selection cap: allow any number of DEX
 
         // Debug: log currently chosen filters in modal
         try {
@@ -2050,7 +2047,7 @@ $(document).ready(function() {
             </label>`);
         });
 
-        // Build DEX config (max 4)
+        // Build DEX config (no limit)
         const $dex = $('#sync-dex-config').empty();
         const dexList = (chain.DEXS || []).map(String);
         dexList.forEach(dx => {

@@ -510,12 +510,7 @@ function buildDexCheckboxForKoin(token = {}) {
         container.append(`<div class="uk-flex uk-flex-middle uk-margin-small"><label class="uk-margin-small-right"><input type="checkbox" class="uk-checkbox dex-edit-checkbox" id="dex-${safeId}" value="${dexName}" ${isChecked ? 'checked' : ''}> <b>${dexName.toUpperCase()}</b></label><div class="uk-flex uk-flex-middle" style="gap:6px;"><input type="number" class="uk-input uk-form-xxsmall dex-left" id="dex-${safeId}-left" placeholder="KIRI" value="${leftVal}" style="width:88px;"><input type="number" class="uk-input uk-form-xxsmall dex-right" id="dex-${safeId}-right" placeholder="KANAN" value="${rightVal}" style="width:88px;"></div></div>`);
     });
 
-    container.off('change.max4').on('change.max4', '.dex-edit-checkbox', function(){
-        if (container.find('.dex-edit-checkbox:checked').length > 4) {
-            this.checked = false;
-            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Maksimal 4 DEX dipilih');
-        }
-    });
+    // Removed 4-DEX selection cap: no checkbox limit handler
 }
 
 /** Disable all form inputs globally. */
