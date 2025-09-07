@@ -412,6 +412,17 @@ function openEditModalById(id) {
     if (window.UIkit && UIkit.modal) {
         UIkit.modal('#FormEditKoinModal').show();
     }
+
+    // While scanning, keep modal inputs ON and restrict action buttons per requirement
+    try {
+        if (typeof isScanRunning !== 'undefined' && isScanRunning) {
+            const $modal = $('#FormEditKoinModal');
+            $modal.find('input, select, textarea').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
+            // Show only Import and Batal; hide Hapus and Simpan
+            $modal.find('#HapusEditkoin, #SaveEditkoin').hide();
+            $modal.find('#CopyToMultiBtn, #BatalEditkoin').show().prop('disabled', false);
+        }
+    } catch(_) {}
 }
 
 /** Apply themed colors to Edit Koin modal based on active chain. */
@@ -515,7 +526,13 @@ function buildDexCheckboxForKoin(token = {}) {
 
 /** Disable all form inputs globally. */
 function form_off() {
-    $('input, select, textarea, button').not('#btn-scroll-top').prop('disabled', true);
+    // Disable globally, but keep Edit buttons and Edit modal interactive
+    $('input, select, textarea, button')
+        .not('#btn-scroll-top')
+        .not('#FormEditKoinModal *')
+        .not('.edit-token-button')
+        .not('.mgrEdit')
+        .prop('disabled', true);
     // Whitelist critical controls to remain interactive during scanning
     try {
         // refactor: dark mode toggle juga ikut nonaktif saat scan

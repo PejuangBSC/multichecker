@@ -93,7 +93,7 @@ function setPNLFilter(value) {
 
 function getFilterMulti() {
     const f = getFromLocalStorage('FILTER_MULTICHAIN', null);
-    if (f && typeof f === 'object') return { chains: f.chains || [], cex: f.cex || [], dex: (f.dex || []).map(x => normalizeDexName(x)) };
+    if (f && typeof f === 'object') return { chains: f.chains || [], cex: f.cex || [], dex: (f.dex || []).map(x => String(x).toLowerCase()) };
     return { chains: [], cex: [], dex: [] };
 }
 
@@ -108,7 +108,7 @@ function setFilterMulti(val){
         next.cex = (val.cex || []).map(x => String(x).toUpperCase());
     }
     if (val && Object.prototype.hasOwnProperty.call(val, 'dex')) {
-        next.dex = (val.dex || []).map(x => normalizeDexName(x));
+        next.dex = (val.dex || []).map(x => String(x).toLowerCase());
     }
     saveToLocalStorage('FILTER_MULTICHAIN', next);
 }
@@ -129,7 +129,7 @@ function getFilterChain(chain){
             }
         }
     }
-    if (f && typeof f==='object') return { cex: (f.cex||[]).map(String), pair: (f.pair||[]).map(x=>String(x).toUpperCase()), dex: (f.dex||[]).map(x=>normalizeDexName(x)) };
+    if (f && typeof f==='object') return { cex: (f.cex||[]).map(String), pair: (f.pair||[]).map(x=>String(x).toUpperCase()), dex: (f.dex||[]).map(x=>String(x).toLowerCase()) };
     return { cex: [], pair: [], dex: [] };
 }
 
@@ -144,7 +144,7 @@ function setFilterChain(chain, val){
         next.pair = (val.pair || []).map(x => String(x).toUpperCase());
     }
     if (val && Object.prototype.hasOwnProperty.call(val, 'dex')) {
-        next.dex = (val.dex || []).map(x => normalizeDexName(x));
+        next.dex = (val.dex || []).map(x => String(x).toLowerCase());
     }
     saveToLocalStorage(key, next);
 }
@@ -215,7 +215,7 @@ function setTokensMulti(list){
     if (nowHas && hadNoneBefore) {
         const chains = Object.keys(window.CONFIG_CHAINS || {}).map(k => String(k).toLowerCase());
         const cex = Object.keys(window.CONFIG_CEX || {}).map(k => String(k).toUpperCase());
-        const dex = Object.keys(window.CONFIG_DEXS || {}).map(k => normalizeDexName(k));
+        const dex = Object.keys(window.CONFIG_DEXS || {}).map(k => String(k).toLowerCase());
         const existing = getFromLocalStorage('FILTER_MULTICHAIN', null);
         const empty = !existing || ((existing.chains||[]).length===0 && (existing.cex||[]).length===0 && (existing.dex||[]).length===0);
         if (empty) setFilterMulti({ chains, cex, dex });
@@ -283,7 +283,7 @@ function setTokensChain(chain, list){
         const cfg = (window.CONFIG_CHAINS || {})[chainKey] || {};
         const cex = Object.keys(cfg.WALLET_CEX || window.CONFIG_CEX || {}).map(k => String(k));
         const pairs = Array.from(new Set([...(Object.keys(cfg.PAIRDEXS || {})), 'NON'])).map(x => String(x).toUpperCase());
-        const dex = (cfg.DEXS || []).map(x => normalizeDexName(x));
+        const dex = (cfg.DEXS || []).map(x => String(x).toLowerCase());
         const fkey = `FILTER_${String(chainKey).toUpperCase()}`;
         const existing = getFromLocalStorage(fkey, null);
         const empty = !existing || ((existing.cex||[]).length===0 && (existing.pair||[]).length===0 && (existing.dex||[]).length===0);
@@ -655,7 +655,7 @@ function flattenDataKoin(dataTokens) {
       const cexUpper = String(cex).toUpperCase();
       const cexInfo = item.dataCexs?.[cexUpper] || {};
       const dexArray = (item.selectedDexs || []).map(dex => ({
-        dex: normalizeDexName(dex),
+        dex: dex,
         left: item.dataDexs?.[dex]?.left || 0,
         right: item.dataDexs?.[dex]?.right || 0
       }));
@@ -759,14 +759,14 @@ try {
                     const saved = getFilterChain(chain) || { dex: [] };
                     const base = ((window.CONFIG_CHAINS || {})[chain] || {}).DEXS || [];
                     const list = (Array.isArray(saved.dex) && saved.dex.length) ? saved.dex : base;
-                    return (list || []).map(x => normalizeDexName(x));
+                    return (list || []).map(x => String(x).toLowerCase());
                 } else {
                     const saved = getFilterMulti() || { dex: [] };
                     const base = Object.keys(window.CONFIG_DEXS || {});
                     const list = (Array.isArray(saved.dex) && saved.dex.length) ? saved.dex : base;
-                    return (list || []).map(x => normalizeDexName(x));
+                    return (list || []).map(x => String(x).toLowerCase());
                 }
-            } catch(_) { return Object.keys(window.CONFIG_DEXS || {}).map(x => normalizeDexName(x)); }
+            } catch(_) { return Object.keys(window.CONFIG_DEXS || {}).map(x => String(x).toLowerCase()); }
         };
     }
 } catch(_){}
@@ -798,23 +798,20 @@ function getWarnaCEX(cex) {
     }
 }
 
-function normalizeDexName(name){
-    try {
-        const s = String(name || '').toLowerCase();
-        if (s === 'kyberswap') return 'kyber';
-        return s;
-    } catch(_) { return String(name||'').toLowerCase(); }
-}
-
 function generateDexLink(dex, chainName, codeChain, NameToken, sc_input, NamePair, sc_output) {
     if (!dex) return null;
 
-    const lowerDex = normalizeDexName(dex);
+    const lowerDex = dex.toLowerCase();
 
     // Find the correct DEX configuration key by checking if the input 'dex' string includes it.
-    // This handles cases like "kyberswap" and "kyberswap via LIFI".
+    // This handles cases like "kyber" and "kyber via LIFI".
     let dexKey = Object.keys(CONFIG_DEXS).find(key => lowerDex.includes(key));
-    if (!dexKey && lowerDex === 'kyber' && CONFIG_DEXS['kyber']) dexKey = 'kyber';
+    // Backward compatibility: map legacy names to new keys
+    if (!dexKey) {
+        const synonyms = { kyberswap: 'kyber' };
+        const found = Object.keys(synonyms).find(oldKey => lowerDex.includes(oldKey));
+        if (found && CONFIG_DEXS[synonyms[found]]) dexKey = synonyms[found];
+    }
 
     if (dexKey && CONFIG_DEXS[dexKey] && typeof CONFIG_DEXS[dexKey].builder === 'function') {
         const builder = CONFIG_DEXS[dexKey].builder;
@@ -888,13 +885,16 @@ function setScanUIGating(isRunning) {
             $('#filter-card').find('input, select, button, textarea').not('#btn-scroll-top').prop('disabled', true);
             // Keep Auto Scroll checkbox enabled and clickable during scanning
             $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: 1 });
-            // Some extra clickable items in page (keep chain links enabled)
-            $('.sort-toggle, .edit-token-button').css({ pointerEvents: 'none', opacity: 0.4 });
+            // Keep sort toggles and edit buttons clickable during scan per new requirement
+            $('.sort-toggle, .edit-token-button').css({ pointerEvents: 'auto', opacity: 1 });
             // Keep delete buttons active during scanning as requested
             $('.delete-token-button').css({ pointerEvents: 'auto', opacity: 1 });
-            // Lock token management & edit modal during scan
+            // Lock token management panel during scan, but allow Edit Koin modal to be fully editable
             $('#token-management').find('input, select, button, textarea').prop('disabled', true).css({ pointerEvents: 'none', opacity: 0.6 });
-            $('#FormEditKoinModal').find('input, select, button, textarea').prop('disabled', true).css({ pointerEvents: 'none', opacity: 0.6 });
+            $('#FormEditKoinModal').find('input, select, button, textarea').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
+            // In scanning state, only show Import and Batal in Edit modal
+            $('#FormEditKoinModal #HapusEditkoin, #FormEditKoinModal #SaveEditkoin').hide();
+            $('#FormEditKoinModal #CopyToMultiBtn, #FormEditKoinModal #BatalEditkoin').show().prop('disabled', false);
             // Keep STOP button usable during running
             $('#stopSCAN').prop('disabled', false).show();
             // Keep RELOAD usable (already via toolbar allow-list), disable START explicitly
@@ -908,6 +908,8 @@ function setScanUIGating(isRunning) {
             $('.sort-toggle, .edit-token-button, #chain-links-container a').css({ pointerEvents: '', opacity: '' });
             $('.delete-token-button').css({ pointerEvents: '', opacity: '' });
             $('#token-management, #FormEditKoinModal').find('input, select, button, textarea').prop('disabled', false).css({ pointerEvents: '', opacity: '' });
+            // Restore action buttons visibility (do not force Import visibility; openEditModalById handles normal mode)
+            $('#FormEditKoinModal #HapusEditkoin, #FormEditKoinModal #SaveEditkoin').show();
             // Ensure Auto Scroll remains interactive when idle too
             $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
         }
