@@ -214,6 +214,15 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
     let uiUpdateQueue = [];
 
+    // Small helper: enqueue update again if its target cell isn't in DOM yet
+    function requeueUpdate(updateData, delayMs) {
+        try {
+            const d = Math.max(50, Number(delayMs) || 150);
+            updateData._retry = (updateData._retry || 0) + 1;
+            setTimeout(() => { uiUpdateQueue.push(updateData); }, d);
+        } catch(_) { uiUpdateQueue.push(updateData); }
+    }
+
     function processUiUpdates() {
         if (!isScanRunning && uiUpdateQueue.length === 0) return;
 
@@ -226,7 +235,11 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             if (updateData && updateData.type === 'error') {
                 const { id, color, message, swapMessage } = updateData;
                 const cell = document.getElementById(id);
-                if (cell) {
+                if (!cell) {
+                    if ((updateData._retry || 0) < 6) { requeueUpdate(updateData, 160); }
+                } else {
+                    // Ignore stale error if cell is already finalized by a success render
+                    try { if (cell.dataset && cell.dataset.final === '1') { /* stale */ processed++; continue; } } catch(_) {}
                     setDexErrorBackground(cell, color);
                     let statusSpan = ensureDexStatusSpan(cell);
                     if (statusSpan) statusSpan.className = 'dex-status uk-text-danger';
@@ -236,7 +249,14 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                     statusSpan.title = message || '';
                 }
             } else if (updateData) {
-                DisplayPNL(updateData);
+                // Pre-check target element; if not yet present, retry a few times
+                const targetId = String(updateData.idPrefix || '') + String(updateData.baseId || '');
+                const el = document.getElementById(targetId);
+                if (!el) {
+                    if ((updateData._retry || 0) < 6) { requeueUpdate(updateData, 150); }
+                } else {
+                    DisplayPNL(updateData);
+                }
             }
             processed++;
             const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
@@ -311,7 +331,19 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                             const amount_in_token = parseFloat(modalKiri) / DataCEX.priceBuyToken;
                             const amount_in_pair = parseFloat(modalKanan) / DataCEX.priceBuyPair;
 
-                            const callDex = (direction) => {
+                            // Wait helper for ensuring target cell exists before showing "checking" label
+                            const waitForCell = (id, timeoutMs = 1200, intervalMs = 50) => new Promise(resolve => {
+                                try {
+                                    const t0 = Date.now();
+                                    const iv = setInterval(() => {
+                                        const el = document.getElementById(id);
+                                        if (el) { clearInterval(iv); resolve(el); return; }
+                                        if ((Date.now() - t0) >= timeoutMs) { clearInterval(iv); resolve(null); }
+                                    }, Math.max(25, intervalMs));
+                                } catch(_) { resolve(document.getElementById(id)); }
+                            });
+
+                            const callDex = async (direction) => {
                                 const isKiri = direction === 'TokentoPair';
                                 if (isKiri && !isPosChecked('Actionkiri')) { return; }
                                 if (!isKiri && !isPosChecked('ActionKanan')) { return; }
@@ -442,6 +474,9 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
                                 const ready = validateDexReadiness();
                                 if (!ready.ok) { updateDexCellStatus('failed', dex, ready.reason); return; }
+
+                                // Ensure the cell is present before changing status to "checking"
+                                try { await waitForCell(idCELL, 1200, 40); } catch(_) {}
 
                                 const wdKeyCheck = idCELL + ':check';
                                 const wdKeyFallback = idCELL + ':fallback';
