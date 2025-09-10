@@ -23,11 +23,9 @@ function ensureDexStatusSpan(cell) {
 }
 
 // refactor: normalized setter for error background honoring dark-mode
-function setDexErrorBackground(cell, fallbackColor) {
+function setDexErrorBackground(cell) {
     if (!cell) return;
-    // refactor: use shared dark-mode helper
-    const isDark = (typeof window !== 'undefined' && window.isDarkMode && window.isDarkMode()) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode'));
-    cell.style.backgroundColor = fallbackColor || (isDark ? '#651313' : '#ffcccc');
+    try { cell.classList.add('dex-error'); } catch(_) {}
 }
 
 // refactor: global watchdog helpers to avoid duplicate inline implementations
@@ -49,10 +47,57 @@ function clearDexWatchdogs(keys){
     (Array.isArray(keys) ? keys : [keys]).forEach(k => clearDexWatchdog(k));
 }
 
+// Ticker countdown per-sel DEX (untuk menampilkan sisa waktu "Check")
+function clearDexTickerById(id){
+    try {
+        window._DEX_TICKERS = window._DEX_TICKERS || new Map();
+        const key = String(id) + ':ticker';
+        if (window._DEX_TICKERS.has(key)) {
+            clearInterval(window._DEX_TICKERS.get(key));
+            window._DEX_TICKERS.delete(key);
+        }
+    } catch(_) {}
+}
+
 let animationFrameId;
-let uiTimeoutId;
 let isScanRunning = false;
 
+// Toggle page title to indicate active scan for the current page/tab (single-chain only)
+function setPageTitleForRun(running){
+    try {
+        const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+        if (String(m.type||'').toLowerCase() !== 'single') return; // only affect per-chain pages
+        if (running) {
+            if (!window.__ORIG_TITLE) window.__ORIG_TITLE = document.title;
+            document.title = 'SCANNING..';
+        } else {
+            if (window.__ORIG_TITLE) { document.title = window.__ORIG_TITLE; }
+            window.__ORIG_TITLE = null;
+        }
+    } catch(_) {}
+}
+
+// Title helpers for DEX cells: maintain a joined title log per cell
+function setCellTitleByEl(cell, text){
+    try {
+        cell.dataset.titleLog = String(text || '');
+        cell.setAttribute('title', cell.dataset.titleLog);
+        const span = cell.querySelector('.dex-status');
+        if (span) span.setAttribute('title', cell.dataset.titleLog);
+    } catch(_) {}
+}
+function appendCellTitleByEl(cell, line){
+    try {
+        const prev = cell.dataset && cell.dataset.titleLog ? String(cell.dataset.titleLog) : '';
+        const next = prev ? (prev + '\n' + String(line||'')) : String(line||'');
+        setCellTitleByEl(cell, next);
+    } catch(_) {}
+}
+function appendCellTitleById(id, line){
+    const cell = document.getElementById(id);
+    if (!cell) return;
+    appendCellTitleByEl(cell, line);
+}
 /**
  * Start the scanning process for a flattened list of tokens.
  * - Batches tokens per group (scanPerKoin)
@@ -86,9 +131,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     window.SavedSettingData = ConfigScan;
     window.CURRENT_CHAINS = allowedChains;
 
-    // Resolve active DEX selection
+    // Resolve active DEX selection and lock it for the duration of this scan
     let allowedDexs = [];
     try { allowedDexs = (typeof window.resolveActiveDexList === 'function') ? window.resolveActiveDexList() : []; } catch(_) { allowedDexs = []; }
+    try { if (typeof window !== 'undefined') window.__LOCKED_DEX_LIST = (allowedDexs || []).slice(); } catch(_) {}
 
     // Use the passed parameter directly, and filter by the currently allowed chains and DEX selection (token must have at least one selected DEX)
     const flatTokens = tokensToScan
@@ -102,10 +148,24 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         return;
     }
 
+    // Ensure UI skeleton (header + rows + all DEX cells) is present before any calculation/updates
+    try {
+        const bodyId = tableBodyId || 'dataTableBody';
+        if (typeof window.prepareMonitoringSkeleton === 'function') {
+            window.prepareMonitoringSkeleton(flatTokens, bodyId);
+        } else if (typeof window.renderMonitoringHeader === 'function' && typeof window.computeActiveDexList === 'function') {
+            window.renderMonitoringHeader(window.computeActiveDexList());
+        }
+    } catch(_) {}
+
     setAppState({ run: 'YES' });
+    // Update page title to indicate active scanning (single-chain view only)
+    setPageTitleForRun(true);
     try {
         if (typeof window.updateRunStateCache === 'function') {
             try { window.updateRunStateCache(getActiveFilterKey(), { run: 'YES' }); } catch(_) {}
+            // Mark each allowed chain as running to isolate per-chain state
+            try { (allowedChains || []).forEach(c => window.updateRunStateCache(`FILTER_${String(c).toUpperCase()}`, { run: 'YES' })); } catch(_) {}
         }
         if (typeof window.updateRunningChainsBanner === 'function') {
             const m = getAppMode();
@@ -121,8 +181,6 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     $('#sinyal-container [id^="sinyal"]').empty();
     // Hide empty signal cards so none appear at start // REFACTORED
     if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards();
-    // Reset all DEX cells back to default
-    resetDexCells(tableBodyId);
     // Apply gating first, then disable globally to ensure edit remains locked during scan
     if (typeof setScanUIGating === 'function') setScanUIGating(true); // REFACTORED
     form_off();
@@ -185,10 +243,9 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             if ((now - start) >= budgetMs) break; // yield to next frame
         }
 
-        // Schedule next tick; when hidden, avoid rAF (it's paused) and use setTimeout fallback
+        // If page is hidden, slow down update loop to save CPU
         if (document.hidden) {
-            try { if (uiTimeoutId) clearTimeout(uiTimeoutId); } catch(_) {}
-            uiTimeoutId = setTimeout(processUiUpdates, 250);
+            setTimeout(() => { animationFrameId = requestAnimationFrame(processUiUpdates); }, 100);
         } else {
             animationFrameId = requestAnimationFrame(processUiUpdates);
         }
@@ -215,6 +272,32 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             const prices = [DataCEX.priceBuyToken, DataCEX.priceSellToken, DataCEX.priceBuyPair, DataCEX.priceSellPair];
             if (prices.some(p => !isFinite(p) || p <= 0)) {
                 if (typeof toast !== 'undefined' && toast.error) toast.error(`CEK MANUAL ${token.symbol_in} di ${token.cex}`);
+                // Inform all DEX cells for this token that CEX prices are invalid
+                try {
+                    if (Array.isArray(token.dexs)) {
+                        token.dexs.forEach((dd) => {
+                            try { if (!allowedDexs.includes(String(dd.dex||'').toLowerCase())) return; } catch(_) {}
+                            const dex = String(dd.dex||'').toLowerCase();
+                            ['TokentoPair','PairtoToken'].forEach(dir => {
+                                const isKiri = dir === 'TokentoPair';
+                                const baseIdRaw = `${String(token.cex).toUpperCase()}_${String(dex).toUpperCase()}_`
+                                  + `${String(isKiri ? token.symbol_in : token.symbol_out).toUpperCase()}_`
+                                  + `${String(isKiri ? token.symbol_out : token.symbol_in).toUpperCase()}_`
+                                  + `${String(token.chain).toUpperCase()}_`
+                                  + `${String(token.id||'').toUpperCase()}`;
+                                const idCELL = tableBodyId + '_' + baseIdRaw.replace(/[^A-Z0-9_]/g,'');
+                                const cell = document.getElementById(idCELL);
+                                if (!cell) return;
+                                setDexErrorBackground(cell);
+                                const span = ensureDexStatusSpan(cell);
+                                span.className = 'dex-status uk-text-danger';
+                                span.innerHTML = `<span class=\"uk-label uk-label-danger\">ERROR</span>`;
+                                appendCellTitleByEl(cell, '[CEX] INVALID PRICES');
+                                try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
+                            });
+                        });
+                    }
+                } catch(_) {}
                 return;
             }
 
@@ -230,10 +313,15 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
                             const callDex = (direction) => {
                                 const isKiri = direction === 'TokentoPair';
-                                if (isKiri && !isPosChecked('Actionkiri')) return;
-                                if (!isKiri && !isPosChecked('ActionKanan')) return;
+                                if (isKiri && !isPosChecked('Actionkiri')) { return; }
+                                if (!isKiri && !isPosChecked('ActionKanan')) { return; }
 
-                                const baseId = `${token.cex.toUpperCase()}_${dex.toUpperCase()}_${isKiri ? token.symbol_in : token.symbol_out}_${isKiri ? token.symbol_out : token.symbol_in}_${token.chain.toUpperCase()}`;
+                                const baseIdRaw = `${String(token.cex).toUpperCase()}_${String(dex).toUpperCase()}_`
+                                  + `${String(isKiri ? token.symbol_in : token.symbol_out).toUpperCase()}_`
+                                  + `${String(isKiri ? token.symbol_out : token.symbol_in).toUpperCase()}_`
+                                  + `${String(token.chain).toUpperCase()}_`
+                                  + `${String(token.id||'').toUpperCase()}`;
+                                const baseId = baseIdRaw.replace(/[^A-Z0-9_]/g,'');
                                 const idCELL = tableBodyId + '_' + baseId;
 
                                 // Resolve safe token addresses/decimals especially for NON pair
@@ -256,24 +344,104 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                 const updateDexCellStatus = (status, dexName, message = '') => {
                                     const cell = document.getElementById(idCELL);
                                     if (!cell) return;
-                                    cell.style.backgroundColor = '';
+                                    // Do not overwrite if cell already finalized by a prior UPDATE/ERROR
+                                    try { if (cell.dataset && cell.dataset.final === '1') return; } catch(_) {}
+                                    // Presentation only: spinner for checking, badge for error
+                                    try { cell.classList.remove('dex-error'); } catch(_) {}
                                     let statusSpan = ensureDexStatusSpan(cell);
                                     statusSpan.removeAttribute('title');
                                     statusSpan.classList.remove('uk-text-muted', 'uk-text-warning', 'uk-text-danger');
                                     if (status === 'checking') {
                                         statusSpan.classList.add('uk-text-warning');
-                                        statusSpan.textContent = `Check ${dexName.toUpperCase()}`;
+                                        statusSpan.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>Check ${String(dexName||'').toUpperCase()}`;
+                                        try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
+                                        // Build rich header log like example
+                                        try {
+                                            const chainCfg = (window.CONFIG_CHAINS||{})[String(token.chain).toLowerCase()] || {};
+                                            const chainName = (chainCfg.Nama_Chain || token.chain || '').toString().toUpperCase();
+                                            const nameIn  = String(isKiri ? token.symbol_in  : token.symbol_out).toUpperCase();
+                                            const nameOut = String(isKiri ? token.symbol_out : token.symbol_in ).toUpperCase();
+                                            const ce  = String(token.cex||'').toUpperCase();
+                                            const dx  = String(dexName||dex||'').toUpperCase();
+                                            const proc = isKiri ? `${ce} → ${dx}` : `${dx} → ${ce}`;
+                                            const modal = Number(isKiri ? modalKiri : modalKanan) || 0;
+                                            const header = [
+                                                `✅ [LOG ${isKiri? 'CEX → DEX':'DEX → CEX'}] ${nameIn} → ${nameOut} on ${chainName}`,
+                                                `    🔄 [${proc}]`,
+                                                '',
+                                                `    🪙 Modal: $${modal.toFixed(2)}`,
+                                               // message ? `    💹 CEX SUMMARY: ${message}` : ''
+                                            ].filter(Boolean).join('\n');
+                                            setCellTitleByEl(cell, header);
+                                        } catch(_) {}
                                     } else if (status === 'fallback') {
                                         statusSpan.classList.add('uk-text-warning');
-                                        statusSpan.textContent = 'Check SWOOP';
-                                        if (message) statusSpan.title = `Initial Error: ${message}`;
-                                    } else if (status === 'error' || status === 'fallback_error') {
+                                        statusSpan.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>Check SWOOP`;
+                                        // Tooltip: show only raw DEX response if present
+                                        if (message) {
+                                            statusSpan.title = String(message);
+                                            setCellTitleByEl(cell, String(message));
+                                        }
+                                        try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
+                                    } else if (status === 'fallback_error') {
                                         setDexErrorBackground(cell);
+                                        statusSpan.classList.remove('uk-text-warning');
                                         statusSpan.classList.add('uk-text-danger');
-                                        statusSpan.textContent = '[ERROR]';
-                                        if (message) statusSpan.title = message;
+                                        statusSpan.innerHTML = `<span class=\"uk-label uk-label-warning\">TIMEOUT</span>`;
+                                        // Tooltip: raw DEX error/timeout only
+                                        if (message) {
+                                            statusSpan.title = String(message);
+                                            setCellTitleByEl(cell, String(message));
+                                        } else {
+                                            statusSpan.removeAttribute('title');
+                                        }
+                                        try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
+                                    } else if (status === 'failed') {
+                                        // Validation failed before DEX call (e.g., modal/contract/chain code)
+                                        setDexErrorBackground(cell);
+                                        statusSpan.classList.remove('uk-text-warning');
+                                        statusSpan.classList.add('uk-text-danger');
+                                        statusSpan.innerHTML = `<span class=\"uk-label uk-label-failed\">FAILED</span>`;
+                                        if (message) {
+                                            statusSpan.title = String(message);
+                                            setCellTitleByEl(cell, String(message));
+                                        } else {
+                                            statusSpan.removeAttribute('title');
+                                        }
+                                        try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
+                                    } else if (status === 'error') {
+                                        setDexErrorBackground(cell);
+                                        statusSpan.classList.remove('uk-text-warning');
+                                        statusSpan.classList.add('uk-text-danger');
+                                        statusSpan.innerHTML = `<span class=\"uk-label uk-label-danger\">ERROR</span>`;
+                                        if (message) {
+                                            statusSpan.title = String(message);
+                                            setCellTitleByEl(cell, String(message));
+                                        } else {
+                                            statusSpan.removeAttribute('title');
+                                        }
+                                        try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
                                     }
                                 };
+
+                                // Lightweight readiness checks to avoid unnecessary DEX requests
+                                const validateDexReadiness = () => {
+                                    const modal = isKiri ? modalKiri : modalKanan;
+                                    const amtIn = isKiri ? amount_in_token : amount_in_pair;
+                                    const chainCfg = CONFIG_CHAINS[String(token.chain).toLowerCase()] || {};
+                                    // Modal must be > 0
+                                    if (!(Number(modal) > 0)) return { ok:false, reason:'Modal tidak valid (<= 0)' };
+                                    // Amount-in must be > 0
+                                    if (!(Number(amtIn) > 0)) return { ok:false, reason:'Amount input tidak valid (<= 0)' };
+                                    // Chain code must exist (used by DEX link and queries)
+                                    if (!chainCfg || !chainCfg.Kode_Chain) return { ok:false, reason:'Kode chain tidak tersedia' };
+                                    // Basic SC presence (after NON fallback sanitation)
+                                    if (!scInSafe || !scOutSafe || String(scInSafe).length < 6 || String(scOutSafe).length < 6) return { ok:false, reason:'Alamat kontrak tidak lengkap' };
+                                    return { ok:true };
+                                };
+
+                                const ready = validateDexReadiness();
+                                if (!ready.ok) { updateDexCellStatus('failed', dex, ready.reason); return; }
 
                                 const wdKeyCheck = idCELL + ':check';
                                 const wdKeyFallback = idCELL + ':fallback';
@@ -294,6 +462,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         finalDexRes.dexTitle || dex, token.chain, CONFIG_CHAINS[token.chain.toLowerCase()].Kode_Chain,
                                         direction, 0, finalDexRes
                                     );
+                                    // debug logs removed
                                     // Console log summary for this successful check
                                     try {
                                         //menampilkan log simulasi harga
@@ -328,21 +497,104 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         // refactor: removed unused local debug variables (buy/sell/pnl lines)
                                         
                                     } catch(_) {}
-                                    if (document.hidden) {
-                                        // Apply immediately when tab hidden to avoid throttled rAF
-                                        try { DisplayPNL(update); } catch(_) { uiUpdateQueue.push(update); }
-                                    } else {
-                                        uiUpdateQueue.push(update);
-                                    }
+                                    // Append success details (rich format)
+                                    try {
+                                        const chainCfg = (window.CONFIG_CHAINS||{})[String(token.chain).toLowerCase()] || {};
+                                        const chainName = (chainCfg.Nama_Chain || token.chain || '').toString().toUpperCase();
+                                        const ce  = String(token.cex||'').toUpperCase();
+                                        const dx  = String((finalDexRes?.dexTitle)||dex||'').toUpperCase();
+                                        const nameIn  = String(isKiri ? token.symbol_in  : token.symbol_out).toUpperCase();
+                                        const nameOut = String(isKiri ? token.symbol_out : token.symbol_in ).toUpperCase();
+                                        const modal = Number(isKiri ? modalKiri : modalKanan) || 0;
+                                        const amtIn  = Number(isKiri ? amount_in_token : amount_in_pair) || 0;
+                                        const outAmt = Number(finalDexRes.amount_out)||0;
+                                        const feeSwap = Number(finalDexRes.FeeSwap||0);
+                                        const feeWD   = Number(isKiri ? DataCEX.feeWDToken : DataCEX.feeWDPair) || 0;
+                                        const feeTrade = 0.0014 * modal;
+                                        // Harga efektif DEX (USDT/token)
+                                        let effDexPerToken = 0;
+                                        if (isKiri) {
+                                            if (nameOut === 'USDT') effDexPerToken = (amtIn>0)? (outAmt/amtIn) : 0;
+                                            else effDexPerToken = (amtIn>0)? (outAmt/amtIn) * Number(DataCEX.priceSellPair||0) : 0;
+                                        } else {
+                                            if (nameIn === 'USDT') effDexPerToken = (outAmt>0)? (amtIn/outAmt) : 0;
+                                            else effDexPerToken = (outAmt>0)? (amtIn/outAmt) * Number(DataCEX.priceBuyPair||0) : 0;
+                                        }
+                                        // Total value hasil (USDT)
+                                        const totalValue = isKiri
+                                          ? outAmt * Number(DataCEX.priceSellPair||0)
+                                          : outAmt * Number(DataCEX.priceSellToken||0);
+                                        const bruto = totalValue - modal;
+                                        const totalFee = feeSwap + feeWD + feeTrade;
+                                        const profitLoss = totalValue - (modal + totalFee);
+                                        const pnlPct = modal>0 ? (bruto/modal)*100 : 0;
+                                        const toIDR = (v)=>{ try{ return (typeof formatIDRfromUSDT==='function')? formatIDRfromUSDT(Number(v)||0):'';}catch(_){return '';} };
+                                        const buyPriceCEX = Number(DataCEX.priceBuyToken||0);
+                                        const buyLine = isKiri
+                                          ? `    🛒 Beli di ${ce} @ $${buyPriceCEX.toFixed(6)} → ${amtIn.toFixed(6)} ${nameIn}`
+                                          : `    🛒 Beli di ${dx} @ ~$${effDexPerToken.toFixed(6)} / ${nameOut}`;
+                                        const buyIdrLine = isKiri
+                                          ? `    💱 Harga Beli (${ce}) dalam IDR: ${toIDR(buyPriceCEX)}`
+                                          : `    💱 Harga Beli (${dx}) dalam IDR: ${toIDR(effDexPerToken)}`;
+                                        const sellIdrLine = isKiri
+                                          ? `    💱 Harga Jual (${dx}) dalam IDR: ${toIDR(effDexPerToken)}`
+                                          : `    💱 Harga Jual (${ce}) dalam IDR: ${toIDR(Number(DataCEX.priceSellToken||0))}`;
+                                        const lines = [
+                                            '',
+                                            `    🪙 Modal: $${modal.toFixed(2)}`,
+                                            buyLine,
+                                            buyIdrLine,
+                                            '',
+                                            `    💰 Swap di ${dx}:`,
+                                            `    - Harga Swap Efektif: ~$${effDexPerToken.toFixed(6)} / ${nameIn}`,
+                                            `    - Hasil: $${Number(totalValue||0).toFixed(6)}`,
+                                            sellIdrLine,
+                                            '',
+                                            `    💸 Fee WD: $${feeWD.toFixed(2)}`,
+                                            `    🛒 Fee Swap: $${feeSwap.toFixed(2)}`,
+                                            `    🧾 Total Fee: ~$${totalFee.toFixed(2)}`,
+                                            '',
+                                            `    📈 PNL: ${bruto>=0?'+':''}${bruto.toFixed(2)} USDT (${pnlPct.toFixed(2)}%)`,
+                                            `    🚀 PROFIT : ${profitLoss>=0?'+':''}${profitLoss.toFixed(2)} USDT`
+                                        ].join('\n');
+                                        appendCellTitleById(idCELL, lines);
+                                    } catch(_) {}
+                                    uiUpdateQueue.push(update);
                                 };
 
                                 const handleError = (initialError) => {
                                     clearAllWatchdogs();
+                                    // debug logs removed
                                     const dexConfig = CONFIG_DEXS[dex.toLowerCase()];
                                     if (dexConfig && dexConfig.allowFallback) {
                                         updateDexCellStatus('fallback', dex, initialError?.pesanDEX);
+                                        // Mulai countdown untuk SWOOP fallback (5 detik)
+                                        try {
+                                            window._DEX_TICKERS = window._DEX_TICKERS || new Map();
+                                            clearDexTickerById(idCELL);
+                                            const endAtFB = Date.now() + 5000;
+                                            const tickFB = () => {
+                                                const rem = endAtFB - Date.now();
+                                                const secs = Math.max(0, Math.ceil(rem / 1000));
+                                                const cell = document.getElementById(idCELL);
+                                                if (!cell) { clearDexTickerById(idCELL); return; }
+                                                if (cell.dataset && cell.dataset.final === '1') { clearDexTickerById(idCELL); return; }
+                                                const span = ensureDexStatusSpan(cell);
+                                                span.innerHTML = `<span class=\\"uk-margin-small-right\\" uk-spinner=\\"ratio: 0.5\\"></span>Check SWOOP (${secs}s)`;
+                                                try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
+                                                if (rem <= 0) {
+                                                    clearDexTickerById(idCELL);
+                                                    const rawMsg = (initialError && initialError.pesanDEX) ? initialError.pesanDEX : 'Request Timeout';
+                                                    try { updateDexCellStatus('fallback_error', dex, rawMsg); } catch(_) {}
+                                                }
+                                            };
+                                            const intIdFB = setInterval(tickFB, 1000);
+                                            window._DEX_TICKERS.set(idCELL + ':ticker', intIdFB);
+                                            tickFB();
+                                        } catch(_) {}
                                         setDexWatchdog(wdKeyFallback, () => {
-                                            const msg = (initialError?.pesanDEX ? `Initial: ${initialError.pesanDEX} | ` : '') + 'SWOOP: Request Timeout';
+                                            const msg = (initialError && initialError.pesanDEX) ? initialError.pesanDEX : 'Request Timeout';
+                                            try { clearDexTickerById(idCELL); } catch(_) {}
                                             updateDexCellStatus('fallback_error', dex, msg);
                                         }, 5000);
                                         getPriceSWOOP(
@@ -354,11 +606,13 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         )
                                         .then((fallbackRes) => {
                                             clearDexWatchdog(wdKeyFallback);
+                                            try { clearDexTickerById(idCELL); } catch(_) {}
                                             handleSuccess(fallbackRes, true);
                                         })
                                         .catch((fallbackErr) => {
                                             if (window._DEX_WATCHDOGS.has(wdKeyFallback)) clearTimeout(window._DEX_WATCHDOGS.get(wdKeyFallback));
-                                            const finalMessage = `Initial: ${initialError?.pesanDEX || 'N/A'} | Fallback: ${fallbackErr?.pesanDEX || 'Unknown'}`;
+                                            const finalMessage = (fallbackErr && fallbackErr.pesanDEX) ? fallbackErr.pesanDEX : ((initialError && initialError.pesanDEX) ? initialError.pesanDEX : 'Unknown');
+                                            try { clearDexTickerById(idCELL); } catch(_) {}
                                             updateDexCellStatus('fallback_error', dex, finalMessage);
                                             try {
                                                 const pairLine = `${String(isKiri ? token.symbol_in : token.symbol_out).toUpperCase()}->${String(isKiri ? token.symbol_out : token.symbol_in).toUpperCase()} on ${String(token.chain).toUpperCase()}`;
@@ -399,9 +653,38 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     }
                                 };
 
-                                updateDexCellStatus('checking', dex);
-                                const dexTimeoutWindow = getJedaDex(dex) + Math.max(speedScan, 4500) + 300;
-                                setDexWatchdog(wdKeyCheck, () => updateDexCellStatus('error', dex, `${dex.toUpperCase()}: Request Timeout`), dexTimeoutWindow);
+                                // debug logs removed
+                                // Include CEX summary in title while checking
+                                const fmt6 = v => (Number.isFinite(+v) ? (+v).toFixed(6) : String(v));
+                                const cexSummary = `CEX READY BT=${fmt6(DataCEX.priceBuyToken)} ST=${fmt6(DataCEX.priceSellToken)} BP=${fmt6(DataCEX.priceBuyPair)} SP=${fmt6(DataCEX.priceSellPair)}`;
+                                updateDexCellStatus('checking', dex, cexSummary);
+                                const dexTimeoutWindow = getJedaDex(dex) + Math.max(speedScan) + 300;
+                                setDexWatchdog(wdKeyCheck, () => { updateDexCellStatus('error', dex, `${dex.toUpperCase()}: Request Timeout`); }, dexTimeoutWindow);
+                                // Mulai ticker countdown untuk menampilkan sisa detik pada label "Check"
+                                try {
+                                    window._DEX_TICKERS = window._DEX_TICKERS || new Map();
+                                    const tickerKey = idCELL + ':ticker';
+                                    if (window._DEX_TICKERS.has(tickerKey)) { clearInterval(window._DEX_TICKERS.get(tickerKey)); window._DEX_TICKERS.delete(tickerKey); }
+                                    const endAt = Date.now() + dexTimeoutWindow;
+                                    const tick = () => {
+                                        const rem = endAt - Date.now();
+                                        const secs = Math.max(0, Math.ceil(rem / 1000));
+                                        const cell = document.getElementById(idCELL);
+                                        if (!cell) { clearDexTickerById(idCELL); return; }
+                                        if (cell.dataset && cell.dataset.final === '1') { clearDexTickerById(idCELL); return; }
+                                        const span = ensureDexStatusSpan(cell);
+                                        span.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>Check ${String(dex||'').toUpperCase()} (${secs}s)`;
+                                        try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
+                                        if (rem <= 0) {
+                                            clearDexTickerById(idCELL);
+                                            // Paksa transisi ke ERROR (timeout) bila watchdog belum mengeksekusi
+                                            try { updateDexCellStatus('error', dex, `${String(dex||'').toUpperCase()}: Request Timeout`); } catch(_) {}
+                                        }
+                                    };
+                                    const intId = setInterval(tick, 1000);
+                                    window._DEX_TICKERS.set(tickerKey, intId);
+                                    tick();
+                                } catch(_) {}
 
                                 setTimeout(() => {
                                     getPriceDEX(
@@ -497,8 +780,9 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
         updateProgress(tokensToProcess.length, tokensToProcess.length, startTime, 'SELESAI');
         isScanRunning = false;
-        try { cancelAnimationFrame(animationFrameId); } catch(_) {}
-        try { if (uiTimeoutId) clearTimeout(uiTimeoutId); } catch(_) {}
+        cancelAnimationFrame(animationFrameId);
+        // Restore page title after scan completes
+        setPageTitleForRun(false);
         form_on();
         $("#stopSCAN").hide().prop("disabled", true);
         $('#startSCAN').prop('disabled', false).text('Start').removeClass('uk-button-disabled');
@@ -515,6 +799,14 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             }
             if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(key, { run: 'NO' }); } catch(_) {} }
         } catch(_) { try { setAppState({ run: 'NO' }); } catch(__) {} }
+
+        // Unlock DEX header list after scan completes and refresh header to reflect current selection
+        try {
+            if (typeof window !== 'undefined') { window.__LOCKED_DEX_LIST = null; }
+            if (typeof window.renderMonitoringHeader === 'function' && typeof window.computeActiveDexList === 'function') {
+                window.renderMonitoringHeader(window.computeActiveDexList());
+            }
+        } catch(_) {}
 
         // Schedule autorun if enabled
         try {
@@ -548,19 +840,6 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     processTokens(flatTokens, tableBodyId);
 }
 
-// refactor: helper to reset dex cells back to default locked state
-function resetDexCells(tableBodyId){
-    try {
-        const selector = `td[id^="${tableBodyId}_"]`;
-        document.querySelectorAll(selector).forEach(cell => {
-            const strong = cell.querySelector('strong');
-            if (!strong) return;
-            const dexHeaderHtml = strong.outerHTML;
-            cell.innerHTML = `${dexHeaderHtml}<br><span class=\"dex-status uk-text-muted\">🔒</span>`;
-            cell.style.backgroundColor = '';
-        });
-    } catch(_) {}
-}
 
 /**
  * Stops the currently running scanner.
@@ -570,6 +849,8 @@ async function stopScanner() {
     try { cancelAnimationFrame(animationFrameId); } catch(_) {}
     clearInterval(window.__autoRunInterval); // REFACTORED
     window.__autoRunInterval = null;
+    // Restore page title if user stops the scan
+    setPageTitleForRun(false);
     if (typeof form_on === 'function') form_on(); // REFACTORED
     try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
     // Persist run=NO before reloading to avoid stale run state after refresh
@@ -585,6 +866,8 @@ async function stopScanner() {
     } catch(_) { try { setAppState({ run: 'NO' }); } catch(__) {} }
     try {
         if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(getActiveFilterKey(), { run: 'NO' }); } catch(_) {} }
+        // Clear per-chain run state flags for chains involved in this session
+        try { (window.CURRENT_CHAINS || []).forEach(c => window.updateRunStateCache(`FILTER_${String(c).toUpperCase()}`, { run: 'NO' })); } catch(_) {}
         if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner();
         if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
     } catch(_){}
@@ -601,6 +884,8 @@ function stopScannerSoft() {
     setAppState({ run: 'NO' }); // REFACTORED
     try {
         if (typeof window.updateRunStateCache === 'function') { try { window.updateRunStateCache(getActiveFilterKey(), { run: 'NO' }); } catch(_) {} }
+        // Clear per-chain run state flags for chains involved in this session
+        try { (window.CURRENT_CHAINS || []).forEach(c => window.updateRunStateCache(`FILTER_${String(c).toUpperCase()}`, { run: 'NO' })); } catch(_) {}
         if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner();
         if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
     } catch(_){}
@@ -620,8 +905,10 @@ function updateRunningChainsBanner(seedChains) {
             const cfg = (window.CONFIG_CHAINS || {})[k] || {};
             return (cfg.Nama_Pendek || cfg.Nama_Chain || k).toString().toUpperCase();
         });
+        // If multichain mode is running, prepend MULTICHAIN flag
+        try { if (cache.multichain) labels.unshift('MULTICHAIN'); } catch(_) {}
         if (labels.length > 0) {
-            $('#infoAPP').html(`[ RUN SCANNING: ${labels.join(', ')} ]`).show();
+            $('#infoAPP').html(` RUN SCANNING: ${labels.join(' | ')}`).show();
         } else {
             // No running chains → clear banner
             $('#infoAPP').text('').hide();

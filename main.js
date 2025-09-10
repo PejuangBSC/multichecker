@@ -206,8 +206,6 @@ function refreshTokensTable() {
 
     filteredTokens = [...filteredByChain];
     originalTokens = [...filteredByChain];
-
-    try { updateTokenCount(filteredTokens); } catch(_) {}
     loadKointoTable(filteredTokens, 'dataTableBody');
     try { window.currentListOrderMulti = Array.isArray(filteredTokens) ? [...filteredTokens] : []; } catch(_) {}
     try { applySortToggleState(); } catch(_) {}
@@ -250,7 +248,7 @@ function loadAndDisplaySingleChainTokens() {
             flatTokens = [];
         }
         // Tidak perlu sort ulang; sudah terurut dari sumber
-    } catch(e) { console.warn('single filter apply err', e); }
+    } catch(e) { /* debug logs removed */ }
 
     // Expose current list for search-aware scanning (keep sorted order)
     try { window.singleChainTokensCurrent = Array.isArray(flatTokens) ? [...flatTokens] : []; } catch(_){}
@@ -375,7 +373,7 @@ function bootApp() {
     }
     if (state === 'READY') {
         // REFACTORED
-        if (typeof cekDataAwal === 'function') { cekDataAwal(); } else { console.warn('cekDataAwal() not available'); }
+        if (typeof cekDataAwal === 'function') { cekDataAwal(); } else { /* debug logs removed */ }
     } else {
         if (window.toastr) {
             if (typeof toast !== 'undefined') {
@@ -413,12 +411,7 @@ function cekDataAwal() {
   }
 
   if (info) {
-    console.info('⏳ Memulai proses Memuat DATA KOIN');
-    console.time('⏱️ Waktu eksekusi Memuat DATA KOIN');
-
-    console.timeEnd('⏱️ Waktu eksekusi Memuat DATA KOIN');
-    console.info('✅ Proses Memuat DATA KOIN selesai.');
-
+    // debug logs removed
     // Use new modular filter card + loaders
     // REFACTORED
     if (typeof refreshTokensTable === 'function') { refreshTokensTable(); }
@@ -520,7 +513,8 @@ async function deferredInit() {
             Object.keys(CONFIG_DEXS||{}).forEach(dx=>{
                 const key = String(dx).toLowerCase();
                 const id=`fc-dex-${key}`; const cnt=byDex[key]||0; if (cnt===0) return; const checked=dexSel.includes(key);
-                $secDex.append(chipHtml('fc-dex',id,dx.toUpperCase(),'#333',cnt,checked, key, false));
+                const col = (CONFIG_DEXS[key] && (CONFIG_DEXS[key].warna || CONFIG_DEXS[key].WARNA)) || '#333';
+                $secDex.append(chipHtml('fc-dex',id,dx.toUpperCase(),col,cnt,checked, key, false));
             });
             if ($headLabels.length)
             $wrap.append($secChain).append($('<div class=\"uk-text-muted\">|</div>')).append($secCex).append($('<div class=\"uk-text-muted\">|</div>')).append($secDex);
@@ -632,7 +626,8 @@ async function deferredInit() {
             },{});
             dexAllowed.forEach(dx => {
                 const id=`sc-dex-${dx}`; const cnt=byDex[dx]||0; if (cnt===0) return; const checked=dexSel.includes(dx);
-                $secDex.append(chipHtml('sc-dex',id,dx.toUpperCase(),'#333',cnt,checked, dx, false));
+                const col = (CONFIG_DEXS[dx] && (CONFIG_DEXS[dx].warna || CONFIG_DEXS[dx].WARNA)) || '#333';
+                $secDex.append(chipHtml('sc-dex',id,dx.toUpperCase(),col,cnt,checked, dx, false));
             });
             if ($headLabels.length)
             $wrap.append($secCex).append($('<div class=\"uk-text-muted\">|</div>')).append($secPair).append($('<div class=\"uk-text-muted\">|</div>')).append($secDex);
@@ -778,9 +773,7 @@ async function deferredInit() {
             $('#token-management').hide();
             $('#dataTableBody').closest('.uk-overflow-auto').show();
             loadAndDisplaySingleChainTokens();
-        } catch(e) {
-            console.warn('autoOpenSingleChainIfNeeded error', e);
-        }
+        } catch(e) { /* debug logs removed */ }
     })();
 
 
@@ -801,6 +794,22 @@ async function deferredInit() {
         if (typeof applyThemeForMode === 'function') applyThemeForMode();
         try { if (typeof window.updateSignalTheme === 'function') window.updateSignalTheme(); } catch(_) {}
     });
+
+    // Console Log Summary toggle (default OFF)
+    try {
+        const savedScanLog = getFromLocalStorage('SCAN_LOG_ENABLED', false);
+        const isOn = (savedScanLog === true) || (String(savedScanLog).toLowerCase() === 'true') || (String(savedScanLog) === '1');
+        window.SCAN_LOG_ENABLED = !!isOn;
+        const $tgl = $('#toggleScanLog');
+        if ($tgl.length) $tgl.prop('checked', !!isOn);
+        $(document).off('change.scanlog').on('change.scanlog', '#toggleScanLog', function(){
+            const v = !!$(this).is(':checked');
+            window.SCAN_LOG_ENABLED = v;
+            try { saveToLocalStorage('SCAN_LOG_ENABLED', v); } catch(_) {}
+        });
+        // Keep it enabled even during scan gating
+        try { $('#toggleScanLog').prop('disabled', false).css({ opacity: '', pointerEvents: '' }); } catch(_) {}
+    } catch(_) {}
 
     $('.sort-toggle').off('click').on('click', function () {
         $('.sort-toggle').removeClass('active');
@@ -1099,6 +1108,11 @@ $("#reload").click(function () {
     });
 
 $("#startSCAN").click(function () {
+        // Rebuild monitoring header to reflect current active DEXs before scanning
+        try {
+            const dexList = (window.computeActiveDexList ? window.computeActiveDexList() : Object.keys(window.CONFIG_DEXS || {}));
+            if (window.renderMonitoringHeader) window.renderMonitoringHeader(dexList);
+        } catch(_) {}
         // Prevent starting if app state indicates a run is already active
         try {
             const stClick = getAppState();
@@ -1166,6 +1180,8 @@ $("#startSCAN").click(function () {
                 if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token pada filter per‑chain untuk dipindai.');
                 return;
             }
+            // Re-render monitoring table to initial state for these tokens
+            try { loadKointoTable(flatTokens, 'dataTableBody'); } catch(_) {}
             startScanner(flatTokens, settings, 'dataTableBody');
             return;
         }
@@ -1182,6 +1198,8 @@ $("#startSCAN").click(function () {
             if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token yang cocok dengan hasil pencarian/fitur filter untuk dipindai.');
             return;
         }
+        // Re-render monitoring table to initial state for these tokens
+        try { loadKointoTable(toScan, 'dataTableBody'); } catch(_) {}
         startScanner(toScan, settings, 'dataTableBody');
     });
 
@@ -1458,23 +1476,9 @@ $("#startSCAN").click(function () {
                 const countBy = (arr, pick)=> arr.reduce((a,t)=>{ const k = pick(t)||'-'; a[k]=(a[k]||0)+1; return a; },{});
                 const byCex  = countBy(raw, t => String(t.cex||'').toUpperCase());
                 const byPair = countBy(raw, t => String(t.symbol_out||'').toUpperCase());
-                console.groupCollapsed(`SYNC FETCH • chain=${chainKey} • total=${raw.length}`);
-                console.info('DATAJSON URL:', chainConfig.DATAJSON);
-                console.info('Saved tokens existing:', Array.isArray(savedTokens) ? savedTokens.length : 0);
-                console.info('Count by CEX:'); console.table(Object.entries(byCex).map(([k,v])=>({ cex:k, count:v })));
-                console.info('Count by Pair:'); console.table(Object.entries(byPair).map(([k,v])=>({ pair:k, count:v })));
-                console.info('Sample tokens (up to 10):');
-                console.table((raw||[]).slice(0,10).map(t=>({
-                    cex: String(t.cex||'').toUpperCase(),
-                    symbol_in: String(t.symbol_in||'').toUpperCase(),
-                    symbol_out: String(t.symbol_out||'').toUpperCase(),
-                    sc_in: t.sc_in || t.contract_in || '',
-                    sc_out: t.sc_out || t.contract_out || '',
-                    des_in: t.des_in || t.decimals_in || '',
-                    des_out: t.des_out || t.decimals_out || ''
-                })));
-                console.groupEnd();
-            } catch(e){ console.warn('SYNC FETCH debug log error', e); }
+                /* debug logs removed */
+                /* debug logs removed */
+            } catch(e){ /* debug logs removed */ }
 
         } catch (error) {
             modalBody.html('<tr><td colspan="4">Failed to fetch token data.</td></tr>');
@@ -1520,18 +1524,7 @@ $("#startSCAN").click(function () {
         }
         // Removed 4-DEX selection cap: allow any number of DEX
 
-        // Debug: log currently chosen filters in modal
-        try {
-            const selCex = $('#sync-filter-cex input:checked').map(function(){ return $(this).val().toUpperCase(); }).get();
-            const selPair = $('#sync-filter-pair input:checked').map(function(){ return $(this).val().toUpperCase(); }).get();
-            console.groupCollapsed('SYNC SAVE • selections');
-            console.info('Chain:', String(activeSingleChainKey).toUpperCase());
-            console.info('Selected CEX:', selCex);
-            console.info('Selected Pair:', selPair);
-            console.info('Selected DEX (global):', selectedDexsGlobal);
-            console.info('DEX modal config (L/R):', dataDexsGlobal);
-            console.groupEnd();
-        } catch(_) {}
+        // debug logs removed
 
         const selectedTokens = [];
         $('#sync-modal-tbody tr').each(function() {
@@ -1598,21 +1591,7 @@ $("#startSCAN").click(function () {
                 dataCexs
             };
             selectedTokens.push(tokenObj);
-            // Per-token debug log
-            try {
-                console.log('SYNC SAVE • token:', {
-                    id: tokenObj.id,
-                    chain: tokenObj.chain,
-                    cex: cexUpper,
-                    symbol_in: symbolIn,
-                    symbol_out: symbolOut,
-                    sc_in: scIn,
-                    sc_out: scOut,
-                    des_in: desIn,
-                    des_out: desOut,
-                    selectedDexs: selectedDexs,
-                });
-            } catch(_) {}
+            // debug logs removed
         });
 
         // Validate at least 1 token selected
@@ -1641,12 +1620,7 @@ $("#startSCAN").click(function () {
         const $btn = $('#sync-save-btn');
         const prevLabel = $btn.text();
         try { $btn.prop('disabled', true).text('Saving...'); } catch(_) {}
-        // Debug: summary before save
-        console.groupCollapsed('SYNC SAVE • summary');
-        console.info('Existing count:', existingList.length);
-        console.info('Selected to save:', selectedTokens.length);
-        console.info('Added:', added, 'Replaced:', replaced, 'Next total:', merged.length);
-        console.time('SYNC_SAVE_WRITE');
+        // debug logs removed
         let ok = true;
         if (typeof setTokensChainAsync === 'function') {
             ok = await setTokensChainAsync(activeSingleChainKey, merged);
@@ -1665,9 +1639,7 @@ $("#startSCAN").click(function () {
             if (typeof toast !== 'undefined' && toast.error) toast.error(`Gagal menyimpan ke penyimpanan lokal${reason}`);
             try { $btn.prop('disabled', false).text(prevLabel); } catch(_) {}
         }
-        console.timeEnd('SYNC_SAVE_WRITE');
-        console.info('Write OK:', ok, 'Reason:', window.LAST_STORAGE_ERROR || '-');
-        console.groupEnd();
+        // debug logs removed
     });
 
     // Sync modal search + filter handlers
@@ -1683,9 +1655,16 @@ $("#startSCAN").click(function () {
         renderSyncTable(activeSingleChainKey);
     });
 
-    // Sync modal select all
-    $('#sync-select-all').on('change', function() {
-        $('#sync-modal-tbody tr:visible .sync-token-checkbox').prop('checked', this.checked);
+    // Sync modal select mode (exclusive via radio)
+    $(document).on('change', 'input[name="sync-pick-mode"]', function(){
+        const mode = $(this).val();
+        const $boxes = $('#sync-modal-tbody tr:visible .sync-token-checkbox');
+        if (mode === 'all') {
+            $boxes.prop('checked', true);
+        } else if (mode === 'picked') {
+            $boxes.prop('checked', false);
+            $('#sync-modal-tbody tr:visible .sync-token-checkbox[data-saved="1"]').prop('checked', true);
+        }
     });
 
     // Removed legacy single-chain start button handler (using unified #startSCAN now)
@@ -1808,13 +1787,15 @@ $(document).ready(function() {
 
     // Apply themed background + dark mode per state
     if (typeof applyThemeForMode === 'function') applyThemeForMode();
-
-    // $('#namachain').text("MULTICHECKER");
-    $('#sinyal-container').css('color', 'black');
-
-    // --- Defer heavy initialization ---
     // applyThemeForMode already executed above to paint early
     setTimeout(deferredInit, 0);
+
+    // Bersihkan konten kolom DEX saat ada perubahan filter (serupa perilaku saat START scan)
+    try {
+        $(document).on('change input', '#filter-card input, #filter-card select', function(){
+            try { resetDexCells('dataTableBody'); } catch(_) {}
+        });
+    } catch(_) {}
 
     // --- Report Database Status (IndexedDB) --- // REFACTORED
     async function reportDatabaseStatus(){
@@ -1825,7 +1806,7 @@ $(document).ready(function() {
         }
         const n = payload.items.length;
         if (typeof toast !== 'undefined' && toast.info) toast.info(`TERHUBUNG DATABASE...`);
-        else console.info('Database siap. Items:', n);
+        else { /* debug logs removed */ }
     }
     if (window.whenStorageReady && typeof window.whenStorageReady.then === 'function') {
         window.whenStorageReady.then(reportDatabaseStatus);
@@ -2110,9 +2091,7 @@ $(document).ready(function() {
                 });
                 if (saved) dupRemote.push({ idx: (token._idx ?? idx), cex: cexUp, symbol_in: symIn, symbol_out: symOut, savedId: saved.id || '-' });
             });
-            console.groupCollapsed(`SYNC DUPLICATES • in DB (filtered): ${dupRemote.length}`);
-            if (dupRemote.length) console.table(dupRemote); else console.log('None');
-            console.groupEnd();
+            /* debug logs removed */
 
             // Internal DB duplicates (per-chain), expanded per selected CEX
             const keyCounts = {};
@@ -2130,10 +2109,8 @@ $(document).ready(function() {
             const dbDup = Object.entries(keyCounts)
               .filter(([, cnt]) => cnt > 1)
               .map(([k, cnt]) => { const [cx, si, so] = k.split('__'); return { cex: cx, symbol_in: si, symbol_out: so, count: cnt }; });
-            console.groupCollapsed(`DB DUPLICATES • per-chain: ${dbDup.length}`);
-            if (dbDup.length) console.table(dbDup); else console.log('None');
-            console.groupEnd();
-        } catch(e) { console.warn('SYNC duplicate logging failed', e); }
+            /* debug logs removed */
+        } catch(e) { /* debug logs removed */ }
 
         filtered.forEach((token, index) => {
             const cexUp = String(token.cex || '').toUpperCase();
@@ -2154,7 +2131,7 @@ $(document).ready(function() {
               : '';
             const row = `
                 <tr>
-                    <td><input type="checkbox" class="uk-checkbox sync-token-checkbox" data-index="${token._idx ?? index}" ${isChecked ? 'checked' : ''}></td>
+                    <td><input type="checkbox" class="uk-checkbox sync-token-checkbox" data-index="${token._idx ?? index}" ${isChecked ? 'checked' : ''} ${isChecked ? 'data-saved="1"' : ''}></td>
                     <td>${symIn}${statusBadge}</td>
                     <td>${symOut}${pairDefs[symOut] ? '' : ' <span class="uk-text-danger uk-text-bold">[NON]</span>'}</td>
                     <td>${cexUp}</td>
@@ -2316,7 +2293,7 @@ async function renderHistoryTable(){
         </tr>`;
       $tb.append(tr);
     });
-  } catch(e) { console.warn('renderHistoryTable failed', e); }
+  } catch(e) { /* debug logs removed */ }
 }
 
 $(document).on('change', '#histMode, #histChain, #histSearch', function(){ renderHistoryTable(); });

@@ -46,8 +46,8 @@
 </div>
 <div class="uk-container uk-margin-small-top uk-background-a">
  <!-- Card Bagian Header -->
-    <div class="uk-card uk-card-default uk-margin-small header-card">
-        <div class="uk-grid-small uk-flex-middle" uk-grid id="menu-app">
+    <div class="uk-card uk-card-default uk-margin-small header-card" id="menu-app">
+        <div class="uk-grid-small uk-flex-middle" uk-grid >
                 
                 <!-- Kiri: Judul -->
                 <div class="uk-width-expand@s uk-width-1-1">
@@ -55,7 +55,7 @@
                         <h3 id="judul" class="uk-margin-remove" 
                             style="font-size: 18px; line-height: 1.2; color: #000; font-weight: bold;">
                             MULTICHECKER <span id="current-chain-label" style="margin-left:3px;">[ALL]</span>
-                            <!-- <img src="https://coopsugar.org/storage/2022/03/new.gif" width="24px" /> -->
+                            <img src="https://coopsugar.org/storage/2022/03/new.gif" width="24px" />
                         </h3>
                         &nbsp;&nbsp;
                         <span>[ <b> 
@@ -78,7 +78,7 @@
                         <img class="icon" id="SettingConfig" data-feature="settings" title="CONFIG SCANNER" width="24px" src="https://cdn-icons-png.flaticon.com/512/771/771203.png" />
                         <img class="icon" id="reload" data-feature="reload" title="RESET PROSES" width="24px" src="https://cdn-icons-png.flaticon.com/256/10264/10264169.png" />
 
-                         <a href="modal.html" class="iframe-modal-trigger" data-feature="assets"><img class="icon" title="MANAJEMEN ASSET" width="24px" src="https://cdn-icons-png.flaticon.com/512/4626/4626344.png" /></a>
+                         <a href="extra/modal.html" class="iframe-modal-trigger" data-feature="assets"><img class="icon" title="MANAJEMEN ASSET" width="24px" src="https://cdn-icons-png.flaticon.com/512/4626/4626344.png" /></a>
                          <a href="#" id="openBackupModal" title="Backup/Restore Database"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/8618/8618023.png" /></a>
                          <a href="#" id="openHistoryModal" title="Riwayat Aksi"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/169/169244.png" /></a>
                        
@@ -150,6 +150,13 @@
                     <button type="button" id="startSCAN" data-feature="scan" class="uk-button uk-button-secondary uk-button-small">START</button>
                     <button type="button" id="stopSCAN" data-feature="scan" style="display:none;" class="uk-button uk-button-danger uk-button-small">STOP</button>
                     
+                </div>
+                <!-- Toggle: Console Log Summary (default OFF) -->
+                <div class="uk-margin-small-left">
+                    <label class="uk-flex uk-flex-middle" title="Tampilkan ringkasan log kalkulasi di console">
+                        <input class="uk-checkbox" type="checkbox" id="toggleScanLog">
+                        <span class="uk-margin-small-left">Log</span>
+                    </label>
                 </div>
                 </div>
 
@@ -236,9 +243,9 @@
                             </div>
                             <div style="flex:1; margin-left: 24px;">
                                 <label class="uk-text-danger">TIME OUT:</label>
-                                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="3" name="waktu-tunggu" checked> NORMAL</label>
-                                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="2.5" name="waktu-tunggu"> MEDIUM</label>
-                                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="1.5" name="waktu-tunggu"> FAST</label>
+                                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="4" name="waktu-tunggu" checked> NORMAL</label>
+                                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="3" name="waktu-tunggu"> MEDIUM</label>
+                                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="2" name="waktu-tunggu"> FAST</label>
                             </div>
                         </div>
 
@@ -459,11 +466,15 @@
           <div class="uk-card uk-card-default uk-card-body uk-padding-small">
             <h6 class="uk-margin-small">4. Pilih Koin Hasil Filter</h6>
             <input id="sync-search-input" class="uk-input uk-form-small uk-margin-small" type="text" placeholder="Cari koin...">
+            <div id="sync-select-controls" class="uk-margin-small">
+              <label class="uk-margin-small-right"><input type="radio" name="sync-pick-mode" value="all" class="uk-radio"> Pilih semua</label>
+              <label><input type="radio" name="sync-pick-mode" value="picked" class="uk-radio"> Pilih koin yang telah dipilih</label>
+            </div>
             <div class="uk-overflow-auto uk-margin-small-top" style="max-height:65vh; border:1px solid #ddd; border-radius:4px;">
               <table class="uk-table uk-table-divider uk-table-hover uk-table-small uk-margin-remove">
                 <thead style="position:sticky; top:0; background:#fff; z-index:1;">
                   <tr>
-                    <th style="width:32px;"><input type="checkbox" id="sync-select-all"></th>
+                    <th style="width:32px;">✓</th>
                     <th>Symbol</th>
                     <th>Pair</th>
                     <th>CEX</th>

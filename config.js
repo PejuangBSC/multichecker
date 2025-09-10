@@ -389,36 +389,48 @@ try {
 // DEX builder config (moved from dex-config.js)
 const CONFIG_DEXS = {
     kyber: {
-        proxy: true,
-        builder: ({ chainName, tokenAddress, pairAddress }) => `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
-        allowFallback: true,
+        proxy: false,
+        warna: "#436ef0ff", // hijau tosca KyberSwap
+        builder: ({ chainName, tokenAddress, pairAddress }) => 
+            `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
+        allowFallback: false,
     },
     '0x': {
         proxy: false,
-        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => `https://matcha.xyz/tokens/${chainName}/${String(tokenAddress||'').toLowerCase()}?buyChain=${chainCode}&buyAddress=${String(pairAddress||'').toLowerCase()}`,
-        allowFallback: true,
+        warna: "#069e1aff", // hitam abu-abu (Matcha/0x)
+        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => 
+            `https://matcha.xyz/tokens/${chainName}/${String(tokenAddress||'').toLowerCase()}?buyChain=${chainCode}&buyAddress=${String(pairAddress||'').toLowerCase()}`,
+        allowFallback: false,
     },
     odos: {
         proxy: true,
+        warna: "#f4a20aff", // ungu-biru Odos
         builder: () => `https://app.odos.xyz`,
         allowFallback: true,
     },
     okx: {
         proxy: false,
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
-        allowFallback: true,
+        warna: "#000000", // hitam (brand OKX)
+        builder: ({ chainCode, tokenAddress, pairAddress }) => 
+            `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
+        allowFallback: false,
     },
     '1inch': {
         proxy: true,
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
+        warna: "#b41313ff", // biru tua 1inch
+        builder: ({ chainCode, tokenAddress, pairAddress }) => 
+            `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
         // allowFallback intentionally disabled for 1inch
     },
     lifi: {
         proxy: true,
-        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://jumper.exchange/?fromChain=${chainCode}&fromToken=${tokenAddress}&toChain=${chainCode}&toToken=${pairAddress}`,
+        warna: "#8247E5", // ungu LIFI/Jumper
+        builder: ({ chainCode, tokenAddress, pairAddress }) => 
+            `https://jumper.exchange/?fromChain=${chainCode}&fromToken=${tokenAddress}&toChain=${chainCode}&toToken=${pairAddress}`,
         // allowFallback intentionally disabled for lifi direct
     },
 };
+
 try { if (typeof window !== 'undefined') { window.CONFIG_DEXS = window.CONFIG_DEXS || CONFIG_DEXS; } } catch(_){}
 
 // Centralized chain synonyms mapping used to normalize CEX network labels

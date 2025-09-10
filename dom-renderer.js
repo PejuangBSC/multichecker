@@ -1,45 +1,77 @@
 /**
+ * Monitoring Table Column Spec & Header Utilities
+ *
+ * Column order: ORDERBOOK (left) → DEX (left, per active DEX) → DETAIL TOKEN → DEX (right, per active DEX) → ORDERBOOK (right)
+ * Header and body cells should be driven from the same DEX list so they always stay in sync.
+ */
+
+// Resolve currently active DEX list based on app mode and config; safe for global use
+function computeActiveDexList() {
+  try {
+    // Honor locked DEX list during an active scan to keep header/columns stable
+    if (typeof window !== 'undefined' && Array.isArray(window.__LOCKED_DEX_LIST) && window.__LOCKED_DEX_LIST.length) {
+      return window.__LOCKED_DEX_LIST.map(x => String(x).toLowerCase());
+    }
+    if (typeof window !== 'undefined' && typeof window.resolveActiveDexList === 'function') return window.resolveActiveDexList();
+    const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+    if (m.type === 'single') {
+      const arr = ((window.CONFIG_CHAINS || {})[m.chain] || {}).DEXS || [];
+      return (Array.isArray(arr) ? arr : []).map(x => String(x).toLowerCase());
+    }
+    return Object.keys(window.CONFIG_DEXS || {}).map(x => String(x).toLowerCase());
+  } catch (_) {
+    return Object.keys(window.CONFIG_DEXS || {}).map(x => String(x).toLowerCase());
+  }
+}
+
+// Build a normalized column specification for the monitoring table header
+function getMonitoringColumnSpec(dexList) {
+  const spec = [];
+  spec.push({ type: 'orderbook-left', label: 'ORDERBOOK', classes: 'uk-text-center uk-text-bolder th-orderbook' });
+  (dexList || []).forEach(d => spec.push({ type: 'dex', side: 'left', key: String(d).toLowerCase(), label: String(d).toUpperCase(), classes: 'uk-text-center uk-text-small th-dex' }));
+  spec.push({ type: 'detail', label: 'DETAIL TOKEN', classes: 'uk-text-center uk-text-bolder th-detail' });
+  (dexList || []).forEach(d => spec.push({ type: 'dex', side: 'right', key: String(d).toLowerCase(), label: String(d).toUpperCase(), classes: 'uk-text-center uk-text-small th-dex' }));
+  spec.push({ type: 'orderbook-right', label: 'ORDERBOOK', classes: 'uk-text-center uk-text-bolder th-orderbook' });
+  return spec;
+}
+
+// Render the monitoring table header from a spec; exposed globally for reuse (e.g., Start Scan)
+function renderMonitoringHeader(dexList) {
+  try {
+    const thead = document.querySelector('#tabel-monitoring thead');
+    if (!thead) return;
+    const spec = getMonitoringColumnSpec(dexList || []);
+    const cells = spec.map(c => `<th class="${c.classes}">${c.label}</th>`);
+    thead.innerHTML = `<tr style="border-bottom: 1px solid black;">${cells.join('')}</tr>`;
+  } catch(_) {}
+}
+try { if (typeof window !== 'undefined') { window.renderMonitoringHeader = renderMonitoringHeader; window.computeActiveDexList = computeActiveDexList; } } catch(_) {}
+
+/**
  * Render monitoring table rows for the given flat token list.
  * Also refreshes DEX signal cards when rendering main table.
  */
 function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
-    function getActiveDexList() {
-        try {
-            if (typeof window.resolveActiveDexList === 'function') return window.resolveActiveDexList();
-            const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
-            if (m.type === 'single') {
-                const arr = ((window.CONFIG_CHAINS || {})[m.chain] || {}).DEXS || [];
-                return (Array.isArray(arr) ? arr : []).map(x => String(x).toLowerCase());
-            }
-            return Object.keys(window.CONFIG_DEXS || {}).map(x => String(x).toLowerCase());
-        } catch (_) {
-            return Object.keys(window.CONFIG_DEXS || {}).map(x => String(x).toLowerCase());
-        }
-    }
-
-    function renderMonitoringHeader(dexList) {
-        try {
-            const thead = document.querySelector('#tabel-monitoring thead');
-            if (!thead) return;
-            const cells = [];
-            cells.push('<th class="uk-text-center uk-text-bolder th-orderbook">ORDERBOOK</th>');
-            dexList.forEach(d => cells.push(`<th class="uk-text-center uk-text-small th-dex">${String(d).toUpperCase()}</th>`));
-            cells.push('<th class="uk-text-center uk-text-bolder th-detail">DETAIL TOKEN</th>');
-            dexList.forEach(d => cells.push(`<th class="uk-text-center uk-text-small th-dex">${String(d).toUpperCase()}</th>`));
-            cells.push('<th class="uk-text-center uk-text-bolder th-orderbook">ORDERBOOK</th>');
-            thead.innerHTML = `<tr style="border-bottom: 1px solid black;">${cells.join('')}</tr>`;
-        } catch(_) {}
-    }
+    // header helpers moved to top-level: computeActiveDexList(), renderMonitoringHeader()
     // refactor: pecah rendering row menjadi helper kecil agar lebih mudah dibaca/dirawat.
     function buildOrderbookCell(side, data, idPrefix, warnaCex) {
         const arrow = side === 'LEFT' ? `${(data.symbol_in||'').toUpperCase()} → ${(data.symbol_out||'').toUpperCase()}`
                                       : `${(data.symbol_out||'').toUpperCase()} → ${(data.symbol_in||'').toUpperCase()}`;
-        const id = `${idPrefix}${side}_${data.cex}_${data.symbol_in}_${data.symbol_out}_${String(data.chain).toUpperCase()}`;
+        const rawId = `${side}_`+
+                      `${String(data.cex).toUpperCase()}_`+
+                      `${String(data.symbol_in||'').toUpperCase()}_`+
+                      `${String(data.symbol_out||'').toUpperCase()}_`+
+                      `${String(data.chain).toUpperCase()}`;
+        const id = idPrefix + rawId.replace(/[^A-Z0-9_]/g, '');
         return `
             <td class="td-orderbook" style="color: ${warnaCex}; text-align: center; vertical-align: middle;">
-                <span id="${id}">
-                    <b>${arrow}<br>${data.cex}</b> 🔒
-                </span>
+                <div class="orderbook-wrap">
+                    <div class="orderbook-scroll">
+                        <span id="${id}">
+                            <b>${arrow}<br>${data.cex}</b> 🔒
+                        </span>
+                    </div>
+                </div>
             </td>`;
     }
 
@@ -51,15 +83,18 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
             left: d.left, right: d.right
         }));
         dexList.forEach(dexKey => {
-            const found = lowerDexs.find(x => x.dex === String(dexKey).toLowerCase());
+            const dexKeyLower = String(dexKey).toLowerCase();
+            const found = lowerDexs.find(x => x.dex === dexKeyLower);
             if (found) {
-                const dexName = String(dexKey);
+                const dexName = String(dexKey); // display label (from config)
+                const canonicalDex = String(found.dex || dexKeyLower); // used for IDs to match scanner
                 const modal = isLeft ? (found.left ?? 0) : (found.right ?? 0);
-                const idCell = isLeft
-                    ? `${data.cex.toUpperCase()}_${dexName.toUpperCase()}_${data.symbol_in}_${data.symbol_out}_${String(data.chain).toUpperCase()}`
-                    : `${data.cex}_${dexName.toUpperCase()}_${data.symbol_out}_${data.symbol_in}_${String(data.chain).toUpperCase()}`;
+                const idCellRaw = isLeft
+                    ? `${String(data.cex).toUpperCase()}_${canonicalDex.toUpperCase()}_${String(data.symbol_in||'').toUpperCase()}_${String(data.symbol_out||'').toUpperCase()}_${String(data.chain).toUpperCase()}_${String(data.id||'').toUpperCase()}`
+                    : `${String(data.cex).toUpperCase()}_${canonicalDex.toUpperCase()}_${String(data.symbol_out||'').toUpperCase()}_${String(data.symbol_in||'').toUpperCase()}_${String(data.chain).toUpperCase()}_${String(data.id||'').toUpperCase()}`;
+                const safeIdCell = (idCellRaw).replace(/[^A-Z0-9_]/g, '');
                 html += `
-                    <td class="td-dex" id="${idPrefix}${idCell}" style="text-align: center; vertical-align: middle;">
+                    <td class="td-dex" id="${idPrefix}${safeIdCell}" style="text-align: center; vertical-align: middle;">
                         <strong class="uk-align-center" style="display:inline-block; margin:0;">${dexName.toUpperCase()} [$${modal}]</strong></br>
                         <span class="dex-status uk-text-muted">🔒</span>
                     </td>`;
@@ -134,7 +169,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
                 <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}</span>
             </td>`;
     }
-    const dexList = getActiveDexList();
+    const dexList = computeActiveDexList();
     if (tableBodyId === 'dataTableBody') { RenderCardSignal(); }
     renderMonitoringHeader(dexList);
     const $tableBody = $('#' + tableBodyId);
@@ -289,6 +324,22 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
     }
     renderChunk();
 }
+
+/**
+ * Ensure monitoring table UI skeleton exists for a given token list before scanning updates run.
+ * - Locks to current active/locked DEX list for consistent columns.
+ * - Renders header and body rows with placeholder cells and ids that scanner.js expects.
+ * - Does not trigger any calculation; only prepares DOM targets.
+ */
+function prepareMonitoringSkeleton(tokens, tableBodyId = 'dataTableBody') {
+    try {
+        const dexList = computeActiveDexList();
+        renderMonitoringHeader(dexList);
+        // Reuse chunked renderer to build rows with the correct id scheme
+        loadKointoTable(Array.isArray(tokens) ? tokens : [], tableBodyId);
+    } catch(_) {}
+}
+try { if (typeof window !== 'undefined') { window.prepareMonitoringSkeleton = prepareMonitoringSkeleton; } } catch(_) {}
 
 function renderTokenManagementList() {
     const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
@@ -561,8 +612,8 @@ function renderTokenManagementList() {
  * Update left/right orderbook columns with parsed CEX volumes and prices.
  */
 function updateTableVolCEX(finalResult, cex, tableBodyId = 'dataTableBody') {
-    const cexName = cex.toUpperCase();
-    const TokenPair = finalResult.token + "_" + finalResult.pair;
+    const cexName = String(cex||'').toUpperCase();
+    const TokenPair = String(finalResult.token||'').toUpperCase().replace(/[^A-Z0-9_]/g,'') + "_" + String(finalResult.pair||'').toUpperCase().replace(/[^A-Z0-9_]/g,'');
     
     const idPrefix = tableBodyId + '_';
 
@@ -584,8 +635,10 @@ function updateTableVolCEX(finalResult, cex, tableBodyId = 'dataTableBody') {
     const volumesBuyPair   = finalResult.volumes_buyPair.slice().sort((a, b) => b.price - a.price);
     const volumesSellToken = finalResult.volumes_sellToken.slice().sort((a, b) => b.price - a.price);
 
-    const leftSelector = '#' + idPrefix + 'LEFT_' + cexName + '_' + TokenPair + '_' + finalResult.chainName.toUpperCase();
-    const rightSelector = '#' + idPrefix + 'RIGHT_' + cexName + '_' + TokenPair + '_' + finalResult.chainName.toUpperCase();
+    const leftId  = idPrefix + ('LEFT_'  + cexName + '_' + TokenPair + '_' + String(finalResult.chainName||'').toUpperCase()).replace(/[^A-Z0-9_]/g,'');
+    const rightId = idPrefix + ('RIGHT_' + cexName + '_' + TokenPair + '_' + String(finalResult.chainName||'').toUpperCase()).replace(/[^A-Z0-9_]/g,'');
+    const leftSelector = '#' + leftId;
+    const rightSelector = '#' + rightId;
 
     $(leftSelector).html(
         volumesSellToken.map(data => renderVolume(data, 'uk-text-success')).join('') +
@@ -638,8 +691,17 @@ function DisplayPNL(data) {
     rates
   } = data;
 
-  const $mainCell = $('#' + String(idPrefix || '') + String(baseId || ''));
-  if (!$mainCell.length) return;
+  const elementId = String(idPrefix || '') + String(baseId || '');
+  const el = document.getElementById(elementId);
+  if (!el) {
+    try {
+      // debug logs removed
+    } catch(_) {}
+    return;
+  }
+  // Clear any prior error background once a successful result renders
+  try { el.classList.remove('dex-error'); } catch(_) {}
+  const $mainCell = $(el);
 
   // Helpers
   const n = v => Number.isFinite(+v) ? +v : 0;
@@ -744,12 +806,87 @@ function DisplayPNL(data) {
     tipSell = `${Name_out} -> USDT | ${CEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   }
 
+  // Console summary: ringkasan kalkulasi scanning (toggled via #toggleScanLog)
+  try {
+    if (!(typeof window !== 'undefined' && window.SCAN_LOG_ENABLED === true)) {
+      throw new Error('scan log disabled');
+    }
+    // Resolve WD/DP status dari list token aktif (jika ada)
+    let wdFlag, dpFlag; let wdFeeToken = null;
+    try {
+      const list = (Array.isArray(window.singleChainTokensCurrent) && window.singleChainTokensCurrent.length)
+        ? window.singleChainTokensCurrent
+        : (Array.isArray(window.currentListOrderMulti) ? window.currentListOrderMulti : []);
+      // Flattened data disimpan sebagai (symbol_in = TOKEN, symbol_out = PAIR).
+      // Saat arah Pair→Token, Name_in=PAIR dan Name_out=TOKEN → perlu dibalik untuk pencarian.
+      const keyIn  = (direction === 'tokentopair') ? upper(Name_in)  : upper(Name_out);  // TOKEN
+      const keyOut = (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in);   // PAIR
+      const hit = (list || []).find(t => String(t.cex).toUpperCase() === CEX
+        && String(t.symbol_in).toUpperCase() === keyIn
+        && String(t.symbol_out).toUpperCase() === keyOut
+        && String(t.chain).toLowerCase() === String(nameChain).toLowerCase());
+      if (hit) {
+        // WD selalu refer ke TOKEN; DP juga selalu refer ke TOKEN (konsisten)
+        wdFlag = hit.withdrawToken;
+        wdFeeToken = Number(hit.feeWDToken || 0);
+        dpFlag = hit.depositToken;
+      }
+    } catch(_) {}
+
+    const f = (v) => (v===true ? 'ON' : (v===false ? 'OFF' : '?'));
+    const sep = '======================================';
+    const coinLine = (direction === 'tokentopair')
+      ? `${upper(Name_in)} => ${upper(Name_out)} on ${String(nameChain).toUpperCase()}`
+      : `${upper(Name_out)} => ${upper(Name_in)} on ${String(nameChain).toUpperCase()}`;
+    const procLine = (direction === 'tokentopair') ? `${CEX} => ${DEX}` : `${DEX} => ${CEX}`;
+
+    const lines = [
+      sep,
+      `Time: ${new Date().toLocaleTimeString()}`,
+      `ID CELL: ${elementId}`,
+      `PROSES : ${procLine}`,
+      `KOIN : ${coinLine}`,
+      `Buy Price (USDT): ${Number(buyPrice)}`,
+      `Sell Price (USDT): ${Number(sellPrice)}`,
+      `PNL & TOTAL FEE : ${n(pnl).toFixed(2)}$ & ${n(feeAll).toFixed(2)}$`,
+      `FEE WD & FEE SWAP : ${n((wdFeeToken!=null)?wdFeeToken:FeeWD).toFixed(2)}$ & ${n(FeeSwap).toFixed(2)}$`,
+      `WD [${f(wdFlag)}] DP [${f(dpFlag)}]`
+    ];
+    console.log(lines.join('\n'));
+  } catch(_) {}
+
   // Fee & info (WD/DP sesuai arah) — FEE SWAP PISAH BARIS
   const wdUrl = cexLinks.withdraw;
-  const dpUrl = cexLinks.deposit;
-
-  const wdLine   = `<a class="uk-text-primary" href="${wdUrl}" target="_blank" rel="noopener" title="FEE WITHDRAW">🈳 WD: ${n(FeeWD).toFixed(4)}$</a>`;
-  const dpLine   = `<a class="uk-text-primary" href="${dpUrl}" target="_blank" rel="noopener">🈷️ DP[${Name_out}]</a>`;
+  // Selaraskan: DP selalu berbasis TOKEN → pakai depositTokenUrl bila ada
+  const dpUrlToken = (urls && (urls.depositTokenUrl || urls.depositUrl))
+    ? (urls.depositTokenUrl || urls.depositUrl)
+    : cexLinks.deposit;
+  // Tentukan status WD/DP dari token aktif (lihat data tersimpan)
+  let wdFlag, dpFlag;
+  try {
+    const list = (Array.isArray(window.singleChainTokensCurrent) && window.singleChainTokensCurrent.length)
+      ? window.singleChainTokensCurrent
+      : (Array.isArray(window.currentListOrderMulti) ? window.currentListOrderMulti : []);
+    const keyIn2  = (direction === 'tokentopair') ? upper(Name_in)  : upper(Name_out);  // TOKEN
+    const keyOut2 = (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in);   // PAIR
+    const hit = (list || []).find(t => String(t.cex).toUpperCase() === upper(cex)
+      && String(t.symbol_in).toUpperCase() === keyIn2
+      && String(t.symbol_out).toUpperCase() === keyOut2
+      && String(t.chain).toLowerCase() === String(nameChain).toLowerCase());
+    if (hit) {
+      wdFlag = hit.withdrawToken; // WD selalu berdasarkan TOKEN
+      // DP selalu berdasarkan TOKEN (samakan warna/teks untuk semua arah)
+      dpFlag = hit.depositToken;
+    }
+  } catch(_) {}
+  const wdText = (wdFlag === false) ? '🈳 WX' : '🈳 WD';
+  // Nama token untuk label DP Token (arah-sensitive: TokenToPair → Name_in, PairToToken → Name_out)
+  const dpTokenName = (direction === 'tokentopair') ? upper(Name_in) : upper(Name_out);
+  const dpText = (dpFlag === false) ? `🈷️ DX[${dpTokenName}]` : `🈷️ DP[${dpTokenName}]`;
+  const wdCls  = (wdFlag === false) ? 'uk-text-danger' : 'uk-text-primary';
+  const dpCls  = (dpFlag === false) ? 'uk-text-danger' : 'uk-text-primary';
+  const wdLine   = `<a class="${wdCls}" href="${wdUrl}" target="_blank" rel="noopener" title="FEE WITHDRAW">${wdText}: ${n(FeeWD).toFixed(4)}$</a>`;
+  const dpLine   = `<a class="${dpCls}" href="${dpUrlToken}" target="_blank" rel="noopener">${dpText}</a>`;
   const swapLine = `<span class="monitor-line uk-text-danger" title="FEE SWAP">💸 SW: ${n(FeeSwap).toFixed(4)}$</span>`;
 
   const feeLine  = (direction === 'tokentopair') ? wdLine : dpLine;
@@ -760,13 +897,18 @@ function DisplayPNL(data) {
 
   const shouldHighlight = isHighlight || (pnl > feeAll);
   const chainColorHexHL = getChainColorHexByName(nameChain);
-  // refactor: dark-mode highlight pakai putih agar lebih kontras
-  const hlBg = isDarkMode() ? '#d8ff41' : hexToRgba(chainColorHexHL, 0.24);
+  const modeNowHL = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+  const isMultiModeHL = String(modeNowHL.type).toLowerCase() !== 'single';
+  // Multichain: gunakan hijau muda agar konsisten
+  const multiLightGreen = '#9fff9f';
+  const hlBg = isMultiModeHL
+    ? multiLightGreen
+    : (isDarkMode() ? '#d8ff41' : hexToRgba(chainColorHexHL, 0.24));
   // Tambahkan kelas agar CSS bisa override tambahan saat dark-mode
   if (shouldHighlight) { try { $mainCell.addClass('dex-cell-highlight'); } catch(_) {}
   } else { try { $mainCell.removeClass('dex-cell-highlight'); } catch(_) {} }
   $mainCell.attr('style', shouldHighlight
-    ? `border:1px solid #222;background-color:${hlBg}!important;font-weight:bolder!important;color:#000!important;vertical-align:middle!important;text-align:center!important;`
+    ? `background-color:${hlBg}!important;font-weight:bolder!important;vertical-align:middle!important;text-align:center!important; border:1px solid black !important;`
     : 'text-align:center;vertical-align:middle;');
 
   // Baris utama (SWAP dipisah baris sendiri)
@@ -781,7 +923,7 @@ function DisplayPNL(data) {
 
   // Panel sinyal / Telegram (opsional) // REFACTORED
   if (pnl > feeAll && typeof InfoSinyal === 'function') {
-    InfoSinyal(lower(dextype), NameX, pnl, feeAll, upper(cex), Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix);
+    InfoSinyal(lower(dextype), NameX, pnl, feeAll, upper(cex), Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix, baseId);
   }
 
   // REFACTORED
@@ -805,19 +947,27 @@ function DisplayPNL(data) {
   const boldStyle = shouldHighlight ? 'font-weight:bolder;' : '';
 
   $mainCell.html(`${dexNameAndModal ? dexNameAndModal + '<br>' : ''}<span class="${resultWrapClass}" style="${boldStyle}">${resultHtml}</span>`);
+  try { el.dataset.final = '1'; } catch(_) {}
 }
 
 /** Append a compact item to the DEX signal panel and play audio. */
-function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair, profitLossPercent, modal, nameChain, codeChain, trx, idPrefix) {
+function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair, profitLossPercent, modal, nameChain, codeChain, trx, idPrefix, domIdOverride) {
   const chainData = getChainData(nameChain);
   const chainShort = String(chainData?.SHORT_NAME || chainData?.Nama_Chain || nameChain).toUpperCase();
   const warnaChain = String(chainData?.COLOR_CHAIN || chainData?.WARNA || '#94fa95');
   const filterPNLValue = (typeof getPNLFilter === 'function') ? getPNLFilter() : parseFloat(SavedSettingData.filterPNL);
   const warnaCEX = getWarnaCEX(cex);
   const warnaTeksArah = (trx === "TokentoPair") ? "uk-text-success" : "uk-text-danger";
-  const baseId = `${cex.toUpperCase()}_${DEXPLUS.toUpperCase()}_${NameToken}_${NamePair}_${String(nameChain).toUpperCase()}`;
-  // refactor: dark-mode signal chip pakai putih (bukan warna chain)
-  const signalBg = isDarkMode() ? '#d8ff41' : hexToRgba(warnaChain, 0.24);
+  const baseIdComputed = (`${String(cex||'').toUpperCase()}_${String(DEXPLUS||'').toUpperCase()}_${String(NameToken||'').toUpperCase()}_${String(NamePair||'').toUpperCase()}_${String(nameChain||'').toUpperCase()}`)
+    .replace(/[^A-Z0-9_]/g,'');
+  const baseId = domIdOverride ? String(domIdOverride) : baseIdComputed;
+  const modeNowSig = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+  const isMultiSig = String(modeNowSig.type).toLowerCase() !== 'single';
+  const multiLightGreen = '#9fff9f';
+  // Multichain: pakai hijau muda; per‑chain: gunakan tema normal (kuning terang untuk dark, rgba warna chain untuk light)
+  const signalBg = isMultiSig
+    ? multiLightGreen
+    : (isDarkMode() ? '#d8ff41' : hexToRgba(warnaChain, 0.24));
   const highlightStyle = (Number(PNL) > filterPNLValue)
     ? `background-color:${signalBg}; font-weight:bolder;`
     : "";
@@ -867,6 +1017,21 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     priceBuyPair_CEX = parseFloat(priceBuyPair_CEX) || 0;
     priceSellPair_CEX = parseFloat(priceSellPair_CEX) || 0;
 
+    // Early guards for numeric validity to avoid NaN/Infinity propagation
+    const idPrefix = tableBodyId + '_';
+    const toId = () => String(baseId || '').replace(/[^A-Z0-9_]/g,'');
+    const errorPayload = (msg) => {
+        return { type: 'error', id: idPrefix + toId(), message: msg };
+    };
+    const isPos = v => Number.isFinite(v) && v >= 0;
+    const isPosStrict = v => Number.isFinite(v) && v > 0;
+
+    if (!isPosStrict(amount_in)) return errorPayload('Amount_in tidak valid');
+    if (!isPos(amount_out)) return errorPayload('Amount_out tidak valid');
+    if (!(isPos(priceBuyToken_CEX) && isPos(priceSellToken_CEX) && isPos(priceBuyPair_CEX) && isPos(priceSellPair_CEX))) {
+        return errorPayload('Harga CEX tidak valid');
+    }
+
     const rateTokentoPair = amount_out / amount_in;
     const ratePairtoToken = amount_in / amount_out;
 
@@ -880,10 +1045,12 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
         totalValue = amount_out * priceSellToken_CEX;
     }
 
+    // Validate totals before computing PNL
+    if (!(Number.isFinite(totalModal) && Number.isFinite(totalFee) && Number.isFinite(totalValue))) {
+        return errorPayload('Perhitungan nilai/fee tidak valid');
+    }
     const profitLoss = totalValue - totalModal;
     const profitLossPercent = totalModal !== 0 ? (profitLoss / totalModal) * 100 : 0;
-
-    const idPrefix = tableBodyId + '_';
 
     const linkDEX = generateDexLink(dextype,nameChain,codeChain,Name_in,sc_input, Name_out, sc_output);
 
@@ -942,14 +1109,19 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
         }
     }
 
+    if (!Number.isFinite(displayRate) || displayRate < 0) {
+        return errorPayload('Harga DEX (USD/token) tidak valid');
+    }
+
     const rateIdr = (typeof formatIDRfromUSDT === 'function') ? formatIDRfromUSDT(displayRate) : 'N/A';
     const rateLabel = `<label class="uk-text-primary" title="${tooltipText} | ${formatPrice(displayRate)} | ${rateIdr}">${formatPrice(displayRate)}</label>`;
     const swapHtml = `<a href="${linkDEX}" target="_blank">${rateLabel}</a>`;
+    // debug logs removed
 
     return {
         type: 'update',
         idPrefix: idPrefix,
-        baseId: baseId,
+        baseId: String(baseId || '').replace(/[^A-Z0-9_]/g,''),
         swapHtml: swapHtml,
         linkDEX: linkDEX,
         dexUsdRate: displayRate,

@@ -118,19 +118,6 @@ function applyControlsFor(state) {
     }
 }
 
-/** Update token counters/summary in header. */
-function updateTokenCount(tokens) {
-    if (!tokens) return;
-    $("#tokenCount").text(`(${tokens.length})`);
-    const uniqueKeys = new Set();
-    tokens.forEach(item => {
-        const key = `${item.cex}|${item.chain}|${item.symbol_in}|${item.symbol_out}`;
-        uniqueKeys.add(key);
-    });
-    const $sum = $('#filter-summary');
-    if ($sum.length) $sum.text(`Total: ${uniqueKeys.size} pairs`);
-}
-
 /** Update dark-mode icon based on current theme. */
 function updateDarkIcon(isDark) {
     const icon = document.querySelector('#darkModeToggle');
@@ -181,14 +168,15 @@ function RenderCardSignal() {
 
     const card = document.createElement('div');
     card.className = 'uk-card uk-card-default uk-card-hover uk-card-small signal-card uk-margin-small-top';
-    card.style.cssText = `border-radius:6px; overflow:hidden; border:1px solid ${chainColor};`;
+    // border handled via CSS .signal-card; avoid inline styles
 
     const bodyId = `body-${dexLower}-${index}`;
 
     // HEADER lebih tipis
     const cardHeader = document.createElement('div');
     cardHeader.className = 'uk-card-header uk-padding-small uk-padding-remove-vertical uk-flex uk-flex-middle uk-flex-between';
-    cardHeader.style.cssText = `background-color:${chainColor}; color:#fff; border-bottom:1px solid ${chainColor};`;
+    // keep background dynamic; border-bottom unified via CSS
+    cardHeader.style.cssText = `background-color:${chainColor}; color:#fff;`;
 
     const left = document.createElement('div');
     left.className = 'uk-flex uk-flex-middle';
@@ -241,8 +229,8 @@ function RenderCardSignal() {
       info.className = 'no-signal-placeholder uk-width-1-1 uk-margin-small-top';
       info.style.display = 'none';
       info.innerHTML = `
-        <div class="uk-card uk-card-default uk-card-hover uk-card-small signal-card" style="border-radius:6px; overflow:hidden; border:1px solid ${chainColor};">
-          <div class="uk-card-header uk-padding-small uk-padding-remove-vertical" style="background-color:${chainColor}; color:#fff; border-bottom:1px solid ${chainColor};">
+        <div class=\"uk-card uk-card-default uk-card-hover uk-card-small signal-card\">
+          <div class=\"uk-card-header uk-padding-small uk-padding-remove-vertical\" style=\"background-color:${chainColor}; color:#fff;\">
             <div class="uk-flex uk-flex-middle uk-flex-between">
               <div class="uk-flex uk-flex-middle" style="gap:8px;">
                 <span class="uk-text-bold" style="color:#fff!important; font-size:14px;">INFORMASI</span>
@@ -277,13 +265,11 @@ window.updateSignalTheme = function() {
             // Body warna: putih (light), abu-abu gelap (dark)
             card.style.background = isDark ? '#424743ff' : '#ffffffff';
             card.style.color = isDark ? '#d8ff41' : '#000000';
-            card.style.borderColor = chainColor;
             const header = card.querySelector('.uk-card-header');
             if (header) {
                 // Header warna: chainColor (light), hitam (dark)
                 header.style.backgroundColor = isDark ? '#000000' : chainColor;
                 header.style.color = '#d8ff41';
-                header.style.borderBottom = isDark ? '1px solid #000000' : `1px solid ${chainColor}`;
             }
             const span = card.querySelector('[id^="sinyal"]');
             if (span) span.style.color = isDark ? '#d8ff41' : '#000000';
@@ -386,9 +372,16 @@ function openEditModalById(id) {
     populateChainSelect($sel, token.chain);
     // Enforce chain select behavior by mode and apply modal theme
     try {
+        const isRunning = $('#stopSCAN').is(':visible');
         if (m.type === 'single') {
             const c = String(m.chain).toLowerCase();
-            $sel.val(c).prop('disabled', true).attr('title', 'Per-chain mode: Chain terkunci');
+            $sel.val(c);
+            if (isRunning) {
+                // During per-chain scan: keep inputs editable per request
+                $sel.prop('disabled', false).attr('title', '');
+            } else {
+                $sel.prop('disabled', true).attr('title', 'Per-chain mode: Chain terkunci');
+            }
             applyEditModalTheme(c);
             // Show copy-to-multichain button in per-chain mode
             $('#CopyToMultiBtn').show();
@@ -400,8 +393,8 @@ function openEditModalById(id) {
         }
     } catch(_) {}
     
-    try { buildCexCheckboxForKoin(token); } catch (e) { console.warn('Build CEX gagal:', e); }
-    try { buildDexCheckboxForKoin(token); } catch (e) { console.warn('Build DEX gagal:', e); }
+    try { buildCexCheckboxForKoin(token); } catch (e) { /* debug logs removed */ }
+    try { buildDexCheckboxForKoin(token); } catch (e) { /* debug logs removed */ }
 
     $sel.off('change.rebuildDex').on('change.rebuildDex', function(){
         const newChain = $(this).val();
@@ -413,14 +406,13 @@ function openEditModalById(id) {
         UIkit.modal('#FormEditKoinModal').show();
     }
 
-    // While scanning, keep modal inputs ON and restrict action buttons per requirement
+    // Ensure requested button visibility while scanning per-chain
     try {
-        if (typeof isScanRunning !== 'undefined' && isScanRunning) {
-            const $modal = $('#FormEditKoinModal');
-            $modal.find('input, select, textarea').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
-            // Show only Import and Batal; hide Hapus and Simpan
-            $modal.find('#HapusEditkoin, #SaveEditkoin').hide();
-            $modal.find('#CopyToMultiBtn, #BatalEditkoin').show().prop('disabled', false);
+        const m2 = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+        const running = $('#stopSCAN').is(':visible');
+        if (String(m2.type).toLowerCase() === 'single' && running) {
+            $('#HapusEditkoin, #SaveEditkoin').hide().prop('disabled', true);
+            $('#CopyToMultiBtn, #BatalEditkoin').show().prop('disabled', false);
         }
     } catch(_) {}
 }
@@ -526,17 +518,11 @@ function buildDexCheckboxForKoin(token = {}) {
 
 /** Disable all form inputs globally. */
 function form_off() {
-    // Disable globally, but keep Edit buttons and Edit modal interactive
-    $('input, select, textarea, button')
-        .not('#btn-scroll-top')
-        .not('#FormEditKoinModal *')
-        .not('.edit-token-button')
-        .not('.mgrEdit')
-        .prop('disabled', true);
+    $('input, select, textarea, button').not('#btn-scroll-top').prop('disabled', true);
     // Whitelist critical controls to remain interactive during scanning
     try {
         // refactor: dark mode toggle juga ikut nonaktif saat scan
-        $('#stopSCAN, #reload, #autoScrollCheckbox').prop('disabled', false);
+        $('#stopSCAN, #reload, #autoScrollCheckbox, #toggleScanLog').prop('disabled', false);
     } catch(_) {}
 }
 

@@ -104,10 +104,18 @@ a:hover, .uk-link:hover {
 }
 
 /* Dynamic header/column widths using classes (replaces nth-child rules) */
-.th-orderbook { width: 100px; }
+.th-orderbook { width: auto !important; min-width: 160px; }
 .th-detail { width: 240px; }
 .th-dex { width: 120px; }
 .td-dex { width: 120px; }
+/* Orderbook cell: responsive width + internal scroll for long content */
+.td-orderbook { min-width: 160px; }
+.td-orderbook .orderbook-wrap { display: inline-block; max-width: clamp(160px, 16vw, 320px); }
+.td-orderbook .orderbook-scroll { max-height: 110px; overflow: auto; padding: 2px; }
+.td-orderbook .orderbook-scroll { scrollbar-width: thin; }
+.td-orderbook .orderbook-scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+.td-orderbook .orderbook-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+body.dark-mode .td-orderbook .orderbook-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); }
 
 /* Ensure readable header text on accent background (light mode) */
 #tabel-monitoring thead th { color: #ffffff; }
@@ -152,7 +160,7 @@ a:hover, .uk-link:hover {
 /* Enforce column widths via nth-child (multi-chain table) */
 #tabel-monitoring th:nth-child(1), #tabel-monitoring td:nth-child(1),
 #tabel-monitoring th:nth-child(11), #tabel-monitoring td:nth-child(11) { width: 100px; }
-#tabel-monitoring th:nth-child(6), #tabel-monitoring td:nth-child(6) { width: 240px; }
+#tabel-monitoring th:nth-child(6), #tabel-monitoring td:nth-child(6) { width: 120px; }
 /* DEX columns (2-5 and 7-10) */
 #tabel-monitoring th:nth-child(2), #tabel-monitoring td:nth-child(2),
 #tabel-monitoring th:nth-child(3), #tabel-monitoring td:nth-child(3),
@@ -180,6 +188,17 @@ a:hover, .uk-link:hover {
   display: inline-block;
   max-width: 100%;
 }
+/* Spinner + badge tuning in dex status */
+#tabel-monitoring .dex-status [uk-spinner] { vertical-align: -2px; }
+#tabel-monitoring .dex-status .uk-label { margin: 0 2px; padding: 2px 6px; line-height: 1; font-size: 11px; }
+body.dark-mode .uk-label.uk-label-warning { background-color: #b38600; color: #fff; }
+body.dark-mode .uk-label.uk-label-danger { background-color: #aa1e1e; color: #fff; }
+/* Custom label: FAILED */
+.uk-label.uk-label-failed { background-color: #7a7a7a; color: #fff; }
+body.dark-mode .uk-label.uk-label-failed { background-color: #5d5d5d; color: #fff; }
+/* DEX error background via class (no inline styles from JS) */
+.dex-error { background-color: #ffcccc !important; }
+body.dark-mode .dex-error { background-color: #651313 !important; }
 
 /* Hidden row utility when deleting a token during scan */
 .row-hidden { display: none !important; }
@@ -194,7 +213,7 @@ a:hover, .uk-link:hover {
 .header-card {
     background: #ffffff;
     padding: 6px 12px !important;
-    border: 1px solid black;
+    border: 1px solid black !important;
     border-radius: 8px;
 }
 
@@ -286,8 +305,8 @@ body.dark-mode #pageLoadingOverlay {
 }
 
 /* Scanner Config */
-#scanner-config,#filter-card,#form-setting-app,#manager-config {
-    border: 1px solid black;
+div#scanner-config, div#filter-card,#form-setting-app,#manager-config {
+    border: 1px solid black !important;
     background-color: #ffffff;
     border-radius: 8px;
 }
@@ -333,7 +352,7 @@ body.dark-mode #pageLoadingOverlay {
 .uk-overflow-auto {
     max-height: 800px;
     background-color: white;
-    border: 1px solid #dddfe2;
+    border: 1px solid black !important;
     border-radius: 8px;
     -webkit-overflow-scrolling: touch;
 }
@@ -368,7 +387,7 @@ body.dark-mode #pageLoadingOverlay {
 #token-management {
     display: none;
     background-color: #ffffff;
-    border: 1px solid #dddfe2;
+    border: 1px solid black !important;
     border-radius: 8px;
 }
 
@@ -620,6 +639,8 @@ body.dark-mode #tabel-monitoring thead {
 .signal-card__body {
   padding-top: 6px !important;
   padding-bottom: 8px !important;
+    border: 1px solid black !important;
+
 }
 .signal-card__content {
   font-size: 13.5px;
@@ -678,6 +699,21 @@ body.dark-mode #tabel-monitoring thead {
   table-layout: auto;
 }
 
+/* Toastr: center of the screen */
+#toast-container.toast-center-center {
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%);
+}
+
+/* Signal cards: unified border across modes */
+.signal-card { border: 1px solid #000; border-radius: 6px; overflow: hidden; }
+body.dark-mode .signal-card { border-color: #fff; }
+.signal-card .uk-card-header { border-bottom: 1px solid #000 !important; }
+body.dark-mode .signal-card .uk-card-header { border-bottom: 1px solid #fff !important; }
+
 #tabel-monitoring th, #tabel-monitoring td {
   white-space: nowrap; /* keep numbers intact */
 }
@@ -685,6 +721,7 @@ body.dark-mode #tabel-monitoring thead {
 #monitoring-scroll {
   max-height: calc(100vh - 220px);
   overflow: auto;
+  border: 1px solid black !important;
 }
 
 /* Floating scroll-to-top button */
@@ -705,3 +742,18 @@ body.dark-mode #tabel-monitoring thead {
   box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
 #btn-scroll-top:hover { background-color: #096d1c; }
+/* Unified borders for key panels (light: black, dark: white) */
+#menu-app,
+#filter-card,
+#scanner-config,
+#monitoring-scroll,
+.signal-card {
+  border: 1px solid #000 !important;
+}
+body.dark-mode #menu-app,
+body.dark-mode #filter-card,
+body.dark-mode #scanner-config,
+body.dark-mode #monitoring-scroll,
+body.dark-mode .signal-card {
+  border-color: #fff !important;
+}

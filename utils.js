@@ -1,13 +1,4 @@
 // =================================================================================
-// UTILITY FUNCTIONS
-// =================================================================================
-
-function getManagedChains() {
-    const settings = getFromLocalStorage('SETTING_SCANNER', {});
-    return settings.AllChains || Object.keys(CONFIG_CHAINS);
-}
-
-// =================================================================================
 // APP MODE & DATA ACCESS HELPERS (shared by UI/API/Main)
 // =================================================================================
 
@@ -400,10 +391,8 @@ function applyThemeForMode() {
           body.dark-mode #tabel-monitoring thead { background: #1c1c1e !important; }
           #progress-bar { background-color: var(--theme-accent) !important; }
           #progress-container { border: 1px solid var(--theme-accent) !important; }
-          .header-card { border-color: var(--theme-accent) !important; }
-          /* Cards and panels */
-          #filter-card, #scanner-config, #token-management { border-color: var(--theme-accent) !important; }
-          .uk-overflow-auto { border-color: var(--theme-accent) !important; }
+          /* Cards and panels: keep token-management accent only; borders for #filter-card and #scanner-config unified in CSS */
+          #token-management { border-color: var(--theme-accent) !important; }
           .uk-card.uk-card-default { border-color: var(--theme-accent); }
           /* Modal header accent */
           .uk-modal-header { border-bottom: 2px solid var(--theme-accent) !important; }
@@ -423,9 +412,7 @@ function applyThemeForMode() {
         } else {
             styleEl.textContent = css;
         }
-    } catch (e) {
-        console.warn('applyThemeForMode failed:', e);
-    }
+    } catch (e) { /* debug logs removed */ }
 }
 
 /**
@@ -564,8 +551,10 @@ function getChainData(chainName) {
     
     const chainLower = chainName.toLowerCase();
     const chainData = CONFIG_CHAINS[chainLower];
-    
-    const managedChains = getManagedChains();
+
+    // Inline managed chains resolution (previously via getManagedChains)
+    const settings = getFromLocalStorage('SETTING_SCANNER', {});
+    const managedChains = (settings.AllChains || Object.keys(CONFIG_CHAINS)).map(x => String(x).toLowerCase());
     if (!managedChains.includes(chainLower)) {
         return null;
     }
@@ -872,6 +861,8 @@ function debounce(func, wait) {
 function setScanUIGating(isRunning) {
     try {
         const $allToolbar = $('.header-card a, .header-card .icon');
+        const mode = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+        const isSingle = String(mode.type||'').toLowerCase() === 'single';
         if (isRunning) {
             // Dim and disable all toolbar actions
             $allToolbar.css({ pointerEvents: 'none', opacity: 0.4 });
@@ -885,16 +876,31 @@ function setScanUIGating(isRunning) {
             $('#filter-card').find('input, select, button, textarea').not('#btn-scroll-top').prop('disabled', true);
             // Keep Auto Scroll checkbox enabled and clickable during scanning
             $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: 1 });
-            // Keep sort toggles and edit buttons clickable during scan per new requirement
-            $('.sort-toggle, .edit-token-button').css({ pointerEvents: 'auto', opacity: 1 });
+            // Some extra clickable items in page (keep chain links enabled)
+            if (isSingle) {
+                // Per-chain: keep edit icon active so user can edit during scan
+                $('.sort-toggle').css({ pointerEvents: 'none', opacity: 0.4 });
+                $('.edit-token-button').css({ pointerEvents: 'auto', opacity: 1 });
+            } else {
+                $('.sort-toggle, .edit-token-button').css({ pointerEvents: 'none', opacity: 0.4 });
+            }
             // Keep delete buttons active during scanning as requested
             $('.delete-token-button').css({ pointerEvents: 'auto', opacity: 1 });
-            // Lock token management panel during scan, but allow Edit Koin modal to be fully editable
+            // Lock token management during scan; Edit modal behavior depends on mode
             $('#token-management').find('input, select, button, textarea').prop('disabled', true).css({ pointerEvents: 'none', opacity: 0.6 });
-            $('#FormEditKoinModal').find('input, select, button, textarea').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
-            // In scanning state, only show Import and Batal in Edit modal
-            $('#FormEditKoinModal #HapusEditkoin, #FormEditKoinModal #SaveEditkoin').hide();
-            $('#FormEditKoinModal #CopyToMultiBtn, #FormEditKoinModal #BatalEditkoin').show().prop('disabled', false);
+            if (isSingle) {
+                // Per-chain: keep all inputs active in Edit modal, and show only Import + Cancel buttons
+                const $modal = $('#FormEditKoinModal');
+                $modal.find('input, select, button, textarea').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
+                // Buttons: only Import (CopyToMultiBtn) and Cancel (BatalEditkoin)
+                $('#HapusEditkoin').hide().prop('disabled', true);
+                $('#SaveEditkoin').hide().prop('disabled', true);
+                $('#CopyToMultiBtn').show().prop('disabled', false);
+                $('#BatalEditkoin').show().prop('disabled', false);
+            } else {
+                // Multi-chain: disable edit modal
+                $('#FormEditKoinModal').find('input, select, button, textarea').prop('disabled', true).css({ pointerEvents: 'none', opacity: 0.6 });
+            }
             // Keep STOP button usable during running
             $('#stopSCAN').prop('disabled', false).show();
             // Keep RELOAD usable (already via toolbar allow-list), disable START explicitly
@@ -908,8 +914,10 @@ function setScanUIGating(isRunning) {
             $('.sort-toggle, .edit-token-button, #chain-links-container a').css({ pointerEvents: '', opacity: '' });
             $('.delete-token-button').css({ pointerEvents: '', opacity: '' });
             $('#token-management, #FormEditKoinModal').find('input, select, button, textarea').prop('disabled', false).css({ pointerEvents: '', opacity: '' });
-            // Restore action buttons visibility (do not force Import visibility; openEditModalById handles normal mode)
-            $('#FormEditKoinModal #HapusEditkoin, #FormEditKoinModal #SaveEditkoin').show();
+            // Restore full button set visibility in edit modal
+            $('#HapusEditkoin, #SaveEditkoin').show().prop('disabled', false);
+            $('#CopyToMultiBtn').show();
+            $('#BatalEditkoin').show();
             // Ensure Auto Scroll remains interactive when idle too
             $('#autoScrollCheckbox').prop('disabled', false).css({ pointerEvents: 'auto', opacity: '' });
         }
