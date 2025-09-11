@@ -712,7 +712,7 @@ function DisplayPNL(data) {
   const lower = s => String(s || '').toLowerCase();
   const upper = s => String(s || '').toUpperCase();
 
-  // Link CEX
+  // Link CEX (default for current in/out orientation)
   const urls = (typeof GeturlExchanger === 'function')
     ? GeturlExchanger(upper(cex), String(Name_in||''), String(Name_out||''))
     : {};
@@ -874,11 +874,20 @@ function DisplayPNL(data) {
   } catch(_) {}
 
   // Fee & info (WD/DP sesuai arah) — FEE SWAP PISAH BARIS
+  // WD link mengikuti arah (Token→Pair menggunakan withdrawTokenUrl) → sudah sesuai kebutuhan FARM(WD)
   const wdUrl = cexLinks.withdraw;
-  // Selaraskan: DP selalu berbasis TOKEN → pakai depositTokenUrl bila ada
-  const dpUrlToken = (urls && (urls.depositTokenUrl || urls.depositUrl))
-    ? (urls.depositTokenUrl || urls.depositUrl)
-    : cexLinks.deposit;
+  // DP harus selalu berbasis TOKEN yang disetor ke CEX.
+  // Untuk Token→Pair, token = Name_in; untuk Pair→Token, token = Name_out.
+  const tokenForDeposit = (direction === 'tokentopair') ? upper(Name_in) : upper(Name_out);
+  // Ambil ulang link CEX khusus untuk token yang akan didepositkan agar DP selalu milik TOKEN (contoh: FARM)
+  const urlsForTokenDeposit = (typeof GeturlExchanger === 'function')
+    ? GeturlExchanger(upper(cex), tokenForDeposit, (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in))
+    : {};
+  const dpUrlToken = (urlsForTokenDeposit && (urlsForTokenDeposit.depositTokenUrl || urlsForTokenDeposit.depositUrl))
+    ? (urlsForTokenDeposit.depositTokenUrl || urlsForTokenDeposit.depositUrl)
+    : (urls && (urls.depositTokenUrl || urls.depositUrl))
+      ? (urls.depositTokenUrl || urls.depositUrl)
+      : cexLinks.deposit;
   // Tentukan status WD/DP dari token aktif (lihat data tersimpan)
   let wdFlag, dpFlag;
   try {
@@ -921,7 +930,7 @@ function DisplayPNL(data) {
   const multiLightGreen = '#9fff9f';
   const hlBg = isMultiModeHL
     ? multiLightGreen
-    : (isDarkMode() ? '#d8ff41' : hexToRgba(chainColorHexHL, 0.24));
+    : (isDarkMode() ? '#d8ff41' : hexToRgba(chainColorHexHL, 0.34));
   // Tambahkan kelas agar CSS bisa override tambahan saat dark-mode
   if (shouldHighlight) { try { $mainCell.addClass('dex-cell-highlight'); } catch(_) {}
   } else { try { $mainCell.removeClass('dex-cell-highlight'); } catch(_) {} }
@@ -991,7 +1000,7 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
   // Multichain: pakai hijau muda; per‑chain: gunakan tema normal (kuning terang untuk dark, rgba warna chain untuk light)
   const signalBg = isMultiSig
     ? multiLightGreen
-    : (isDarkMode() ? '#d8ff41' : hexToRgba(warnaChain, 0.24));
+    : (isDarkMode() ? '#d8ff41' : hexToRgba(warnaChain, 0.34));
   const highlightStyle = (Number(PNL) > filterPNLValue)
     ? `background-color:${signalBg}; font-weight:bolder;`
     : "";
