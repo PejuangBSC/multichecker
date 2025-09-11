@@ -10,6 +10,61 @@
   const root = global || (typeof window !== 'undefined' ? window : {});
   const App = root.App || (root.App = {});
 
+  // Map HTTP status codes to concise Indonesian descriptions for UI titles
+  function describeHttpStatus(code) {
+    const map = {
+      // 3xx
+      300: 'Multiple Choices — Banyak pilihan resource',
+      301: 'Moved Permanently — URL pindah permanen',
+      302: 'Found — Redirect sementara',
+      303: 'See Other — Redirect dengan GET',
+      304: 'Not Modified — Pakai cache',
+      307: 'Temporary Redirect — Redirect sementara (method sama)',
+      308: 'Permanent Redirect — Redirect permanen (method sama)',
+      // 4xx
+      400: 'Bad Request — Format request salah',
+      401: 'Unauthorized — Token/Auth diperlukan',
+      402: 'Payment Required — Terkait pembayaran (jarang)',
+      403: 'Forbidden — Akses dilarang',
+      404: 'Not Found — Resource tidak ada',
+      405: 'Method Not Allowed — Method HTTP salah',
+      406: 'Not Acceptable — Format tidak didukung',
+      407: 'Proxy Auth Required — Autentikasi proxy',
+      408: 'Request Timeout — Permintaan terlalu lama',
+      409: 'Conflict — Konflik data',
+      410: 'Gone — Resource sudah dihapus',
+      411: 'Length Required — Header Content-Length wajib',
+      412: 'Precondition Failed — If-* gagal',
+      413: 'Payload Too Large — Data terlalu besar',
+      414: 'URI Too Long — URL terlalu panjang',
+      415: 'Unsupported Media Type — Format tidak didukung',
+      416: 'Range Not Satisfiable — Range request salah',
+      417: 'Expectation Failed — Header Expect gagal',
+      421: 'Misdirected Request — Server tujuan salah',
+      422: 'Unprocessable Entity — Validasi gagal',
+      423: 'Locked — Resource terkunci',
+      424: 'Failed Dependency — Ketergantungan gagal',
+      425: 'Too Early — Terlalu cepat',
+      426: 'Upgrade Required — Wajib upgrade protokol',
+      428: 'Precondition Required — Butuh precondition',
+      429: 'Too Many Requests — Rate limiting',
+      431: 'Header Fields Too Large — Header terlalu besar',
+      451: 'Unavailable For Legal Reasons — Diblokir secara legal',
+      // 5xx
+      500: 'Internal Server Error — Error di sisi server',
+      501: 'Not Implemented — Endpoint belum tersedia',
+      502: 'Bad Gateway — Kesalahan di gateway/proxy',
+      503: 'Service Unavailable — Server sibuk/maintenance',
+      504: 'Gateway Timeout — Timeout di server/gateway',
+      505: 'HTTP Version Not Supported — Versi tidak didukung',
+      507: 'Insufficient Storage — Server kehabisan ruang',
+      508: 'Loop Detected — Loop di server',
+      510: 'Not Extended — Butuh extension tambahan',
+      511: 'Network Auth Required — Login ke jaringan',
+    };
+    return map[Number(code)] || `HTTP ${code} — Error dari server`;
+  }
+
   const dexStrategies = {
     kyber: {
       buildRequest: ({ chainName, sc_input, sc_output, amount_in_big }) => {
@@ -179,10 +234,18 @@
             }
           },
           error: function (xhr, textStatus, errorThrown) {
-            let alertMessage = `Error: ${textStatus}`;
-            if (textStatus === 'timeout') alertMessage = 'Request Timeout';
+            let status = 0;
+            try { status = Number(xhr && xhr.status) || 0; } catch(_) {}
+            const isParser = String(textStatus||'').toLowerCase() === 'parsererror';
+            let coreMsg;
+            if (textStatus === 'timeout') coreMsg = 'Request Timeout';
+            else if (status === 200) coreMsg = isParser ? 'Parser Error (200)' : 'XHR Error (200)';
+            else if (status > 0) coreMsg = describeHttpStatus(status);
+            else coreMsg = `Error: ${textStatus||'unknown'}`;
+
+            const label = status > 0 ? (status === 200 ? '[XHR ERROR 200]' : `[HTTP ${status}]`) : '';
             const linkDEX = generateDexLink(dexType, chainName, codeChain, NameToken, sc_input_in, NamePair, sc_output_in);
-            reject({ statusCode: xhr.status, pesanDEX: `${dexType.toUpperCase()}: ${alertMessage}`, DEX: dexType.toUpperCase(), dexURL: linkDEX });
+            reject({ statusCode: status, pesanDEX: `${dexType.toUpperCase()}: ${label} ${coreMsg}` , DEX: dexType.toUpperCase(), dexURL: linkDEX, textStatus });
           },
         });
       } catch (error) {
@@ -217,12 +280,19 @@
           resolve({ dexTitle: dexType, sc_input, des_input, sc_output, des_output, FeeSwap, dex: dexType, amount_out });
         },
         error: function (xhr, textStatus) {
-          let alertMessage = `Error: ${textStatus}`;
-          if (textStatus === 'timeout') alertMessage = 'Request Timeout';
+          let status = 0;
+          try { status = Number(xhr && xhr.status) || 0; } catch(_) {}
+          const isParser = String(textStatus||'').toLowerCase() === 'parsererror';
+          let coreMsg;
+          if (textStatus === 'timeout') coreMsg = 'Request Timeout';
+          else if (status === 200) coreMsg = isParser ? 'Parser Error (200)' : 'XHR Error (200)';
+          else if (status > 0) coreMsg = describeHttpStatus(status);
+          else coreMsg = `Error: ${textStatus||'unknown'}`;
+          const prefix = status > 0 ? (status === 200 ? '[XHR ERROR 200]' : `[HTTP ${status}]`) : '';
           // refactor: use shared dark-mode helper for error color
           const isDark = (typeof window !== 'undefined' && window.isDarkMode && window.isDarkMode()) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode'));
           const errColor = isDark ? '#7e3636' : '#ffcccc';
-          reject({ statusCode: xhr.status, pesanDEX: `SWOOP: ${alertMessage}`, color: errColor, DEX: dexType.toUpperCase() });
+          reject({ statusCode: status, pesanDEX: `SWOOP: ${prefix} ${coreMsg}`, color: errColor, DEX: dexType.toUpperCase(), textStatus });
         }
       });
     });

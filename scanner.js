@@ -37,7 +37,20 @@ function getDexWatchdogMap(){
 function setDexWatchdog(key, fn, delay){
     const map = getDexWatchdogMap();
     if (map.has(key)) clearTimeout(map.get(key));
-    map.set(key, setTimeout(fn, delay));
+    // Prevent false timeouts when tab is inactive by postponing error triggers until visible
+    const schedule = (ms) => setTimeout(() => {
+        try {
+            if (typeof document !== 'undefined' && document.hidden) {
+                // re-arm with modest delay until visible
+                const t = schedule(Math.min(1000, Math.max(250, ms)));
+                map.set(key, t);
+                return;
+            }
+        } catch(_) {}
+        try { fn(); } finally { map.delete(key); }
+    }, Math.max(0, ms||0));
+    const timerId = schedule(delay);
+    map.set(key, timerId);
 }
 function clearDexWatchdog(key){
     const map = getDexWatchdogMap();
@@ -213,6 +226,15 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     }
 
     let uiUpdateQueue = [];
+    // Ensure UI updates flush promptly when tab becomes visible again
+    try {
+        if (typeof window !== 'undefined' && !window.__UI_VIS_LISTENER_SET__) {
+            document.addEventListener('visibilitychange', () => {
+                try { if (!document.hidden) processUiUpdates(); } catch(_) {}
+            });
+            window.__UI_VIS_LISTENER_SET__ = true;
+        }
+    } catch(_) {}
 
     function processUiUpdates() {
         if (!isScanRunning && uiUpdateQueue.length === 0) return;
@@ -243,9 +265,9 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             if ((now - start) >= budgetMs) break; // yield to next frame
         }
 
-        // If page is hidden, slow down update loop to save CPU
-        if (document.hidden) {
-            setTimeout(() => { animationFrameId = requestAnimationFrame(processUiUpdates); }, 100);
+        // If page is hidden, do not rely on RAF (throttled/paused). Use setTimeout loop to keep UI in sync.
+        if (typeof document !== 'undefined' && document.hidden) {
+            setTimeout(processUiUpdates, 150);
         } else {
             animationFrameId = requestAnimationFrame(processUiUpdates);
         }
@@ -395,7 +417,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         } else {
                                             statusSpan.removeAttribute('title');
                                         }
-                                        try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
+                                        // Avoid finalizing while tab is hidden to allow later success to render
+                                        try {
+                                            if (cell.dataset && !(typeof document !== 'undefined' && document.hidden)) cell.dataset.final = '1';
+                                        } catch(_) {}
                                     } else if (status === 'failed') {
                                         // Validation failed before DEX call (e.g., modal/contract/chain code)
                                         setDexErrorBackground(cell);
@@ -408,7 +433,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         } else {
                                             statusSpan.removeAttribute('title');
                                         }
-                                        try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
+                                        // Avoid finalizing while tab is hidden
+                                        try {
+                                            if (cell.dataset && !(typeof document !== 'undefined' && document.hidden)) cell.dataset.final = '1';
+                                        } catch(_) {}
                                     } else if (status === 'error') {
                                         setDexErrorBackground(cell);
                                         statusSpan.classList.remove('uk-text-warning');
@@ -420,7 +448,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         } else {
                                             statusSpan.removeAttribute('title');
                                         }
-                                        try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
+                                        // Avoid finalizing while tab is hidden
+                                        try {
+                                            if (cell.dataset && !(typeof document !== 'undefined' && document.hidden)) cell.dataset.final = '1';
+                                        } catch(_) {}
                                     }
                                 };
 
@@ -566,8 +597,18 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     clearAllWatchdogs();
                                     // debug logs removed
                                     const dexConfig = CONFIG_DEXS[dex.toLowerCase()];
+                                    // Build richer error title with HTTP status code only if not already present
+                                    let msg = (initialError && initialError.pesanDEX) ? String(initialError.pesanDEX) : 'Unknown Error';
+                                    const hasPrefix = /\[(HTTP \d{3}|XHR ERROR 200)\]/.test(msg);
+                                    try {
+                                        const code = Number(initialError && initialError.statusCode);
+                                        if (!hasPrefix && Number.isFinite(code) && code > 0) {
+                                            if (code === 200) msg = `[XHR ERROR 200] ${msg}`;
+                                            else msg = `[HTTP ${code}] ${msg}`;
+                                        }
+                                    } catch(_) {}
                                     if (dexConfig && dexConfig.allowFallback) {
-                                        updateDexCellStatus('fallback', dex, initialError?.pesanDEX);
+                                        updateDexCellStatus('fallback', dex, msg);
                                         // Mulai countdown untuk SWOOP fallback (5 detik)
                                         try {
                                             window._DEX_TICKERS = window._DEX_TICKERS || new Map();
@@ -584,8 +625,11 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                 try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                                 if (rem <= 0) {
                                                     clearDexTickerById(idCELL);
-                                                    const rawMsg = (initialError && initialError.pesanDEX) ? initialError.pesanDEX : 'Request Timeout';
-                                                    try { updateDexCellStatus('fallback_error', dex, rawMsg); } catch(_) {}
+                                                    const rawMsg = msg || 'Request Timeout';
+                                                    // Delay final ERROR while tab is hidden; watchdog will handle upon visibility
+                                                    if (!(typeof document !== 'undefined' && document.hidden)) {
+                                                        try { updateDexCellStatus('fallback_error', dex, rawMsg); } catch(_) {}
+                                                    }
                                                 }
                                             };
                                             const intIdFB = setInterval(tickFB, 1000);
@@ -593,9 +637,9 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             tickFB();
                                         } catch(_) {}
                                         setDexWatchdog(wdKeyFallback, () => {
-                                            const msg = (initialError && initialError.pesanDEX) ? initialError.pesanDEX : 'Request Timeout';
+                                            const m2 = msg || 'Request Timeout';
                                             try { clearDexTickerById(idCELL); } catch(_) {}
-                                            updateDexCellStatus('fallback_error', dex, msg);
+                                            updateDexCellStatus('fallback_error', dex, m2);
                                         }, 5000);
                                         getPriceSWOOP(
                                             isKiri ? token.sc_in : token.sc_out, isKiri ? token.des_in : token.des_out,
@@ -611,7 +655,15 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         })
                                         .catch((fallbackErr) => {
                                             if (window._DEX_WATCHDOGS.has(wdKeyFallback)) clearTimeout(window._DEX_WATCHDOGS.get(wdKeyFallback));
-                                            const finalMessage = (fallbackErr && fallbackErr.pesanDEX) ? fallbackErr.pesanDEX : ((initialError && initialError.pesanDEX) ? initialError.pesanDEX : 'Unknown');
+                                            let finalMessage = (fallbackErr && fallbackErr.pesanDEX) ? fallbackErr.pesanDEX : (msg || 'Unknown');
+                                            try {
+                                                const sc = Number(fallbackErr && fallbackErr.statusCode);
+                                                if (Number.isFinite(sc) && sc > 0) {
+                                                    const prefix = (sc === 200) ? '[XHR ERROR 200] ' : `[HTTP ${sc}] `;
+                                                    // Only add prefix if not already present
+                                                    if (finalMessage.indexOf(prefix) !== 0) finalMessage = prefix + finalMessage;
+                                                }
+                                            } catch(_) {}
                                             try { clearDexTickerById(idCELL); } catch(_) {}
                                             updateDexCellStatus('fallback_error', dex, finalMessage);
                                             try {
@@ -640,7 +692,18 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             } catch(_) {}
                                         });
                                     } else {
-                                        updateDexCellStatus('error', dex, initialError?.pesanDEX || 'Unknown Error');
+                                        // Use formatted message with HTTP code when available (avoid duplicate prefix)
+                                        updateDexCellStatus('error', dex, (function(){
+                                            let m = (initialError && initialError.pesanDEX) ? String(initialError.pesanDEX) : 'Unknown Error';
+                                            const hasPrefix2 = /\[(HTTP \d{3}|XHR ERROR 200)\]/.test(m);
+                                            try {
+                                                const code = Number(initialError && initialError.statusCode);
+                                                if (!hasPrefix2 && Number.isFinite(code) && code > 0) {
+                                                    if (code === 200) m = `[XHR ERROR 200] ${m}`; else m = `[HTTP ${code}] ${m}`;
+                                                }
+                                            } catch(_) {}
+                                            return m;
+                                        })());
                                         try {
                                             const pairLine = `${String(isKiri ? token.symbol_in : token.symbol_out).toUpperCase()}->${String(isKiri ? token.symbol_out : token.symbol_in).toUpperCase()} on ${String(token.chain).toUpperCase()}`;
                                             const routeLine = `${String(token.cex).toUpperCase()}->${String(dex).toUpperCase()} [ERROR]`;
@@ -677,8 +740,11 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                         if (rem <= 0) {
                                             clearDexTickerById(idCELL);
-                                            // Paksa transisi ke ERROR (timeout) bila watchdog belum mengeksekusi
-                                            try { updateDexCellStatus('error', dex, `${String(dex||'').toUpperCase()}: Request Timeout`); } catch(_) {}
+                                            // If tab is hidden, don't finalize ERROR here; watchdog defers until visible
+                                            if (!(typeof document !== 'undefined' && document.hidden)) {
+                                                // Force transition to ERROR (timeout) if watchdog not executed
+                                                try { updateDexCellStatus('error', dex, `${String(dex||'').toUpperCase()}: Request Timeout`); } catch(_) {}
+                                            }
                                         }
                                     };
                                     const intId = setInterval(tick, 1000);

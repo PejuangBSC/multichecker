@@ -160,10 +160,10 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
     const chainConfig = CONFIG_CHAINS[String(tokenData.chain || '').toLowerCase()];
     if (!chainConfig) return;
 
-    const fromSymbol = direction === 'cex_to_dex' ? tokenData.symbol : tokenData.pairSymbol;
-    const toSymbol = direction === 'cex_to_dex' ? tokenData.pairSymbol : tokenData.symbol;
-    const scIn = direction === 'cex_to_dex' ? tokenData.contractAddress : tokenData.pairContractAddress;
-    const scOut = direction === 'cex_to_dex' ? tokenData.pairContractAddress : tokenData.contractAddress;
+    const fromSymbol = direction === 'cex_to_dex' ? tokenData.symbol : tokenData.pairSymbol; // simbol input arah proses
+    const toSymbol   = direction === 'cex_to_dex' ? tokenData.pairSymbol : tokenData.symbol; // simbol output arah proses
+    const scIn  = direction === 'cex_to_dex' ? tokenData.contractAddress      : tokenData.pairContractAddress;
+    const scOut = direction === 'cex_to_dex' ? tokenData.pairContractAddress  : tokenData.contractAddress;
 
     const linkBuy = `<a href="${chainConfig.URL_Chain}/token/${scIn}">${fromSymbol}</a>`;
     const linkSell = `<a href="${chainConfig.URL_Chain}/token/${scOut}">${toSymbol}</a>`;
@@ -173,9 +173,12 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
     const urls = GeturlExchanger(cex.toUpperCase(), fromSymbol, toSymbol) || {};
     const linkCEX = `<a href="${urls.tradeToken || '#'}">${cex.toUpperCase()}</a>`;
 
-    // Resolve deposit/withdraw statuses from localStorage (flattened tokens)
+    // Resolve deposit/withdraw statuses dari localStorage (flattened tokens)
     const chainKey = String(tokenData.chain||'').toLowerCase();
     let depTok, wdTok, depPair, wdPair;
+    // Prepare wantedToken/wantedPair defaults to avoid ReferenceError when lookup fails
+    let wantedToken = String(direction === 'cex_to_dex' ? tokenData.symbol : tokenData.pairSymbol).toUpperCase();
+    let wantedPair  = String(direction === 'cex_to_dex' ? tokenData.pairSymbol : tokenData.symbol).toUpperCase();
     try {
         const listChain = (typeof getTokensChain === 'function') ? getTokensChain(chainKey) : [];
         const listMulti = (typeof getTokensMulti === 'function') ? getTokensMulti() : [];
@@ -183,11 +186,14 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
             .concat(Array.isArray(listChain)? listChain : [])
             .concat(Array.isArray(listMulti)? listMulti : []);
         const flatAll = (typeof flattenDataKoin === 'function') ? flattenDataKoin(flat) : [];
+        // Selaraskan orientasi ke (TOKEN -> PAIR) untuk pencocokan status, terlepas dari arah proses
+        wantedToken = String(direction === 'cex_to_dex' ? tokenData.symbol : tokenData.pairSymbol).toUpperCase();
+        wantedPair  = String(direction === 'cex_to_dex' ? tokenData.pairSymbol : tokenData.symbol).toUpperCase();
         const match = (flatAll || []).find(e =>
             String(e.cex||'').toUpperCase() === String(cex||'').toUpperCase() &&
             String(e.chain||'').toLowerCase() === chainKey &&
-            String(e.symbol_in||'').toUpperCase() === String(tokenData.symbol||'').toUpperCase() &&
-            String(e.symbol_out||'').toUpperCase() === String(tokenData.pairSymbol||'').toUpperCase()
+            String(e.symbol_in||'').toUpperCase() === wantedToken &&
+            String(e.symbol_out||'').toUpperCase() === wantedPair
         );
         if (match) {
             depTok = match.depositToken; wdTok = match.withdrawToken; depPair = match.depositPair; wdPair = match.withdrawPair;
@@ -205,8 +211,8 @@ function MultisendMessage(cex, dex, tokenData, modal, PNL, priceBUY, priceSELL, 
     `<b>SELL:</b> ${linkSell} @ ${Number(priceSELL)||0}\n`+
     `<b>FEE WD:</b> ${Number(FeeWD).toFixed(3)}$\n`+
     `<b>FEE TOTAL:</b> $${Number(totalFee).toFixed(2)} | <b>SWAP:</b> $${Number(FeeSwap).toFixed(2)}\n`+
-    `<b>STATUS TOKEN:</b> WD ${f(wdTok)} | DP ${f(depTok)}\n`+
-    `<b>STATUS PAIR:</b> WD ${f(wdPair)} | DP ${f(depPair)}\n`+
+    // Selaraskan dengan UI: kirim hanya status TOKEN, sertakan nama token
+    `<b>STATUS TOKEN (${String(wantedToken||fromSymbol).toUpperCase()}):</b> WD ${f(wdTok)} | DP ${f(depTok)}\n`+
     `-----------------------------------------`;
     sendTelegramHTML(message);
 }

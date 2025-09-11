@@ -701,6 +701,8 @@ function DisplayPNL(data) {
   }
   // Clear any prior error background once a successful result renders
   try { el.classList.remove('dex-error'); } catch(_) {}
+  // Also clear any lingering error tooltip/title
+  try { el.removeAttribute('title'); if (el.dataset) el.dataset.titleLog=''; } catch(_) {}
   const $mainCell = $(el);
 
   // Helpers
@@ -812,15 +814,17 @@ function DisplayPNL(data) {
       throw new Error('scan log disabled');
     }
     // Resolve WD/DP status dari list token aktif (jika ada)
+    // Tambahkan status detail untuk Token & Pair agar jelas konteks ON/OFF mengacu ke apa.
     let wdFlag, dpFlag; let wdFeeToken = null;
+    let wdTokenFlag, wdPairFlag, dpTokenFlag, dpPairFlag; // detail per entitas
     try {
       const list = (Array.isArray(window.singleChainTokensCurrent) && window.singleChainTokensCurrent.length)
         ? window.singleChainTokensCurrent
         : (Array.isArray(window.currentListOrderMulti) ? window.currentListOrderMulti : []);
       // Flattened data disimpan sebagai (symbol_in = TOKEN, symbol_out = PAIR).
       // Saat arah Pair→Token, Name_in=PAIR dan Name_out=TOKEN → perlu dibalik untuk pencarian.
-      const keyIn  = (direction === 'tokentopair') ? upper(Name_in)  : upper(Name_out);  // TOKEN
-      const keyOut = (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in);   // PAIR
+      const keyIn  = (direction === 'tokentopair') ? upper(Name_in)  : upper(Name_out);  // TOKEN (selalu TOKEN)
+      const keyOut = (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in);   // PAIR  (selalu PAIR)
       const hit = (list || []).find(t => String(t.cex).toUpperCase() === CEX
         && String(t.symbol_in).toUpperCase() === keyIn
         && String(t.symbol_out).toUpperCase() === keyOut
@@ -830,6 +834,11 @@ function DisplayPNL(data) {
         wdFlag = hit.withdrawToken;
         wdFeeToken = Number(hit.feeWDToken || 0);
         dpFlag = hit.depositToken;
+        // Simpan status detail
+        wdTokenFlag = hit.withdrawToken;
+        wdPairFlag  = hit.withdrawPair;
+        dpTokenFlag = hit.depositToken;
+        dpPairFlag  = hit.depositPair;
       }
     } catch(_) {}
 
@@ -839,6 +848,9 @@ function DisplayPNL(data) {
       ? `${upper(Name_in)} => ${upper(Name_out)} on ${String(nameChain).toUpperCase()}`
       : `${upper(Name_out)} => ${upper(Name_in)} on ${String(nameChain).toUpperCase()}`;
     const procLine = (direction === 'tokentopair') ? `${CEX} => ${DEX}` : `${DEX} => ${CEX}`;
+    // Simbol tetap (token/pair) terlepas dari arah
+    const tokenSym = (direction === 'tokentopair') ? upper(Name_in)  : upper(Name_out);
+    const pairSym  = (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in);
 
     const lines = [
       sep,
@@ -846,11 +858,17 @@ function DisplayPNL(data) {
       `ID CELL: ${elementId}`,
       `PROSES : ${procLine}`,
       `KOIN : ${coinLine}`,
-      `Buy Price (USDT): ${Number(buyPrice)}`,
-      `Sell Price (USDT): ${Number(sellPrice)}`,
+      `MODAL : ${n(Modal).toFixed(2)}$`,
+      // `Buy [${tokenSym}]: ${Number(buyPrice)}$`,
+      // `Sell [${pairSym}]: ${Number(sellPrice)}$`,
+      `BUY ${tokenSym} : ${n(buyPrice).toFixed(10)}$`,
+      `SELL ${tokenSym} : ${n(sellPrice).toFixed(10)}$`,
       `PNL & TOTAL FEE : ${n(pnl).toFixed(2)}$ & ${n(feeAll).toFixed(2)}$`,
-      `FEE WD & FEE SWAP : ${n((wdFeeToken!=null)?wdFeeToken:FeeWD).toFixed(2)}$ & ${n(FeeSwap).toFixed(2)}$`,
-      `WD [${f(wdFlag)}] DP [${f(dpFlag)}]`
+      // Selalu tampilkan FeeWD dalam USDT (hasil konversi di services/cex.js), bukan fee mentah per koin
+      `FEE WD & FEE SWAP : ${n(FeeWD).toFixed(2)}$ & ${n(FeeSwap).toFixed(2)}$`,
+      // Status detail WD/DP per Token & Pair agar tidak ambigu
+      `${tokenSym}: WD[${f(wdTokenFlag)}] | DP[${f(dpTokenFlag)}]`,
+      `${pairSym}: WD[${f(wdPairFlag)} | DP[${f(dpPairFlag)}]`
     ];
     console.log(lines.join('\n'));
   } catch(_) {}
