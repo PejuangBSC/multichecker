@@ -13,11 +13,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/css/toastr.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/js/toastr.min.js"></script>
-    <script src="js/notify-shim.js"></script>
+    <script src="../js/notify-shim.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"
     integrity="sha512-E8QSvWZ0eCLGk4km3hxSsNmGWbLtSCSUcewDQPQWZF6pEU8GlT8a5fF32wOl1i8ftdMhssTrF/OhyGWwonTcXA=="
     crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="/idb-localstorage-shim.js"></script>
+    <script src="../idb-localstorage-shim.js"></script>
 </head>
 <style>
      .uk-container {
@@ -284,9 +284,15 @@
               <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <!-- Gambar kiri -->
                 <div>
-                    <!-- <a href="https://multiscan-ruby.vercel.app/MULTI/modal.html" target="_blank">
-                        <img title="TAB SENDIRI" src="https://cdn-icons-png.flaticon.com/512/5548/5548820.png" width="28px" />
-                    </a>&nbsp;&nbsp; -->
+                    <a href="/extra/modal.html" target="_blank" rel="noopener noreferrer">
+                        <img 
+                            src="https://cdn-icons-png.flaticon.com/512/5548/5548820.png" 
+                            alt="TAB SENDIRI" 
+                            title="TAB SENDIRI" 
+                            width="28" 
+                        />
+                        </a>
+                        &nbsp;&nbsp;
                     <a href="#" target="_blank" id="reload">
                       <img title="RELOAD PAGE" src="https://cdn-icons-png.freepik.com/512/210/210136.png" width="25px" />
                     </a>&nbsp;&nbsp;
@@ -1297,56 +1303,92 @@
         }
 
         async function cekAssetMexc() {
-            const apiKey = $("#apikeyMEXC").val();
-            const apiSecret = $("#secretkeyMEXC").val();
+            const PROXY_BASE = "https://cors-proxy-rosy.vercel.app/api/proxy"; // ganti jika perlu
+            const outEl = document.querySelector("#MEXCSaldo");
+            const apiKey = (document.querySelector("#apikeyMEXC")?.value || "").trim();
+            const apiSecret = (document.querySelector("#secretkeyMEXC")?.value || "").trim();
             const recvWindow = 5000;
-            const timestamp = Date.now().toString();
-            const apiUrl = "https://cors-proxy-rosy.vercel.app/api/proxy?url=https://api.mexc.com/api/v3/account";
-            const queryString = `recvWindow=${recvWindow}&timestamp=${timestamp}`;
-            const signature = CryptoJS.HmacSHA256(queryString, apiSecret).toString(CryptoJS.enc.Hex);
-            const fullUrl = `${apiUrl}?${queryString}&signature=${signature}`;
 
-            const headers = {
-                "X-MEXC-APIKEY": apiKey,
-                "Content-Type": "application/json"
-            };
+            const setOut = (html) => { if (outEl) outEl.innerHTML = html; };
 
             try {
-                $("#MEXCSaldo").text("Loading...");
+                setOut("Loading...");
+                if (!apiKey || !apiSecret) throw new Error("API Key & Secret wajib diisi");
 
-                const response = await fetch(fullUrl, { method: "GET", headers });
-                const data = await response.json();
+                // 1) ambil server time MEXC via proxy (untuk kurangi clock-skew)
+                let serverTime = Date.now();
+                try {
+                const timeUrl = `${PROXY_BASE}?url=${encodeURIComponent("https://api.mexc.com/api/v3/time")}`;
+                const rTime = await fetch(timeUrl);
+                const jTime = await rTime.json().catch(() => ({}));
+                if (typeof jTime?.serverTime === "number") serverTime = jTime.serverTime;
+                } catch {/* abaikan, lanjut pakai Date.now() */}
 
-                if (!data || !data.balances) throw new Error("Tidak ada data balance");
+                // 2) siapkan query & signature (HMAC-SHA256 hex)
+                const params = { recvWindow, timestamp: String(serverTime) };
+                const usp = new URLSearchParams();
+                // urutan konsisten
+                for (const k of Object.keys(params)) usp.append(k, String(params[k]));
+                const queryString = usp.toString(); // recvWindow=5000&timestamp=...
+                const signature = CryptoJS.HmacSHA256(queryString, apiSecret).toString(CryptoJS.enc.Hex);
 
-                const balances = data.balances;
-                const usdtBalance = parseFloat(balances.find(c => c.asset === "USDT")?.free || 0);
-                const ethBalance = parseFloat(balances.find(c => c.asset === "ETH")?.free || 0);
-                const bnbBalance = parseFloat(balances.find(c => c.asset === "BNB")?.free || 0);
+                // 3) rakit target URL MEXC + signature, lalu bungkus ke proxy (HARUS encode)
+                const targetUrl = `https://api.mexc.com/api/v3/account?${queryString}&signature=${signature}`;
+                const proxiedUrl = `${PROXY_BASE}?url=${encodeURIComponent(targetUrl)}`;
 
-                const rates = await fetchTokenRates();
-                const ethToUsdt = rates.ETH || 0;
-                const bnbToUsdt = rates.BNB || 0;
+                // 4) panggil API lewat proxy
+                const headers = { "X-MEXC-APIKEY": apiKey, "Content-Type": "application/json" };
+                const resp = await fetch(proxiedUrl, { method: "GET", headers });
+
+                // kadang non-200 tapi berisi JSON error {code,msg}
+                const rawText = await resp.text();
+                let data; try { data = JSON.parse(rawText); } catch { data = rawText; }
+
+                if (!resp.ok || (data && typeof data === "object" && data.code && data.msg)) {
+                const code = data?.code ?? resp.status;
+                const msg  = data?.msg ?? resp.statusText ?? "Unknown error";
+                throw new Error(`MEXC error (${code}): ${msg}`);
+                }
+
+                // 5) olah saldo
+                const balances = Array.isArray(data?.balances) ? data.balances : null;
+                if (!balances) throw new Error("Tidak ada data balances dari MEXC");
+
+                const getFree = (sym) => parseFloat(balances.find(c => c.asset === sym)?.free || 0);
+                const usdtBalance = getFree("USDT");
+                const ethBalance  = getFree("ETH");
+                const bnbBalance  = getFree("BNB");
+
+                // 6) (opsional) konversi harga jika kamu punya fetchTokenRates()
+                let ethToUsdt = 0, bnbToUsdt = 0;
+                if (typeof fetchTokenRates === "function") {
+                try {
+                    const rates = await fetchTokenRates();
+                    ethToUsdt = Number(rates?.ETH || 0);
+                    bnbToUsdt = Number(rates?.BNB || 0);
+                } catch {/* skip */}
+                }
 
                 const ethInUsdt = ethBalance * ethToUsdt;
                 const bnbInUsdt = bnbBalance * bnbToUsdt;
                 const totalUsdt = usdtBalance + ethInUsdt + bnbInUsdt;
 
-                $("#MEXCSaldo").html(`
-                    <span class="uk-text-primary">${ethBalance.toFixed(4)} ETH</span> ≈ ${ethInUsdt.toFixed(2)}$<br/>
-                    <span class="uk-text-warning">${bnbBalance.toFixed(4)} BNB</span> ≈ ${bnbInUsdt.toFixed(2)}$<br/>
-                    <span class="uk-text-secondary">${usdtBalance.toFixed(2)} USDT</span><br/>
-                   <hr class="uk-margin-remove-top uk-margin-remove-bottom">
-                    <b>${ethInUsdt.toFixed(2)} + ${bnbInUsdt.toFixed(2)} + ${usdtBalance.toFixed(2)} ≈ ${totalUsdt.toFixed(2)} {USDT}</b>
+                setOut(`
+                <span class="uk-text-primary">${ethBalance.toFixed(4)} ETH</span> ≈ ${ethInUsdt.toFixed(2)}$<br/>
+                <span class="uk-text-warning">${bnbBalance.toFixed(4)} BNB</span> ≈ ${bnbInUsdt.toFixed(2)}$<br/>
+                <span class="uk-text-secondary">${usdtBalance.toFixed(2)} USDT</span><br/>
+                <hr class="uk-margin-remove-top uk-margin-remove-bottom">
+                <b>${ethInUsdt.toFixed(2)} + ${bnbInUsdt.toFixed(2)} + ${usdtBalance.toFixed(2)} ≈ ${totalUsdt.toFixed(2)} {USDT}</b>
                 `);
 
-                localStorage.setItem('MULTI_MEXCSaldo', totalUsdt.toFixed(2));
-
+                try { localStorage.setItem('MULTI_MEXCSaldo', totalUsdt.toFixed(2)); } catch {}
                 console.log("Cek Asset MEXC:", { usdtBalance, ethBalance, bnbBalance, totalUsdt });
+
             } catch (error) {
-                $("#MEXCSaldo").text("ERROR").addClass("error");
-                localStorage.setItem('MULTI_MEXCSaldo', 0);
-                if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan Market MEXC: " + error.message);
+                try { localStorage.setItem('MULTI_MEXCSaldo', 0); } catch {}
+                setOut(`<span class="uk-text-danger">ERROR</span><br/><small>${error.message}</small>`);
+                if (typeof toast !== 'undefined' && toast.error) toast.error("Error Pengecekan MEXC: " + error.message);
+                console.error(error);
             }
         }
 
