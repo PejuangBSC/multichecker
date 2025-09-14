@@ -54,8 +54,8 @@
                     <div class="uk-flex uk-flex-middle uk-flex-wrap">
                         <h3 id="judul" class="uk-margin-remove" 
                             style="font-size: 18px; line-height: 1.2; color: #000; font-weight: bold;">
+                             <img src="https://i.gifer.com/origin/44/446eed82d7f9109817bade96938c576d_w200.gif" width="24px" />
                             MULTICHECKER <span id="current-chain-label" style="margin-left:3px;">[ALL]</span>
-                            <img src="https://media.tenor.com/97VzG-cb7O0AAAAM/new-brand-new.gif" width="24px" />
                         </h3>
                         &nbsp;&nbsp;
                         <span>[ <b> 
@@ -147,7 +147,7 @@
                 </div>
  
                 <div class="uk-button-group uk-margin-small-left">
-                    <button type="button" id="startSCAN" data-feature="scan" class="uk-button uk-button-secondary uk-button-small">START</button>
+                    <button type="button" id="startSCAN" data-feature="scan" class="uk-button uk-button-secondary uk-button-small">START</button>&nbsp;&nbsp;
                     <button type="button" id="stopSCAN" data-feature="scan" style="display:none;" class="uk-button uk-button-danger uk-button-small">STOP</button>
                     
                 </div>
@@ -220,13 +220,18 @@
         <form>
             <div class="uk-grid-small" uk-grid>
                 <div class="uk-width-1-2">
-                    <div class="uk-card uk-card-default uk-card-body">
-                        <h3>JEDA WAKTU (ms)</h3>
-                        <div id="cex-delay-group"></div>
-                        <hr>
-                        <div id="dex-delay-group"></div>
+                  <div class="uk-card uk-card-default uk-card-body">
+                    <h3>JEDA WAKTU (ms)</h3>
+
+                    <!-- Flex kiri kanan -->
+                    <div class="uk-flex uk-flex-between">
+                      <div id="cex-delay-group" style="flex:1; margin-right:10px;"></div>
+                      <div id="dex-delay-group" style="flex:1; margin-left:10px;"></div>
                     </div>
+
+                  </div>
                 </div>
+
                 <div class="uk-width-1-2">
                     <div class="uk-card uk-card-default uk-card-body">
                         <h3 style="text-align: center; margin: 12px 0px; color: #1317e1;">:: PENGATURAN SCANNER</h3>

@@ -94,7 +94,7 @@ a:hover, .uk-link:hover {
 .td-detail {
   width: 240px;
   max-width: 260px;
-  white-space: normal !important;
+  white-space: nowrap;
   word-break: break-word;
   overflow-wrap: anywhere;
   font-size: 12px;
@@ -106,8 +106,8 @@ a:hover, .uk-link:hover {
 /* Dynamic header/column widths using classes (replaces nth-child rules) */
 .th-orderbook { width: auto !important; min-width: 160px; }
 .th-detail { width: 240px; }
-.th-dex { width: 120px; }
-.td-dex { width: 120px; }
+.th-dex { width: 140px; }
+.td-dex { width: 140px; }
 /* Orderbook cell: responsive width + internal scroll for long content */
 .td-orderbook { min-width: 160px; }
 .td-orderbook .orderbook-wrap { display: inline-block; max-width: clamp(160px, 16vw, 320px); }
@@ -127,7 +127,7 @@ body.dark-mode .td-orderbook .orderbook-scroll::-webkit-scrollbar-thumb { backgr
 
 /* Spacing for per-line data in DEX/detail cells */
 .monitor-line { display: block; }
-.detail-line { display: block; margin: 3px 0 }
+.detail-line { display: block; margin: 3px 2px }
 .dex-price-link { text-decoration: none; }
 
 /* Compact cell padding for tables */
@@ -160,7 +160,7 @@ body.dark-mode .td-orderbook .orderbook-scroll::-webkit-scrollbar-thumb { backgr
 /* Enforce column widths via nth-child (multi-chain table) */
 #tabel-monitoring th:nth-child(1), #tabel-monitoring td:nth-child(1),
 #tabel-monitoring th:nth-child(11), #tabel-monitoring td:nth-child(11) { width: 100px; }
-#tabel-monitoring th:nth-child(6), #tabel-monitoring td:nth-child(6) { width: 120px; }
+#tabel-monitoring th:nth-child(6), #tabel-monitoring td:nth-child(6) { width: 140px; }
 /* DEX columns (2-5 and 7-10) */
 #tabel-monitoring th:nth-child(2), #tabel-monitoring td:nth-child(2),
 #tabel-monitoring th:nth-child(3), #tabel-monitoring td:nth-child(3),
@@ -169,7 +169,7 @@ body.dark-mode .td-orderbook .orderbook-scroll::-webkit-scrollbar-thumb { backgr
 #tabel-monitoring th:nth-child(7), #tabel-monitoring td:nth-child(7),
 #tabel-monitoring th:nth-child(8), #tabel-monitoring td:nth-child(8),
 #tabel-monitoring th:nth-child(9), #tabel-monitoring td:nth-child(9),
-#tabel-monitoring th:nth-child(10), #tabel-monitoring td:nth-child(10) { width: 120px; }
+#tabel-monitoring th:nth-child(10), #tabel-monitoring td:nth-child(10) { width: 140px; }
 
 /* (single-chain table removed) */
 
@@ -714,6 +714,10 @@ body.dark-mode .signal-card { border-color: #fff; }
 .signal-card .uk-card-header { border-bottom: 1px solid #000 !important; }
 body.dark-mode .signal-card .uk-card-header { border-bottom: 1px solid #fff !important; }
 
+/* History table badges */
+.hist-badge-fail { background-color: #b3261e !important; color: #fff !important; margin-left: 6px; }
+body.dark-mode .hist-badge-fail { background-color: #d32f2f !important; color: #fff !important; }
+
 #tabel-monitoring th, #tabel-monitoring td {
   white-space: nowrap; /* keep numbers intact */
 }
@@ -756,4 +760,45 @@ body.dark-mode #scanner-config,
 body.dark-mode #monitoring-scroll,
 body.dark-mode .signal-card {
   border-color: #fff !important;
+}
+
+/* === Global Form Inputs Rounded === */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select,
+button,
+.ui.input > input,
+.uk-input,
+.uk-select,
+.uk-textarea,
+.form-control,
+[type="text"],
+[type="email"],
+[type="number"],
+[type="password"],
+[type="search"],
+[type="url"],
+[type="tel"] {
+  border-radius: 0.5rem !important;
+}
+
+/* Biarkan tampilan native checkbox/radio + boleh beri warna */
+input[type="checkbox"], .uk-checkbox {
+  border-radius: 3px !important;     /* atau 0 jika mau benar-benar kotak */
+  accent-color: #1e87f0;              /* opsional: warna centang */
+}
+input[type="radio"], .uk-radio {
+  border-radius: 50% !important;      /* pastikan benar-benar bulat */
+  accent-color: #1e87f0;              /* opsional */
+}
+
+
+.uk-button-group > .uk-button:first-child {
+  border-top-left-radius: 0.5rem !important;
+  border-bottom-left-radius: 0.5rem !important;
+}
+
+.uk-button-group > .uk-button:last-child {
+  border-top-right-radius: 0.5rem !important;
+  border-bottom-right-radius: 0.5rem !important;
 }

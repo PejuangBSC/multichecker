@@ -207,6 +207,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     let scanPerKoin = parseInt(ConfigScan.scanPerKoin || 1);
     let jedaKoin = parseInt(ConfigScan.jedaKoin || 500);
     let jedaTimeGroup = parseInt(ConfigScan.jedaTimeGroup || 1000);
+    // Jeda tambahan agar urutan fetch mengikuti pola lama (tanpa mengubah logika hasil)
+    // Catatan: gunakan nilai dari SETTING_SCANNER
+    // - Jeda CEX: per-CEX dari ConfigScan.JedaCexs[cex]
+    // - Jeda DEX: per-DEX dari ConfigScan.JedaDexs[dex]
     let speedScan = Math.round(parseFloat(ConfigScan.speedScan || 2) * 1000);
 
     const jedaDexMap = (ConfigScan || {}).JedaDexs || {};
@@ -232,6 +236,17 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 try { if (!document.hidden) processUiUpdates(); } catch(_) {}
             });
             window.__UI_VIS_LISTENER_SET__ = true;
+        }
+    } catch(_) {}
+
+    // Suspend auto-scroll when the user interacts (wheel/touch/mouse/keys)
+    try {
+        if (typeof window !== 'undefined' && !window.__AUTO_SCROLL_SUSPENDER_SET__) {
+            const suspend = () => { try { window.__AUTO_SCROLL_SUSPEND_UNTIL = Date.now() + 4000; } catch(_) {} };
+            ['wheel','touchstart','mousedown','keydown'].forEach(ev => {
+                try { window.addEventListener(ev, suspend, { passive: true }); } catch(_) {}
+            });
+            window.__AUTO_SCROLL_SUSPENDER_SET__ = true;
         }
     } catch(_) {}
 
@@ -352,6 +367,13 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 return;
             }
 
+            // Beri jeda setelah CEX siap sebelum DEX dieksekusi berdasarkan setting per-CEX
+            try {
+                const cexDelayMap = (ConfigScan || {}).JedaCexs || {};
+                const afterCEX = parseInt(cexDelayMap[token.cex]) || 0;
+                if (afterCEX > 0) await new Promise(r => setTimeout(r, afterCEX));
+            } catch(_) {}
+
             if (token.dexs && Array.isArray(token.dexs)) {
                 token.dexs.forEach((dexData) => {
                             // Skip DEX not included in active selection
@@ -374,6 +396,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                   + `${String(token.id||'').toUpperCase()}`;
                                 const baseId = baseIdRaw.replace(/[^A-Z0-9_]/g,'');
                                 const idCELL = tableBodyId + '_' + baseId;
+                                let lastPrimaryError = null;
 
                                 // Resolve safe token addresses/decimals especially for NON pair
                                 const chainCfgSafe = (window.CONFIG_CHAINS || {})[String(token.chain).toLowerCase()] || {};
@@ -404,7 +427,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     statusSpan.classList.remove('uk-text-muted', 'uk-text-warning', 'uk-text-danger');
                                     if (status === 'checking') {
                                         statusSpan.classList.add('uk-text-warning');
-                                        statusSpan.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>Check ${String(dexName||'').toUpperCase()}`;
+                                        statusSpan.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>${String(dexName||'').toUpperCase()}`;
                                         try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                         // Build rich header log like example
                                         try {
@@ -427,7 +450,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         } catch(_) {}
                                     } else if (status === 'fallback') {
                                         statusSpan.classList.add('uk-text-warning');
-                                        statusSpan.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>Check SWOOP`;
+                                        statusSpan.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>SWOOP`;
                                         // Tooltip: show only raw DEX response if present
                                         if (message) {
                                             statusSpan.title = String(message);
@@ -520,7 +543,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         DataCEX.priceBuyToken, DataCEX.priceSellToken, DataCEX.priceBuyPair, DataCEX.priceSellPair,
                                         isKiri ? token.symbol_in : token.symbol_out, isKiri ? token.symbol_out : token.symbol_in,
                                         isKiri ? DataCEX.feeWDToken : DataCEX.feeWDPair,
-                                        finalDexRes.dexTitle || dex, token.chain, CONFIG_CHAINS[token.chain.toLowerCase()].Kode_Chain,
+                                        dex, token.chain, CONFIG_CHAINS[token.chain.toLowerCase()].Kode_Chain,
                                         direction, 0, finalDexRes
                                     );
                                     // debug logs removed
@@ -558,6 +581,18 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         const chainName = (chainCfg.Nama_Chain || token.chain || '').toString().toUpperCase();
                                         const ce  = String(token.cex||'').toUpperCase();
                                         const dx  = String((finalDexRes?.dexTitle)||dex||'').toUpperCase();
+                                        // Sumber nilai: jika alternatif dipakai tampilkan 'via LIFI' atau 'via SWOOP'
+                                        const viaText = (function(){
+                                            try {
+                                                if (isFallback === true) {
+                                                    // Jika fallback LIFI (memiliki routeTool/routeOverrideDex dari services), tampilkan via LIFI
+                                                    if (finalDexRes && (typeof finalDexRes.routeTool !== 'undefined' || typeof finalDexRes.routeOverrideDex !== 'undefined')) return ' via LIFI';
+                                                    // Selain itu fallback dianggap SWOOP
+                                                    return ' via SWOOP';
+                                                }
+                                            } catch(_) {}
+                                            return '';
+                                        })();
                                         const nameIn  = String(isKiri ? token.symbol_in  : token.symbol_out).toUpperCase();
                                         const nameOut = String(isKiri ? token.symbol_out : token.symbol_in ).toUpperCase();
                                         const modal = Number(isKiri ? modalKiri : modalKanan) || 0;
@@ -594,8 +629,39 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         const sellIdrLine = isKiri
                                           ? `    💱 Harga Jual (${dx}) dalam IDR: ${toIDR(effDexPerToken)}`
                                           : `    💱 Harga Jual (${ce}) dalam IDR: ${toIDR(Number(DataCEX.priceSellToken||0))}`;
+                                        // Header block (selalu tampil di awal tooltip)
+                                        const nowStr = (new Date()).toLocaleTimeString();
+                                        const viaName = (function(){
+                                            try {
+                                                if (isFallback === true) {
+                                                    if (finalDexRes && (typeof finalDexRes.routeTool !== 'undefined' || typeof finalDexRes.routeOverrideDex !== 'undefined')) return 'LIFI';
+                                                    return 'SWOOP';
+                                                }
+                                            } catch(_) {}
+                                            return dx;
+                                        })();
+                                        const prosesLine = isKiri
+                                          ? `PROSES : ${ce} => ${dx} (VIA ${viaName})`
+                                          : `PROSES : ${dx} => ${ce} (VIA ${viaName})`;
+                                        let statusLine = 'STATUS DEX : OK';
+                                        if (isFallback === true && lastPrimaryError) {
+                                            let s = 'FAILED';
+                                            try {
+                                                const ts = String(lastPrimaryError.textStatus||'').toLowerCase();
+                                                if (ts === 'timeout' || /timeout/i.test(String(lastPrimaryError.pesanDEX||''))) s = 'TIMEOUT';
+                                            } catch(_) { s = 'FAILED'; }
+                                            const codeNum = Number(lastPrimaryError.statusCode);
+                                            statusLine = `STATUS DEX : ${s} (KODE ERROR : ${Number.isFinite(codeNum)?codeNum:'NA'})`;
+                                        }
+                                        const headerBlock = [
+                                            '======================================',
+                                            `Time: ${nowStr}`,
+                                           // `ID CELL: ${idCELL}`,
+                                            prosesLine,
+                                            statusLine
+                                        ].join('\n');
                                         const lines = [
-                                            '',
+                                            headerBlock,
                                             `    🪙 Modal: $${modal.toFixed(2)}`,
                                             buyLine,
                                             buyIdrLine,
@@ -613,11 +679,13 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             `    🚀 PROFIT : ${profitLoss>=0?'+':''}${profitLoss.toFixed(2)} USDT`
                                         ].join('\n');
                                         appendCellTitleById(idCELL, lines);
+                                        try { if (window.SCAN_LOG_ENABLED) console.log(lines); } catch(_) {}
                                     } catch(_) {}
                                     uiUpdateQueue.push(update);
                                 };
 
                                 const handleError = (initialError) => {
+                                    try { lastPrimaryError = initialError; } catch(_) {}
                                     clearAllWatchdogs();
                                     // debug logs removed
                                     const dexConfig = CONFIG_DEXS[dex.toLowerCase()];
@@ -640,7 +708,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             // Use shared ticker helper
                                             const renderFB = (secs, cell) => {
                                                 const span = ensureDexStatusSpan(cell);
-                                                span.innerHTML = `<span class=\\"uk-margin-small-right\\" uk-spinner=\\"ratio: 0.5\\"></span>Check SWOOP (${secs}s)`;
+                                                span.innerHTML = `<span class=\\"uk-margin-small-right\\" uk-spinner=\\"ratio: 0.5\\"></span>SWOOP (${secs}s)`;
                                                 try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                             };
                                             const onEndFB = () => {
@@ -676,7 +744,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             try { clearDexTickerById(idCELL); } catch(_) {}
                                             updateDexCellStatus('fallback_error', dex, m2);
                                         }, 5000);
-                                        getPriceSWOOP(
+                                        getPriceAltDEX(
                                             isKiri ? token.sc_in : token.sc_out, isKiri ? token.des_in : token.des_out,
                                             isKiri ? token.sc_out : token.sc_in, isKiri ? token.des_out : token.des_in,
                                             isKiri ? amount_in_token : amount_in_pair, DataCEX.priceBuyPair, dex,
@@ -735,6 +803,33 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             } catch(_) {}
                                             return m;
                                         })());
+                                        // Tambahkan header block ke tooltip + console (jika Log ON)
+                                        try {
+                                            const nowStr = (new Date()).toLocaleTimeString();
+                                            const dxName = String(dex||'').toUpperCase();
+                                            const ceName = String(token.cex||'').toUpperCase();
+                                            // PROSES mengikuti arah
+                                            const prosesLine = (direction === 'TokentoPair')
+                                                ? `PROSES : ${ceName} => ${dxName} (VIA ${dxName})`
+                                                : `PROSES : ${dxName} => ${ceName} (VIA ${dxName})`;
+                                            // STATUS
+                                            let s = 'FAILED';
+                                            try {
+                                                const ts = String(initialError && initialError.textStatus || '').toLowerCase();
+                                                if (ts === 'timeout' || /timeout/i.test(String(initialError && initialError.pesanDEX||''))) s = 'TIMEOUT';
+                                            } catch(_) { s = 'FAILED'; }
+                                            const codeNum = Number(initialError && initialError.statusCode);
+                                            const statusLine = `STATUS DEX : ${s} (KODE ERROR : ${Number.isFinite(codeNum)?codeNum:'NA'})`;
+                                            const headerBlock = [
+                                                '======================================',
+                                                `Time: ${nowStr}`,
+                                               // `ID CELL: ${idCELL}`,
+                                                prosesLine,
+                                                statusLine
+                                            ].join('\n');
+                                            appendCellTitleById(idCELL, headerBlock);
+                                            try { if (window.SCAN_LOG_ENABLED) console.log(headerBlock); } catch(_) {}
+                                        } catch(_) {}
                                         try {
                                             // Align console info with requested orderbook logic (logs removed)
                                         } catch(_) {}
@@ -755,7 +850,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     try { const c = document.getElementById(idCELL); if (c) { c.dataset.deadline = String(endAt); c.dataset.dex = String(dex); c.dataset.checking = '1'; } } catch(_) {}
                                     const renderCheck = (secs, cell) => {
                                         const span = ensureDexStatusSpan(cell);
-                                        span.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>Check ${String(dex||'').toUpperCase()} (${secs}s)`;
+                                        span.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>${String(dex||'').toUpperCase()} (${secs}s)`;
                                         try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                     };
                                     const onEndCheck = () => {
@@ -799,8 +894,13 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     .catch((err) => { handleError(err); });
                                 }, getJedaDex(dex));
                             };
+                            // Jalankan arah Token→Pair terlebih dahulu; lalu arah Pair→Token setelah jeda per-DEX dari setting
                             callDex('TokentoPair');
-                            callDex('PairtoToken');
+                            (function(){
+                                const gap = getJedaDex(dex) || 0;
+                                if (gap > 0) setTimeout(() => { try { callDex('PairtoToken'); } catch(_) {} }, gap);
+                                else callDex('PairtoToken');
+                            })();
                         });
                     }
             await delay(jedaKoin);
@@ -843,21 +943,29 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 const suffix = `DETAIL_${first.cex.toUpperCase()}_${first.symbol_in.toUpperCase()}_${first.symbol_out.toUpperCase()}_${first.chain.toUpperCase()}`.replace(/[^A-Z0-9_]/g, '');
                 const fullId = `${tableBodyId}_${suffix}`;
                 requestAnimationFrame(() => { // REFACTORED
+                    // Respect user interaction: temporarily suspend auto-scroll
+                    try { if (window.__AUTO_SCROLL_SUSPEND_UNTIL && Date.now() < window.__AUTO_SCROLL_SUSPEND_UNTIL) return; } catch(_) {}
                     const $target = $('#' + fullId).length ? $('#' + fullId) : $(`[id$="${suffix}"]`).first();
                     if (!$target.length) return;
                     $target.addClass('auto-focus');
                     setTimeout(() => $target.removeClass('auto-focus'), 900);
-                    const $container = $target.closest('.uk-overflow-auto');
-                    if ($container.length && $container[0].scrollHeight > $container[0].clientHeight) {
-                        const tRect = $target[0].getBoundingClientRect();
-                        const cRect = $container[0].getBoundingClientRect();
-                        const desiredTop = (tRect.top - cRect.top) + $container.scrollTop() - ($container[0].clientHeight / 2) + (tRect.height / 2);
-                        $container.animate({ scrollTop: Math.max(desiredTop, 0) }, 200);
-                    } else {
-                        const tRect = $target[0].getBoundingClientRect();
-                        const top = tRect.top + window.pageYOffset - (window.innerHeight / 2) + ($target[0].clientHeight / 2);
-                        $('html, body').animate({ scrollTop: Math.max(top, 0) }, 200);
-                    }
+                    // Prefer explicit monitoring container; fallback to nearest scrollable
+                    let $container = $('#monitoring-scroll');
+                    if (!$container.length) $container = $target.closest('.uk-overflow-auto');
+                    if (!$container.length) return; // do not scroll the main page
+
+                    // If container not scrollable, skip instead of scrolling the body
+                    const cEl = $container[0];
+                    if (!(cEl.scrollHeight > cEl.clientHeight)) return;
+
+                    const tRect = $target[0].getBoundingClientRect();
+                    const cRect = cEl.getBoundingClientRect();
+                    // Skip if already fully visible inside container viewport
+                    const fullyVisible = (tRect.top >= cRect.top) && (tRect.bottom <= cRect.bottom);
+                    if (fullyVisible) return;
+
+                    const desiredTop = (tRect.top - cRect.top) + $container.scrollTop() - (cEl.clientHeight / 2) + ($target[0].clientHeight / 2);
+                    $container.animate({ scrollTop: Math.max(desiredTop, 0) }, 200);
                 });
             }
 

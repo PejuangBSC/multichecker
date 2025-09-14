@@ -110,6 +110,70 @@ function setAppState(patch) {
     }
 })();
 
+// Smooth scroll chaining: when monitoring table reaches its scroll limits,
+// allow the page to continue scrolling (so user can reach signal cards above).
+(function enableMonitoringScrollChaining(){
+    function bindChain(){
+        try {
+            const el = document.getElementById('monitoring-scroll');
+            if (!el) return;
+            if (el.dataset._chainBound === '1') return; // avoid duplicate bindings
+            el.dataset._chainBound = '1';
+
+            // Wheel (mouse/trackpad)
+            el.addEventListener('wheel', function(e){
+                try {
+                    // Only intervene when the container cannot scroll further
+                    const delta = e.deltaY;
+                    const atTop = (el.scrollTop <= 0);
+                    const atBottom = (el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+                    if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
+                        e.preventDefault();
+                        // Scroll the page/body instead
+                        if (typeof window.scrollBy === 'function') window.scrollBy({ top: delta, left: 0, behavior: 'auto' });
+                        else {
+                            try { document.documentElement.scrollTop += delta; } catch(_) {}
+                            try { document.body.scrollTop += delta; } catch(_) {}
+                        }
+                    }
+                } catch(_) {}
+            }, { passive: false });
+
+            // Touch (mobile)
+            let lastY = null;
+            el.addEventListener('touchstart', function(ev){
+                try { lastY = (ev.touches && ev.touches[0]) ? ev.touches[0].clientY : null; } catch(_) { lastY = null; }
+            }, { passive: true });
+            el.addEventListener('touchmove', function(ev){
+                try {
+                    if (lastY == null) return;
+                    const y = (ev.touches && ev.touches[0]) ? ev.touches[0].clientY : lastY;
+                    const delta = lastY - y; // positive = scroll down
+                    const atTop = (el.scrollTop <= 0);
+                    const atBottom = (el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+                    if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
+                        ev.preventDefault();
+                        if (typeof window.scrollBy === 'function') window.scrollBy({ top: delta, left: 0, behavior: 'auto' });
+                        else {
+                            try { document.documentElement.scrollTop += delta; } catch(_) {}
+                            try { document.body.scrollTop += delta; } catch(_) {}
+                        }
+                    }
+                    lastY = y;
+                } catch(_) {}
+            }, { passive: false });
+        } catch(_) {}
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindChain);
+        window.addEventListener('load', bindChain);
+    } else {
+        bindChain();
+        setTimeout(bindChain, 0);
+    }
+})();
+
 // Storage helpers moved to utils.js for modular use across app.
 
 /**
@@ -453,9 +517,9 @@ async function deferredInit() {
         const borderColor = checked ? 'var(--theme-accent)' : '#ddd';
         const dval = (typeof dataVal !== 'undefined' && dataVal !== null) ? dataVal : label;
         const styleDis = disabled ? 'opacity:0.5; pointer-events:none;' : '';
-        return `<label class="uk-text-small ${cls}" data-val="${dval}" style="display:inline-flex;align-items:center;gap:6px;padding:2px 6px;border:1px solid ${borderColor};border-radius:6px;background:#fafafa;cursor:pointer;${styleDis}">
+        return `<label class="uk-text-small ${cls}" data-val="${dval}" style="display:inline-flex;align-items:inherit;   cursor:pointer;${styleDis}">
             <input type="checkbox" class="uk-checkbox" id="${id}" ${checked && !disabled ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
-            <span style="${color?`color:${color};`:''}font-weight:bolder;">${label}</span>${badge}
+            <span style="${color?`color:${color};`:''} padding-left:4px; font-weight:bolder;">${label}</span>&nbsp;${badge}
         </label>`;
     }
 
@@ -504,12 +568,12 @@ async function deferredInit() {
                 const checked = chainsSel.includes(k.toLowerCase());
                 $secChain.append(chipHtml('fc-chain',id,short,CONFIG_CHAINS[k].WARNA,cnt,checked, k.toLowerCase(), false));
             });
-            const $secCex = $('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>EXCH:</b></div>');
+            const $secCex = $('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><span class="uk-text-danger">EXCH:</span></div>');
             Object.keys(CONFIG_CEX||{}).forEach(cx=>{
                 const id=`fc-cex-${cx}`; const cnt=byCex[cx]||0; if (cnt===0) return; const checked=cexSel.includes(cx.toUpperCase());
                 $secCex.append(chipHtml('fc-cex',id,cx,CONFIG_CEX[cx].WARNA,cnt,checked, cx, false));
             });
-            const $secDex = $('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>DEX:</b></div>');
+            const $secDex = $('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><span class="uk-text-bolder uk-text-danger">DEX:</span></div>');
             Object.keys(CONFIG_DEXS||{}).forEach(dx=>{
                 const key = String(dx).toLowerCase();
                 const id=`fc-dex-${key}`; const cnt=byDex[key]||0; if (cnt===0) return; const checked=dexSel.includes(key);
@@ -601,7 +665,7 @@ async function deferredInit() {
                 a[k] = (a[k]||0)+1;
                 return a;
             },{});
-            const $secCex=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>EXCH:</b></div>');
+            const $secCex=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><span class="uk-text-bolder uk-text-primary">EXCH:</span></div>');
             const relevantCexs = (CONFIG_CHAINS[chain] && CONFIG_CHAINS[chain].WALLET_CEX) ? Object.keys(CONFIG_CHAINS[chain].WALLET_CEX) : [];
             relevantCexs.forEach(cx=>{
                 const id=`sc-cex-${cx}`; const cnt=byCex[cx]||0;
@@ -609,7 +673,7 @@ async function deferredInit() {
                 const checked=cexSel.includes(cx);
                 $secCex.append(chipHtml('sc-cex',id,cx,(CONFIG_CEX[cx] || {}).WARNA,cnt,checked, undefined, false));
             });
-            const $secPair=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>PAIR:</b></div>');
+            const $secPair=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><span class="uk-text-bolder uk-text-success">PAIR:</span></div>');
             const pairs=Array.from(new Set([...Object.keys(pairDefs),'NON']));
             pairs.forEach(p=>{
                 const id=`sc-pair-${p}`; const cnt=byPair[p]||0;
@@ -618,7 +682,7 @@ async function deferredInit() {
                 $secPair.append(chipHtml('sc-pair',id,p,'',cnt,checked, undefined, false));
             });
             // DEX chips based on chain-allowed DEXes and filtered dataset
-            const $secDex=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><b>DEX:</b></div>');
+            const $secDex=$('<div class="uk-flex uk-flex-middle" style="gap:8px;flex-wrap:wrap;"><span class="uk-text-bolder uk-text-danger">DEX:</span></div>');
             const dexAllowed = ((CONFIG_CHAINS[chain]||{}).DEXS || []).map(x=>String(x).toLowerCase());
             const byDex = flatPair.reduce((a,t)=>{
                 (t.dexs||[]).forEach(d => { const k=String(d.dex||'').toLowerCase(); if (!dexAllowed.includes(k)) return; a[k]=(a[k]||0)+1; });
@@ -2210,6 +2274,10 @@ async function updateInfoFromHistory() {
 
 function setLastAction(action, statusOrMeta, maybeMeta) {
     const formattedTime = new Date().toLocaleString('id-ID', { hour12: false });
+    // Normalize status/meta early so we can enrich the action text conditionally
+    const status = (typeof statusOrMeta === 'string') ? statusOrMeta : 'success';
+    const meta = (typeof statusOrMeta === 'object' && statusOrMeta) ? statusOrMeta : (maybeMeta || undefined);
+
     // Build action label consistently with history (append [CHAIN] unless excluded)
     const excludeChain = /BACKUP|RESTORE|SETTING/i.test(String(action||''));
     // Normalize incoming action: drop any existing [..] chunks and trailing extras
@@ -2228,6 +2296,14 @@ function setLastAction(action, statusOrMeta, maybeMeta) {
         }
     } catch(_) {}
 
+    // Special case: enrich Update Wallet history with failed CEX names if any
+    try {
+        if (/^UPDATE\s+WALLET\s+EXCHANGER/i.test(baseAction) && meta && Array.isArray(meta.failedCex) && meta.failedCex.length) {
+            const names = meta.failedCex.map(s => String(s).toUpperCase()).join(', ');
+            displayAction = `${displayAction} | FAIL: ${names}`;
+        }
+    } catch(_) {}
+
     // Do not override RUN banner while scanning
     try {
         const st = (typeof getAppState === 'function') ? getAppState() : { run: 'NO' };
@@ -2241,8 +2317,6 @@ function setLastAction(action, statusOrMeta, maybeMeta) {
 
     // Append to HISTORY_LOG in IndexedDB with same label (single source of truth)
     try {
-        const status = (typeof statusOrMeta === 'string') ? statusOrMeta : 'success';
-        const meta = (typeof statusOrMeta === 'object' && statusOrMeta) ? statusOrMeta : (maybeMeta || undefined);
         if (typeof addHistoryEntry === 'function') addHistoryEntry(displayAction, status, meta, { includeChain: false });
     } catch(_) {}
     // Update info label from history log
@@ -2284,11 +2358,21 @@ async function renderHistoryTable(){
     filtered.forEach(it => {
       const id = String(it.id||'');
       const stColor = (it.status==='success')?'#1e8e3e':(it.status==='warning')?'#b37d00':'#b3261e';
+      // Build optional failure badge if meta.failedCex present
+      let actionCell = String(it.action||'');
+      try {
+        const fails = Array.isArray(it.meta?.failedCex) ? it.meta.failedCex.filter(Boolean).map(s=>String(s).toUpperCase()) : [];
+        if (fails.length) {
+          const title = fails.join(', ');
+          const badge = `<span class="uk-badge hist-badge-fail" title="${title}">${fails.length}</span>`;
+          actionCell = `${actionCell} ${badge}`;
+        }
+      } catch(_) {}
       const tr = `
         <tr data-id="${id}">
           <td><input type="checkbox" class="histRowChk"></td>
           <td>${it.time||''}</td>
-          <td>${it.action||''}</td>
+          <td>${actionCell}</td>
           <td><span style="color:${stColor}; font-weight:600;">${String(it.status||'').toUpperCase()}</span></td>
         </tr>`;
       $tb.append(tr);

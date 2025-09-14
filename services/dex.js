@@ -144,6 +144,103 @@
         };
       }
     },
+    hinkal: {
+      // Hinkal ODOS proxy (pair-to-token per permintaan)
+      buildRequest: ({ codeChain, SavedSettingData, amount_in_big, sc_input, sc_output }) => {
+        const url = 'https://ethmainnet.server.hinkal.pro/OdosSwapData';
+        return {
+          url,
+          method: 'POST',
+          data: JSON.stringify({
+            chainId: codeChain,
+            inputTokens: [{ amount: amount_in_big.toString(), tokenAddress: sc_input }],
+            outputTokens: [{ proportion: 1, tokenAddress: sc_output }],
+            userAddr: SavedSettingData.walletMeta,
+            slippageLimitPercent: 0.3,
+            sourceBlacklist: [],
+            sourceWhitelist: [],
+            simulate: false,
+            referralCode: 0
+          })
+        };
+      },
+      parseResponse: (response, { des_output, chainName }) => {
+        // Gunakan jumlah output mentah (wei) dari outputTokens; outValues adalah nilai (USD) dan tidak dipakai untuk unit token
+        const outRawStr = response?.odosResponse?.outputTokens?.[0]?.amount;
+        if (!outRawStr) throw new Error('Invalid Hinkal ODOS out amount');
+        const outRaw = parseFloat(outRawStr);
+        if (!Number.isFinite(outRaw) || outRaw <= 0) throw new Error('Invalid Hinkal ODOS out amount');
+        const amount_out = outRaw / Math.pow(10, des_output);
+        const feeUsd = parseFloat(response?.odosResponse?.gasEstimateValue || response?.gasEstimateValue || 0);
+        const FeeSwap = (Number.isFinite(feeUsd) && feeUsd > 0) ? feeUsd : getFeeSwap(chainName);
+        return { amount_out, FeeSwap, dexTitle: 'ODOS' };
+      }
+    },
+    fly: {
+      buildRequest: ({ chainName, sc_input, sc_output, amount_in_big, SavedSettingData }) => {
+        const net = String(chainName || '').toLowerCase();
+        const user = SavedSettingData.walletMeta || '0x0000000000000000000000000000000000000000';
+        const url = `https://api.fly.trade/aggregator/quote?network=${net}&fromTokenAddress=${sc_input}&toTokenAddress=${sc_output}&fromAddress=${user}&toAddress=${user}&sellAmount=${String(amount_in_big)}&slippage=0.005&gasless=false`;
+        return { url, method: 'GET' };
+      },
+      parseResponse: (response, { chainName, des_output }) => {
+        const rawOut = response?.amountOut;
+        const outNum = parseFloat(rawOut);
+        if (!Number.isFinite(outNum) || outNum <= 0) throw new Error('Invalid FlyTrade amountOut');
+        // Normalisasi ke unit token keluaran (selaras strategi lain)
+        const amount_out = outNum / Math.pow(10, des_output);
+        const feeDex = parseFloat(response?.fees?.[0]?.value || 0);
+        const FeeSwap = (Number.isFinite(feeDex) && feeDex > 0) ? feeDex : getFeeSwap(chainName);
+        // Use canonical display title matching app DEX key to avoid id mismatches elsewhere
+        return { amount_out, FeeSwap, dexTitle: 'FLY' };
+      }
+    },
+    'zero-1inch': {
+      buildRequest: ({ sc_input, sc_output, amount_in_big, des_input, des_output, codeChain }) => {
+        const baseUrl = 'https://api.zeroswap.io/quote/1inch';
+        const params = new URLSearchParams({
+          fromChain: codeChain,
+          fromTokenAddress: sc_input,
+          toTokenAddress: sc_output,
+          fromTokenDecimals: des_input,
+          toTokenDecimals: des_output,
+          sellAmount: String(amount_in_big),
+          slippage: '0.1'
+        });
+        return { url: `${baseUrl}?${params.toString()}`, method: 'GET' };
+      },
+      parseResponse: (response, { des_output, chainName }) => {
+        const q = response?.quote;
+        const buyAmount = q?.estimation?.buyAmount;
+        if (!buyAmount) throw new Error('Invalid ZeroSwap 1inch response');
+        const amount_out = parseFloat(buyAmount) / Math.pow(10, des_output);
+        const FeeSwap = getFeeSwap(chainName);
+        return { amount_out, FeeSwap, dexTitle: '1INCH' };
+      }
+    },
+    'zero-kyber': {
+      buildRequest: ({ sc_input, sc_output, amount_in_big, des_input, des_output, codeChain }) => {
+        const baseUrl = 'https://api.zeroswap.io/quote/kyberswap';
+        const params = new URLSearchParams({
+          fromChain: codeChain,
+          fromTokenAddress: sc_input,
+          toTokenAddress: sc_output,
+          fromTokenDecimals: des_input,
+          toTokenDecimals: des_output,
+          sellAmount: String(amount_in_big),
+          slippage: '0.1'
+        });
+        return { url: `${baseUrl}?${params.toString()}`, method: 'GET' };
+      },
+      parseResponse: (response, { des_output, chainName }) => {
+        const q = response?.quote;
+        const buyAmount = q?.estimation?.buyAmount;
+        if (!buyAmount) throw new Error('Invalid ZeroSwap Kyber response');
+        const amount_out = parseFloat(buyAmount) / Math.pow(10, des_output);
+        const FeeSwap = getFeeSwap(chainName);
+        return { amount_out, FeeSwap, dexTitle: 'KYBER' };
+      }
+    },
     '0x': {
       buildRequest: ({ chainName, sc_input_in, sc_output_in, amount_in_big, codeChain, sc_output, sc_input }) => {
         const url = chainName.toLowerCase() === 'solana'
@@ -189,6 +286,22 @@
   // alias
   dexStrategies.lifi = dexStrategies['1inch'];
 
+  // -----------------------------
+  // Helper: resolve fetch plan per DEX + arah
+  // -----------------------------
+  function actionKey(a){ return String(a||'').toLowerCase() === 'pairtotoken' ? 'pairtotoken' : 'tokentopair'; }
+  function resolveFetchPlan(dexType, action){
+    try {
+      const key = String(dexType||'').toLowerCase();
+      const cfg = (root.CONFIG_DEXS || {})[key] || {};
+      const map = cfg.fetchdex || {};
+      const ak = actionKey(action);
+      const primary = map.primary && map.primary[ak] ? String(map.primary[ak]).toLowerCase() : null;
+      const alternative = map.alternative && map.alternative[ak] ? String(map.alternative[ak]).toLowerCase() : null;
+      return { primary, alternative };
+    } catch(_){ return { primary: null, alternative: null }; }
+  }
+
   /**
    * Quote swap output from a DEX aggregator.
    * Builds request by strategy, applies timeout, and returns parsed amounts.
@@ -201,105 +314,242 @@
       const timeoutMilliseconds = Math.max(Math.round((SavedSettingData.speedScan || 4) * 1000));
       const amount_in_big = BigInt(Math.round(Math.pow(10, des_input) * amount_in));
 
-      // Resolve strategy from registry configuration when provided
-      let strategyKey = String(dexType||'').toLowerCase();
-      try {
-        if (root.DEX && typeof root.DEX.get === 'function') {
-          const entry = root.DEX.get(dexType);
-          if (entry && entry.strategy) strategyKey = String(entry.strategy).toLowerCase();
-        }
-      } catch(_) {}
-      const strategy = dexStrategies[strategyKey];
-      if (!strategy) return reject(new Error(`Unsupported DEX type: ${dexType}`));
+      const runStrategy = (strategyName) => new Promise((res, rej) => {
+        try {
+          const sname = String(strategyName||'').toLowerCase();
+          if (sname === 'swoop' || sname === 'lifi') {
+            const force = sname; // paksa jenis fallback khusus
+            getPriceAltDEX(sc_input, des_input, sc_output, des_output, amount_in, PriceRate, dexType, NameToken, NamePair, cex, chainName, codeChain, action, { force })
+              .then(res)
+              .catch(rej);
+            return;
+          }
 
-      try {
-        const requestParams = { chainName, sc_input, sc_output, amount_in_big, des_output, SavedSettingData, codeChain, action, des_input, sc_input_in, sc_output_in };
-        const { url, method, data, headers } = strategy.buildRequest(requestParams);
-
-        // Apply proxy if configured for this DEX
-        const cfg = (typeof DEX !== 'undefined' && DEX.get) ? (DEX.get(dexType) || {}) : {};
-        const useProxy = !!cfg.proxy;
-        const proxyPrefix = (root.CONFIG_PROXY && root.CONFIG_PROXY.PREFIX) ? String(root.CONFIG_PROXY.PREFIX) : '';
-        const finalUrl = (useProxy && proxyPrefix && typeof url === 'string' && !url.startsWith(proxyPrefix)) ? (proxyPrefix + url) : url;
-
-        $.ajax({
-          url: finalUrl, method, dataType: 'json', timeout: timeoutMilliseconds, headers, data,
-          contentType: data ? 'application/json' : undefined,
-          success: function (response) {
-            try {
-              const { amount_out, FeeSwap, dexTitle } = strategy.parseResponse(response, requestParams);
-              resolve({ dexTitle, sc_input, des_input, sc_output, des_output, FeeSwap, amount_out, apiUrl: url, tableBodyId });
-            } catch (error) {
-              reject({ statusCode: 500, pesanDEX: `Parse Error: ${error.message}`, DEX: dexType.toUpperCase() });
+          // Resolve dari registry jika ada STRATEGY override
+          let sKey = sname;
+          try {
+            if (root.DEX && typeof root.DEX.get === 'function') {
+              const entry = root.DEX.get(dexType);
+              if (entry && entry.strategy) sKey = String(entry.strategy).toLowerCase();
             }
-          },
-          error: function (xhr, textStatus, errorThrown) {
-            let status = 0;
-            try { status = Number(xhr && xhr.status) || 0; } catch(_) {}
-            const isParser = String(textStatus||'').toLowerCase() === 'parsererror';
-            let coreMsg;
-            if (textStatus === 'timeout') coreMsg = 'Request Timeout';
-            else if (status === 200) coreMsg = isParser ? 'Parser Error (200)' : 'XHR Error (200)';
-            else if (status > 0) coreMsg = describeHttpStatus(status);
-            else coreMsg = `Error: ${textStatus||'unknown'}`;
+          } catch(_) {}
 
-            const label = status > 0 ? (status === 200 ? '[XHR ERROR 200]' : `[HTTP ${status}]`) : '';
-            const linkDEX = generateDexLink(dexType, chainName, codeChain, NameToken, sc_input_in, NamePair, sc_output_in);
-            reject({ statusCode: status, pesanDEX: `${dexType.toUpperCase()}: ${label} ${coreMsg}` , DEX: dexType.toUpperCase(), dexURL: linkDEX, textStatus });
-          },
+          const strategy = dexStrategies[sKey];
+          if (!strategy) return rej(new Error(`Unsupported strategy: ${sKey}`));
+
+          const requestParams = { chainName, sc_input, sc_output, amount_in_big, des_output, SavedSettingData, codeChain, action, des_input, sc_input_in, sc_output_in };
+          const { url, method, data, headers } = strategy.buildRequest(requestParams);
+
+          // Apply proxy if configured for this DEX
+          const cfg = (typeof DEX !== 'undefined' && DEX.get) ? (DEX.get(dexType) || {}) : {};
+          const useProxy = !!cfg.proxy;
+          const proxyPrefix = (root.CONFIG_PROXY && root.CONFIG_PROXY.PREFIX) ? String(root.CONFIG_PROXY.PREFIX) : '';
+          const finalUrl = (useProxy && proxyPrefix && typeof url === 'string' && !url.startsWith(proxyPrefix)) ? (proxyPrefix + url) : url;
+
+          $.ajax({
+            url: finalUrl, method, dataType: 'json', timeout: timeoutMilliseconds, headers, data,
+            contentType: data ? 'application/json' : undefined,
+            success: function (response) {
+              try {
+                const { amount_out, FeeSwap, dexTitle } = strategy.parseResponse(response, requestParams);
+                res({ dexTitle, sc_input, des_input, sc_output, des_output, FeeSwap, amount_out, apiUrl: url, tableBodyId });
+              } catch (error) {
+                rej({ statusCode: 500, pesanDEX: `Parse Error: ${error.message}`, DEX: sKey.toUpperCase() });
+              }
+            },
+            error: function (xhr, textStatus) {
+              let status = 0;
+              try { status = Number(xhr && xhr.status) || 0; } catch(_) {}
+              // Heuristik: jika body JSON menyimpan status upstream (mis. 429) walau XHR 200/parsererror
+              try {
+                const txt = xhr && xhr.responseText;
+                if (txt && typeof txt === 'string' && txt.length) {
+                  try {
+                    const parsed = JSON.parse(txt);
+                    const upstream = Number(parsed.status || parsed.statusCode || parsed.code);
+                    if (Number.isFinite(upstream) && upstream >= 400) status = upstream;
+                  } catch(_) {}
+                }
+              } catch(_) {}
+              const isParser = String(textStatus||'').toLowerCase() === 'parsererror';
+              let coreMsg;
+              if (textStatus === 'timeout') coreMsg = 'Request Timeout';
+              else if (status === 200) coreMsg = isParser ? 'Parser Error (200)' : 'XHR Error (200)';
+              else if (status > 0) coreMsg = describeHttpStatus(status);
+              else coreMsg = `Error: ${textStatus||'unknown'}`;
+
+              const label = status > 0 ? (status === 200 ? '[XHR ERROR 200]' : `[HTTP ${status}]`) : '';
+              const linkDEX = generateDexLink(dexType, chainName, codeChain, NameToken, sc_input_in, NamePair, sc_output_in);
+              rej({ statusCode: status, pesanDEX: `${String(sKey||'').toUpperCase()}: ${label} ${coreMsg}` , DEX: String(sKey||'').toUpperCase(), dexURL: linkDEX, textStatus });
+            },
+          });
+        } catch (error) {
+          rej({ statusCode: 500, pesanDEX: `Request Build Error: ${error.message}`, DEX: String(strategyName||'').toUpperCase() });
+        }
+      });
+
+      const plan = resolveFetchPlan(dexType, action);
+      const primary = plan.primary || String(dexType||'').toLowerCase();
+      const alternative = plan.alternative || null;
+
+      runStrategy(primary)
+        .then(resolve)
+        .catch((e1) => {
+          const code = Number(e1 && e1.statusCode);
+          const primaryKey = String(primary || '').toLowerCase();
+          // Policy: fallback only for 429 (rate limit)
+          // Exception: for ODOS and KYBER primary with code 0 (no response), allow fallback
+          const noResp = (!Number.isFinite(code) || code === 0);
+          const isOdosOrKyberNoResp = (noResp && (primaryKey === 'odos' || primaryKey === 'kyber'));
+          // Determine fallback target: config alternative, or for ODOS T2P fallback to 'hinkal'
+          const computedAlt = alternative || ((primaryKey === 'odos' && String(action||'').toLowerCase() === 'tokentopair') ? 'hinkal' : null);
+          const shouldFallback = (computedAlt && (
+            (Number.isFinite(code) && code === 429) || isOdosOrKyberNoResp
+          ));
+          if (!shouldFallback) return reject(e1);
+          runStrategy(computedAlt)
+            .then(resolve)
+            .catch((e2) => reject(e2));
         });
-      } catch (error) {
-        reject({ statusCode: 500, pesanDEX: `Request Build Error: ${error.message}`, DEX: dexType.toUpperCase() });
-      }
     });
   }
 
   /**
    * Optional fallback quoting via external SWOOP service.
    */
-  function getPriceSWOOP(sc_input, des_input, sc_output, des_output, amount_in, PriceRate, dexType, NameToken, NamePair, cex, nameChain, codeChain, action) {
-    return new Promise((resolve, reject) => {
-      const SavedSettingData = getFromLocalStorage('SETTING_SCANNER', {});
-      const payload = {
-        chainId: codeChain, aggregatorSlug: dexType.toLowerCase(), sender: SavedSettingData.walletMeta,
-        inToken: { chainId: codeChain, type: 'TOKEN', address: sc_input.toLowerCase(), decimals: parseFloat(des_input) },
-        outToken: { chainId: codeChain, type: 'TOKEN', address: sc_output.toLowerCase(), decimals: parseFloat(des_output) },
-        amountInWei: String(BigInt(Math.round(Number(amount_in) * Math.pow(10, des_input)))),
-        slippageBps: '100', gasPriceGwei: Number(getFromLocalStorage('gasGWEI', 0)),
-      };
-      const timeoutMilliseconds = (SavedSettingData.speedScan || 4) * 1000;
+  function getPriceAltDEX(sc_input, des_input, sc_output, des_output, amount_in, PriceRate, dexType, NameToken, NamePair, cex, nameChain, codeChain, action, options) {
+    // Fallback policy: SWOOP untuk TokentoPair, LiFi (Jumper) untuk PairtoToken
+    const SavedSettingData = getFromLocalStorage('SETTING_SCANNER', {});
+    const timeoutMilliseconds = (SavedSettingData.speedScan || 4) * 1000;
+    const force = options && options.force ? String(options.force).toLowerCase() : null; // 'swoop' | 'lifi' | null
 
-      $.ajax({
-        url: 'https://bzvwrjfhuefn.up.railway.app/swap',
-        type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), timeout: timeoutMilliseconds,
-        success: function (response) {
-          if (!response || !response.amountOutWei) return reject({ pesanDEX: 'SWOOP response invalid' });
-          const amount_out = parseFloat(response.amountOutWei) / Math.pow(10, des_output);
-          const FeeSwap = getFeeSwap(nameChain);
-          // Keep dexTitle as the main DEX/aggregator name only (no "via ..." suffix)
-          resolve({ dexTitle: dexType, sc_input, des_input, sc_output, des_output, FeeSwap, dex: dexType, amount_out });
-        },
-        error: function (xhr, textStatus) {
-          let status = 0;
-          try { status = Number(xhr && xhr.status) || 0; } catch(_) {}
-          const isParser = String(textStatus||'').toLowerCase() === 'parsererror';
-          let coreMsg;
-          if (textStatus === 'timeout') coreMsg = 'Request Timeout';
-          else if (status === 200) coreMsg = isParser ? 'Parser Error (200)' : 'XHR Error (200)';
-          else if (status > 0) coreMsg = describeHttpStatus(status);
-          else coreMsg = `Error: ${textStatus||'unknown'}`;
-          const prefix = status > 0 ? (status === 200 ? '[XHR ERROR 200]' : `[HTTP ${status}]`) : '';
-          // refactor: use shared dark-mode helper for error color
-          const isDark = (typeof window !== 'undefined' && window.isDarkMode && window.isDarkMode()) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode'));
-          const errColor = isDark ? '#7e3636' : '#ffcccc';
-          reject({ statusCode: status, pesanDEX: `SWOOP: ${prefix} ${coreMsg}`, color: errColor, DEX: dexType.toUpperCase(), textStatus });
-        }
+    function fallbackSWOOP(){
+      return new Promise((resolve, reject) => {
+        const payload = {
+          chainId: codeChain, aggregatorSlug: dexType.toLowerCase(), sender: SavedSettingData.walletMeta,
+          inToken: { chainId: codeChain, type: 'TOKEN', address: sc_input.toLowerCase(), decimals: parseFloat(des_input) },
+          outToken: { chainId: codeChain, type: 'TOKEN', address: sc_output.toLowerCase(), decimals: parseFloat(des_output) },
+          amountInWei: String(BigInt(Math.round(Number(amount_in) * Math.pow(10, des_input)))),
+          slippageBps: '100', gasPriceGwei: Number(getFromLocalStorage('gasGWEI', 0)),
+        };
+        $.ajax({
+          url: 'https://bzvwrjfhuefn.up.railway.app/swap',
+          type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), timeout: timeoutMilliseconds,
+          success: function (response) {
+            if (!response || !response.amountOutWei) return reject({ pesanDEX: 'SWOOP response invalid' });
+            const amount_out = parseFloat(response.amountOutWei) / Math.pow(10, des_output);
+            const FeeSwap = getFeeSwap(nameChain);
+            resolve({ dexTitle: dexType, sc_input, des_input, sc_output, des_output, FeeSwap, dex: dexType, amount_out });
+          },
+          error: function (xhr, textStatus) {
+            let status = 0; try { status = Number(xhr && xhr.status) || 0; } catch(_) {}
+            try {
+              const txt = xhr && xhr.responseText;
+              if (txt && typeof txt === 'string' && txt.length) {
+                try {
+                  const parsed = JSON.parse(txt);
+                  const upstream = Number(parsed.status || parsed.statusCode || parsed.code);
+                  if (Number.isFinite(upstream) && upstream >= 400) status = upstream;
+                } catch(_) {}
+              }
+            } catch(_) {}
+            const isParser = String(textStatus||'').toLowerCase() === 'parsererror';
+            let coreMsg;
+            if (textStatus === 'timeout') coreMsg = 'Request Timeout';
+            else if (status === 200) coreMsg = isParser ? 'Parser Error (200)' : 'XHR Error (200)';
+            else if (status > 0) coreMsg = describeHttpStatus(status);
+            else coreMsg = `Error: ${textStatus||'unknown'}`;
+            const prefix = status > 0 ? (status === 200 ? '[XHR ERROR 200]' : `[HTTP ${status}]`) : '';
+            const isDark = (typeof window !== 'undefined' && window.isDarkMode && window.isDarkMode()) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode'));
+            const errColor = isDark ? '#7e3636' : '#ffcccc';
+            reject({ statusCode: status, pesanDEX: `SWOOP: ${prefix} ${coreMsg}`, color: errColor, DEX: dexType.toUpperCase(), textStatus });
+          }
+        });
       });
-    });
+    }
+
+    function fallbackLIFI(){
+      return new Promise((resolve, reject) => {
+        const body = {
+          fromAmount: String(BigInt(Math.round(Number(amount_in) * Math.pow(10, des_input)))),
+          fromChainId: codeChain,
+          fromTokenAddress: sc_input.toLowerCase(),
+          toChainId: codeChain,
+          toTokenAddress: sc_output.toLowerCase(),
+          options: {
+            integrator: 'swap.marbleland.io',
+            order: 'CHEAPEST',
+            allowSwitchChain: true,
+            // Tidak memaksa allow/deny exchanges agar LiFi memilih rute terbaik
+          }
+        };
+        $.ajax({
+          url: 'https://api-v1.marbleland.io/api/v1/jumper/api/p/lifi/advanced/routes',
+          method: 'POST', dataType: 'json', contentType: 'application/json', timeout: timeoutMilliseconds,
+          data: JSON.stringify(body),
+          success: function(response){
+            const route = response?.routes?.[0];
+            if (!route || !route.toAmount) return reject({ pesanDEX: 'LiFi route not found' });
+            const amount_out = parseFloat(route.toAmount) / Math.pow(10, des_output);
+            // Ambil fee swap dari response Marble jika tersedia, fallback ke estimasi lokal
+            const feeUsd = parseFloat(route.gasCostUSD || 0);
+            const FeeSwap = (Number.isFinite(feeUsd) && feeUsd > 0) ? feeUsd : getFeeSwap(nameChain);
+            // Map tool → DEX key yang didukung aplikasi
+            const rawTool = String(route?.steps?.[0]?.tool || '').toLowerCase();
+            const toolMap = {
+              '1inch': '1inch',
+              '0x': '0x',
+              'kyberswap': 'kyber',
+              'odos': 'odos',
+              'okx': 'okx'
+            };
+            const overrideKey = toolMap[rawTool] || null;
+            const overrideTitle = overrideKey ? overrideKey.toUpperCase().replace('KYBER','KYBER') : (dexType || '');
+
+            resolve({
+              dexTitle: overrideTitle || dexType,
+              sc_input, des_input, sc_output, des_output,
+              FeeSwap, dex: dexType, amount_out,
+              routeTool: rawTool,
+              routeOverrideDex: overrideKey // sinyal ke layer atas untuk menaruh hasil di kolom DEX target
+            });
+          },
+          error: function(xhr, textStatus){
+            let status = 0; try { status = Number(xhr && xhr.status) || 0; } catch(_) {}
+            try {
+              const txt = xhr && xhr.responseText;
+              if (txt && typeof txt === 'string' && txt.length) {
+                try {
+                  const parsed = JSON.parse(txt);
+                  const upstream = Number(parsed.status || parsed.statusCode || parsed.code);
+                  if (Number.isFinite(upstream) && upstream >= 400) status = upstream;
+                } catch(_) {}
+              }
+            } catch(_) {}
+            const isParser = String(textStatus||'').toLowerCase() === 'parsererror';
+            let coreMsg;
+            if (textStatus === 'timeout') coreMsg = 'Request Timeout';
+            else if (status === 200) coreMsg = isParser ? 'Parser Error (200)' : 'XHR Error (200)';
+            else if (status > 0) coreMsg = describeHttpStatus(status);
+            else coreMsg = `Error: ${textStatus||'unknown'}`;
+            const prefix = status > 0 ? (status === 200 ? '[XHR ERROR 200]' : `[HTTP ${status}]`) : '';
+            const isDark = (typeof window !== 'undefined' && window.isDarkMode && window.isDarkMode()) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('dark-mode'));
+            const errColor = isDark ? '#7e3636' : '#ffcccc';
+            reject({ statusCode: status, pesanDEX: `LIFI: ${prefix} ${coreMsg}`, color: errColor, DEX: dexType.toUpperCase(), textStatus });
+          }
+        });
+      });
+    }
+
+    // Pilih fallback berdasarkan force → action
+    if (force === 'lifi' || (force !== 'swoop' && String(action||'').toLowerCase() === 'pairtotoken')) {
+      return fallbackLIFI();
+    }
+    return fallbackSWOOP();
   }
 
   if (typeof App.register === 'function') {
-    App.register('Services', { DEX: { dexStrategies, getPriceDEX, getPriceSWOOP } });
+    App.register('Services', { DEX: { dexStrategies, getPriceDEX, getPriceAltDEX } });
   }
 
   // Lightweight DEX registry for link builders and policy

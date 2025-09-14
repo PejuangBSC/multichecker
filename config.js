@@ -120,7 +120,7 @@ const CONFIG_CHAINS = {
         BaseFEEDEX : "MATICUSDT", // Corrected from POLUSDT
         RPC: 'https://polygon-pokt.nodies.app',
         GASLIMIT: 80000,
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
         LINKS: {
             explorer: {
                 token: (address) => `https://polygonscan.com/token/${address}`,
@@ -153,7 +153,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://arbiscan.io/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'ARBITRUM' },
             BINANCE: { address : '0x290275e3db66394C52272398959845170E4DCb88', address2 : '0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245', chainCEX : 'ARBITRUM' },
@@ -177,7 +177,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://etherscan.io/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'ETH' },
             BINANCE: { address : '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', address2 : '0x28C6c06298d514Db089934071355E5743bf21d60', address3 : '0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', chainCEX : 'ETH' },
@@ -203,7 +203,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://bscscan.com/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyber", "0x", "lifi", "okx"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "fly", "okx"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'BSC' },
             BINANCE: { address : '0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', address2 : '0xe2fc31F816A9b94326492132018C3aEcC4a93aE1', chainCEX : 'BSC' },
@@ -229,7 +229,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://basescan.org/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "lifi"],
+        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
         WALLET_CEX: {
             GATE: { address: '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX: 'BASE' },
             BINANCE: { address: '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', address2: '0x28C6c06298d514Db089934071355E5743bf21d60', chainCEX: 'BASE' },
@@ -393,6 +393,17 @@ const CONFIG_DEXS = {
         warna: "#436ef0ff", // hijau tosca KyberSwap
         builder: ({ chainName, tokenAddress, pairAddress }) => 
             `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
+        // Rute fetch per arah
+        fetchdex: {
+            primary: {
+                tokentopair: 'kyber',
+                pairtotoken: 'kyber'
+            },
+            alternative: {
+                tokentopair: 'swoop',
+                pairtotoken: 'lifi'
+            }
+        },
         allowFallback: false,
     },
     '0x': {
@@ -400,12 +411,27 @@ const CONFIG_DEXS = {
         warna: "#069e1aff", // hitam abu-abu (Matcha/0x)
         builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => 
             `https://matcha.xyz/tokens/${chainName}/${String(tokenAddress||'').toLowerCase()}?buyChain=${chainCode}&buyAddress=${String(pairAddress||'').toLowerCase()}`,
+        fetchdex: {
+            primary: {
+                tokentopair: '0x',
+                pairtotoken: '0x'
+            }
+        },
         allowFallback: false,
     },
     odos: {
         proxy: true,
         warna: "#f4a20aff", // ungu-biru Odos
         builder: () => `https://app.odos.xyz`,
+        fetchdex: {
+            primary: {
+                tokentopair: 'odos',
+                pairtotoken: 'hinkal'
+            },alternative: {
+                tokentopair: 'swoop',
+                pairtotoken: 'lifi'
+            }
+        },
         allowFallback: true,
     },
     okx: {
@@ -413,21 +439,48 @@ const CONFIG_DEXS = {
         warna: "#000000", // hitam (brand OKX)
         builder: ({ chainCode, tokenAddress, pairAddress }) => 
             `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
-        allowFallback: false,
+        fetchdex: {
+            primary: {
+                tokentopair: 'okx',
+                pairtotoken: 'okx'
+            },
+            alternative: {
+                tokentopair: 'swoop',
+                pairtotoken: 'lifi'
+            }
+        },
+        allowFallback: true,
     },
     '1inch': {
         proxy: true,
         warna: "#b41313ff", // biru tua 1inch
         builder: ({ chainCode, tokenAddress, pairAddress }) => 
             `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
-        // allowFallback intentionally disabled for 1inch
+        // Rute fetch per arah (utama + alternatif)
+        fetchdex: {
+            primary: {
+                tokentopair: '1inch',
+                pairtotoken: 'lifi'
+            } ,
+             allowFallback: false,
+        },
+        // allowFallback intentionally disabled untuk 1inch direct; fallback diatur oleh fetchdex
     },
-    lifi: {
+
+    fly: {
         proxy: true,
-        warna: "#8247E5", // ungu LIFI/Jumper
-        builder: ({ chainCode, tokenAddress, pairAddress }) => 
-            `https://jumper.exchange/?fromChain=${chainCode}&fromToken=${tokenAddress}&toChain=${chainCode}&toToken=${pairAddress}`,
-        // allowFallback intentionally disabled for lifi direct
+        warna: "#ba28f9ff", // fly teal
+        builder: ({ chainName, tokenAddress, pairAddress }) => {
+            const net = String(chainName || '').toLowerCase() || 'ethereum';
+            return `https://app.fly.trade/swap/${net}/${String(tokenAddress).toLowerCase()}/${net}/${String(pairAddress).toLowerCase()}`;
+        },
+        fetchdex: {
+            primary: {
+                tokentopair: 'fly',
+                pairtotoken: 'fly'
+            }
+        },
+        allowFallback: false,
     },
 };
 

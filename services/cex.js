@@ -439,7 +439,7 @@
               }
               const sign = calcSign(secret, ts, key, recvWindow, queryString);
 
-              const url = `https://proxykiri.awokawok.workers.dev/?https://api.bybit.com/v5/asset/coin/query-info` + (queryString ? `?${queryString}` : '');
+              const url = `https://api.bybit.com/v5/asset/coin/query-info` + (queryString ? `?${queryString}` : '');
               const headers = {
                   'X-BAPI-API-KEY': key,
                   'X-BAPI-TIMESTAMP': ts,
@@ -657,20 +657,38 @@
           }
           if (okCount + failCount > 0) infoAdd(`✅ Data wallet tersimpan. OK: ${okCount}, Gagal: ${failCount}.`);
       } catch(e) { /* debug logs removed */ }
-      // Notify failures (non-blocking)
+      // Notify failures (non-blocking) with timestamp and per‑CEX details
       if (failed.length > 0) {
+          const now = new Date().toLocaleTimeString('id-ID', { hour12: false });
+          const linesHtml = failed.map(f => {
+              const cx = String(f.cex || '').toUpperCase();
+              const msg = (f && f.message) ? String(f.message) : '';
+              return `• ${cx}${msg ? ` — ${msg}` : ''}`;
+          }).join('<br>');
+          const linesText = failed.map(f => {
+              const cx = String(f.cex || '').toUpperCase();
+              const msg = (f && f.message) ? String(f.message) : '';
+              return `• ${cx}${msg ? ` — ${msg}` : ''}`;
+          }).join('\n');
           try {
               UIkit.notification({
-                  message: `⚠️ GAGAL UPDATE EXCHANGER: ${failed.map(f => `${f.cex}`).join(', ')}`,
-                  status: 'warning', timeout: 6000
+                  message: `⚠️ ${now} GAGAL UPDATE EXCHANGER<br>${linesHtml}`,
+                  status: 'warning', timeout: 7000
               });
           } catch(_) {
-              alert(`⚠️ GAGAL UPDATE EXCHANGER \n${failed.map(f => `- ${f.cex}: ${f.message}`).join('\n')}`);
+              alert(`⚠️ ${now} GAGAL UPDATE EXCHANGER\n${linesText}`);
           }
       }
       // If absolutely nothing succeeded, continue after logging so meta/save still persisted above
       if (aggregated.length === 0) {
-          try { setLastAction("UPDATE WALLET EXCHANGER", 'error', { error: 'All CEX updates failed', fail: failed.length }); } catch(_) {}
+          try {
+            const failedList = failed.map(f => String(f.cex||'').toUpperCase());
+            setLastAction(
+              "UPDATE WALLET EXCHANGER",
+              'error',
+              { error: 'All CEX updates failed', fail: failed.length, failedCex: failedList }
+            );
+          } catch(_) {}
           $('#loadingOverlay').fadeOut(150);
           return;
       }
@@ -680,7 +698,14 @@
           applyWalletStatusToTokenList(key);
       } catch(_) {}
 
-      setLastAction("UPDATE WALLET EXCHANGER", (failed.length>0 ? 'warning' : 'success'), { ok: aggregated.length, fail: failed.length });
+      try {
+        const failedList = failed.map(f => String(f.cex||'').toUpperCase());
+        setLastAction(
+          "UPDATE WALLET EXCHANGER",
+          (failed.length>0 ? 'warning' : 'success'),
+          { ok: aggregated.length, fail: failed.length, failedCex: failedList }
+        );
+      } catch(_) {}
       try {
           UIkit.notification({ message: '✅ BERHASIL UPDATE WALLET EXCHANGER', status: 'success' });
       } catch(_) { alert('✅ SEBAGIAN BERHASIL UPDATE WALLET EXCHANGER,SILAKAN CEK STATUS DEPOSIT & WITHDRAW, EXCHANGER YANG GAGAL UPDATE'); }

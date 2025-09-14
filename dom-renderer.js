@@ -701,8 +701,11 @@ function DisplayPNL(data) {
   }
   // Clear any prior error background once a successful result renders
   try { el.classList.remove('dex-error'); } catch(_) {}
-  // Also clear any lingering error tooltip/title
-  try { el.removeAttribute('title'); if (el.dataset) el.dataset.titleLog=''; } catch(_) {}
+  // Capture existing title log (built during scan in scanner.js) to reuse on price links only
+  let __titleLog = null;
+  try { __titleLog = (el && el.dataset && el.dataset.titleLog) ? String(el.dataset.titleLog) : null; } catch(_) {}
+  // Remove cell-level title so tooltip lives only on price anchors (as requested)
+  try { el.removeAttribute('title'); if (el && el.dataset) el.dataset.titleLog=''; } catch(_) {}
   const $mainCell = $(el);
 
   // Helpers
@@ -808,6 +811,12 @@ function DisplayPNL(data) {
     tipSell = `${Name_out} -> USDT | ${CEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   }
 
+  // Re-apply detailed title log only on price links when result is complete (not for errors)
+  if (__titleLog && __titleLog.length > 0) {
+    tipBuy = __titleLog;
+    tipSell = __titleLog;
+  }
+
   // Console summary: ringkasan kalkulasi scanning (toggled via #toggleScanLog)
   try {
     if (!(typeof window !== 'undefined' && window.SCAN_LOG_ENABLED === true)) {
@@ -852,25 +861,9 @@ function DisplayPNL(data) {
     const tokenSym = (direction === 'tokentopair') ? upper(Name_in)  : upper(Name_out);
     const pairSym  = (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in);
 
-    const lines = [
-      sep,
-      `Time: ${new Date().toLocaleTimeString()}`,
-      `ID CELL: ${elementId}`,
-      `PROSES : ${procLine}`,
-      `KOIN : ${coinLine}`,
-      `MODAL : ${n(Modal).toFixed(2)}$`,
-      // `Buy [${tokenSym}]: ${Number(buyPrice)}$`,
-      // `Sell [${pairSym}]: ${Number(sellPrice)}$`,
-      `BUY ${tokenSym} : ${n(buyPrice).toFixed(10)}$`,
-      `SELL ${tokenSym} : ${n(sellPrice).toFixed(10)}$`,
-      `PNL & TOTAL FEE : ${n(pnl).toFixed(2)}$ & ${n(feeAll).toFixed(2)}$`,
-      // Selalu tampilkan FeeWD dalam USDT (hasil konversi di services/cex.js), bukan fee mentah per koin
-      `FEE WD & FEE SWAP : ${n(FeeWD).toFixed(2)}$ & ${n(FeeSwap).toFixed(2)}$`,
-      // Status detail WD/DP per Token & Pair agar tidak ambigu
-      `${tokenSym}: WD[${f(wdTokenFlag)}] | DP[${f(dpTokenFlag)}]`,
-      `${pairSym}: WD[${f(wdPairFlag)} | DP[${f(dpPairFlag)}]`
-    ];
-    console.log(lines.join('\n'));
+    // Console logging (Time/ID Cell/Proses/PNL dsb.) dipindahkan ke layer scanner untuk
+    // menambahkan informasi status DEX dan sumber (VIA LIFI/SWOOP/DEX). Bagian ini
+    // dihapus agar tidak terjadi duplikasi log dan agar informasi tetap konsisten.
   } catch(_) {}
 
   // Fee & info (WD/DP sesuai arah) — FEE SWAP PISAH BARIS
@@ -927,10 +920,10 @@ function DisplayPNL(data) {
   const modeNowHL = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
   const isMultiModeHL = String(modeNowHL.type).toLowerCase() !== 'single';
   // Multichain: gunakan hijau muda agar konsisten
-  const multiLightGreen = '#9fff9f';
+  const multiLightGreen = '#bafaba';
   const hlBg = isMultiModeHL
     ? multiLightGreen
-    : (isDarkMode() ? '#d8ff41' : hexToRgba(chainColorHexHL, 0.34));
+    : (isDarkMode() ? '#d8ff41' : '#bafaba');
   // Tambahkan kelas agar CSS bisa override tambahan saat dark-mode
   if (shouldHighlight) { try { $mainCell.addClass('dex-cell-highlight'); } catch(_) {}
   } else { try { $mainCell.removeClass('dex-cell-highlight'); } catch(_) {} }
@@ -954,19 +947,56 @@ function DisplayPNL(data) {
     InfoSinyal(lower(dextype), NameX, pnl, feeAll, upper(cex), Name_in, Name_out, profitLossPercent, Modal, nameChain, codeChain, trx, idPrefix, baseId);
   }
 
+    // --- Ambil status WD/DP detail untuk TOKEN & PAIR (sekali saja)
+  let wdTokenFlag, wdPairFlag, dpTokenFlag, dpPairFlag;
+  try {
+    const list = (Array.isArray(window.singleChainTokensCurrent) && window.singleChainTokensCurrent.length)
+      ? window.singleChainTokensCurrent
+      : (Array.isArray(window.currentListOrderMulti) ? window.currentListOrderMulti : []);
+    // TOKEN selalu = Name_in saat tokentopair, dan = Name_out saat pairtotoken
+    const keyToken = (direction === 'tokentopair') ? upper(Name_in) : upper(Name_out);
+    const keyPair  = (direction === 'tokentopair') ? upper(Name_out) : upper(Name_in);
+    const hit = (list || []).find(t => String(t.cex).toUpperCase() === upper(cex)
+      && String(t.symbol_in).toUpperCase() === keyToken
+      && String(t.symbol_out).toUpperCase() === keyPair
+      && String(t.chain).toLowerCase() === String(nameChain).toLowerCase());
+    if (hit) {
+      wdTokenFlag = hit.withdrawToken;
+      wdPairFlag  = hit.withdrawPair;
+      dpTokenFlag = hit.depositToken;
+      dpPairFlag  = hit.depositPair;
+    }
+  } catch(_) {}
+
   // Telegram alert mengikuti kondisi yang sama agar konsisten // REFACTORED
-  if (typeof MultisendMessage === 'function' && passSignal) {
+    if (typeof MultisendMessage === 'function' && passSignal) {
     const directionMsg = (direction === 'tokentopair') ? 'cex_to_dex' : 'dex_to_cex';
-    const tokenData = { chain: nameChain, symbol: Name_in, pairSymbol: Name_out, contractAddress: sc_input, pairContractAddress: sc_output };
+    const tokenData = {
+      chain: nameChain,
+      symbol: Name_in,
+      pairSymbol: Name_out,
+      contractAddress: sc_input,
+      pairContractAddress: sc_output
+    };
     const nickname = (typeof getFromLocalStorage === 'function')
       ? (getFromLocalStorage('SETTING_SCANNER', {})?.nickname || '')
       : (typeof SavedSettingData !== 'undefined' ? (SavedSettingData?.nickname || '') : '');
 
+    // Kirim status yang sama agar Telegram = Kolom
+    const statusOverrides = {
+      depositToken : dpTokenFlag,
+      withdrawToken: wdTokenFlag,
+      depositPair  : dpPairFlag,
+      withdrawPair : wdPairFlag,
+    };
+
     MultisendMessage(
       upper(cex), dextype, tokenData, Modal, pnl,
-      n(buyPrice), n(sellPrice), n(FeeSwap), n(FeeWD), feeAll, nickname, directionMsg
+      n(buyPrice), n(sellPrice), n(FeeSwap), n(FeeWD), feeAll, nickname, directionMsg,
+      statusOverrides // ← tambahan baru
     );
   }
+
 
   // Render akhir
   const dexNameAndModal = ($mainCell.find('strong').first().prop('outerHTML')) || '';
@@ -996,11 +1026,11 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
   const baseId = domIdOverride ? String(domIdOverride) : baseIdComputed;
   const modeNowSig = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
   const isMultiSig = String(modeNowSig.type).toLowerCase() !== 'single';
-  const multiLightGreen = '#9fff9f';
+  const multiLightGreen = '#bafaba';
   // Multichain: pakai hijau muda; per‑chain: gunakan tema normal (kuning terang untuk dark, rgba warna chain untuk light)
   const signalBg = isMultiSig
     ? multiLightGreen
-    : (isDarkMode() ? '#d8ff41' : hexToRgba(warnaChain, 0.34));
+    : (isDarkMode() ? '#d8ff41' :'#bafaba');
   const highlightStyle = (Number(PNL) > filterPNLValue)
     ? `background-color:${signalBg}; font-weight:bolder;`
     : "";

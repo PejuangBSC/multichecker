@@ -551,7 +551,7 @@
             // Fetch initial rates
             function fetchRatesx() {
                 const binanceURL = encodeURIComponent('https://data-api.binance.vision/api/v3/ticker/price?symbols=["BTCUSDT","ETHUSDT","BNBUSDT","POLUSDT","AVAXUSDT","SOLUSDT"]');
-                const indodaxURL = encodeURIComponent('https://vercel-proxycors.vercel.app/?url=https://indodax.com/api/ticker/usdtidr');
+                const indodaxURL = encodeURIComponent('https://cors-proxy-rosy.vercel.app/api/proxy?url=https://indodax.com/api/ticker/usdtidr');
 
                 $.when(
                     $.ajax({
@@ -589,7 +589,7 @@
             function fetchRates() {
                 $.when(
                     $.getJSON("https://api-gcp.binance.com/api/v3/ticker/price?symbols=[%22BTCUSDT%22,%22ETHUSDT%22,%22BNBUSDT%22,%22POLUSDT%22,%22AVAXUSDT%22,%22SOLUSDT%22]"),
-                    $.getJSON("https://vercel-proxycors.vercel.app/?url=https://indodax.com/api/ticker/USDTIDR")
+                    $.getJSON("https://cors-proxy-rosy.vercel.app/api/proxy?url=https://indodax.com/api/ticker/USDTIDR")
                 ).done(function (binanceResponse, indodaxResponse) {
                     binanceResponse[0].forEach((res) => {
                         switch (res.symbol) {
@@ -1301,7 +1301,7 @@
             const apiSecret = $("#secretkeyMEXC").val();
             const recvWindow = 5000;
             const timestamp = Date.now().toString();
-            const apiUrl = "https://vercel-proxycors.vercel.app/?url=https://api.mexc.com/api/v3/account";
+            const apiUrl = "https://cors-proxy-rosy.vercel.app/api/proxy?url=https://api.mexc.com/api/v3/account";
             const queryString = `recvWindow=${recvWindow}&timestamp=${timestamp}`;
             const signature = CryptoJS.HmacSHA256(queryString, apiSecret).toString(CryptoJS.enc.Hex);
             const fullUrl = `${apiUrl}?${queryString}&signature=${signature}`;
@@ -1355,7 +1355,7 @@
             const apiSecret = $("#secretkeyBINANCE").val();
             if (!apiKey || !apiSecret) return;
 
-           // const apiUrl = "https://vercel-proxycors.vercel.app/?url=https://api.binance.com/api/v3/account";
+           // const apiUrl = "https://cors-proxy-rosy.vercel.app/api/proxy?url=https://api.binance.com/api/v3/account";
             const apiUrl = "https://api-gcp.binance.com/api/v3/account";
             const timestamp = Date.now();
             const queryString = `timestamp=${timestamp}`;
@@ -1406,7 +1406,7 @@
         async function cekAssetGate() {
             const key = $("#apikeyGATE").val();
             const secret = $("#secretkeyGATE").val();
-            const host = "https://vercel-proxycors.vercel.app/?url=https://api.gateio.ws";
+            const host = "https://cors-proxy-rosy.vercel.app/api/proxy?url=https://api.gateio.ws";
             const prefix = "/api/v4"; 
             const method = "GET";
             const url = "/spot/accounts";
@@ -1996,7 +1996,7 @@
         async function USDTIDR(usdt) {
             return new Promise((resolve, reject) => {
                 $.ajax({
-                    url: "https://vercel-proxycors.vercel.app/?url=https://indodax.com/api/ticker/usdtidr", // Endpoint Indodax untuk USDT ke IDR
+                    url: "https://cors-proxy-rosy.vercel.app/api/proxy?url=https://indodax.com/api/ticker/usdtidr", // Endpoint Indodax untuk USDT ke IDR
                     success: function (response) {
                         // Mendapatkan harga terkini dari Indodax API
                         var USDTRate = parseFloat(response.ticker.last);

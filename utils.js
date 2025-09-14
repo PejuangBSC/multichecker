@@ -795,9 +795,11 @@ function generateDexLink(dex, chainName, codeChain, NameToken, sc_input, NamePai
     // Find the correct DEX configuration key by checking if the input 'dex' string includes it.
     // This handles cases like "kyber" and "kyber via LIFI".
     let dexKey = Object.keys(CONFIG_DEXS).find(key => lowerDex.includes(key));
-    // Backward compatibility: map legacy names to new keys
+    // Backward compatibility: map legacy/alias names to new keys
     if (!dexKey) {
-        const synonyms = { kyberswap: 'kyber' };
+        // Normalize known brand/alias names to canonical CONFIG_DEXS keys
+        // e.g. 'kyberswap' -> 'kyber', 'flytrade' -> 'fly'
+        const synonyms = { kyberswap: 'kyber', flytrade: 'fly' };
         const found = Object.keys(synonyms).find(oldKey => lowerDex.includes(oldKey));
         if (found && CONFIG_DEXS[synonyms[found]]) dexKey = synonyms[found];
     }
