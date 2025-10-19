@@ -20,8 +20,11 @@
   const nativeRemove = StorageProto && StorageProto.removeItem ? StorageProto.removeItem.bind(storage) : null;
   const nativeClear = StorageProto && StorageProto.clear ? StorageProto.clear.bind(storage) : null;
 
-  const DB_NAME = 'MULTI_DB';
-  const STORE_NAME = 'kv';
+  const root = window;
+  const appCfg = (root.CONFIG_APP && root.CONFIG_APP.APP) ? root.CONFIG_APP.APP : {};
+  const dbCfg = root.CONFIG_DB || {};
+  const DB_NAME = dbCfg.NAME || appCfg.NAME || 'MULTIALL-PLUS';
+  const STORE_NAME = (dbCfg.STORES && dbCfg.STORES.LOCALSTORAGE) ? dbCfg.STORES.LOCALSTORAGE : 'LOCALSTORAGE_STORE';
   let db = null;
   const cache = new Map();
   let readyResolve;

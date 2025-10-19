@@ -1,4 +1,25 @@
-// Telegram config is now defined in secrets.js
+
+const CONFIG_APP = {
+    APP: {
+        NAME: "MULTICHECKER",
+        VERSION: "1.7",        
+        SCAN_LIMIT:false,
+    }
+};
+
+try { if (typeof window !== 'undefined') { window.CONFIG_APP = window.CONFIG_APP || CONFIG_APP; } } catch(_){}
+
+const CONFIG_DB = {
+    NAME: CONFIG_APP.APP.NAME,
+    STORES: {
+        KV: "APP_KV_STORE",
+        SNAPSHOT: "SNAPSHOT_STORE",
+        LOCALSTORAGE: "LOCALSTORAGE_STORE"
+    },
+    BROADCAST_CHANNEL: `${CONFIG_APP.APP.NAME}_CHANNEL`
+};
+
+try { if (typeof window !== 'undefined') { window.CONFIG_DB = window.CONFIG_DB || CONFIG_DB; } } catch(_){}
 
 const CONFIG_CEX = {
     GATE: {
@@ -108,7 +129,33 @@ if (typeof CEX_SECRETS !== 'undefined') {
 }
 
 
-const CONFIG_CHAINS = {   
+const CONFIG_CHAINS = {
+     bsc: { 
+        Kode_Chain: 56, Nama_Chain: "bsc", Nama_Pendek: "bsc", URL_Chain: "https://bscscan.com", WARNA:"#f0af18", ICON:"https://images.seeklogo.com/logo-png/44/2/binance-smart-chain-bsc-logo-png_seeklogo-446621.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/BSC.json', BaseFEEDEX : "BNBUSDT", RPC: 'https://public-bsc-mainnet.fastnode.io', GASLIMIT: 80000,
+        LINKS: {
+            explorer: {
+                token: (address) => `https://bscscan.com/token/${address}`,
+                address: (address) => `https://bscscan.com/address/${address}`,
+                tx: (hash) => `https://bscscan.com/tx/${hash}`
+            }
+        },
+        DEXS: [ "1inch", "paraswap", "odos", "kyber", "0x", "okx"],
+        WALLET_CEX: {
+            GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'BSC' },
+            BINANCE: { address : '0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', address2 : '0xe2fc31F816A9b94326492132018C3aEcC4a93aE1', chainCEX : 'BSC' },
+            MEXC: { address : '0x4982085C9e2F89F2eCb8131Eca71aFAD896e89CB', chainCEX : 'BSC' }, 
+            INDODAX: { address : '0xaBa3002AB1597433bA79aBc48eeAd54DC10A45F2', address2 : '0x3C02290922a3618A4646E3BbCa65853eA45FE7C6', chainCEX : 'BSC' },
+            KUCOIN: { address : '0x58edF78281334335EfFa23101bBe3371b6a36A51', address2 : '0xD6216fC19DB775Df9774a6E33526131dA7D19a2c', chainCEX : 'BEP20' },
+            BITGET: { address : '0x0639556F03714A74a5fEEaF5736a4A64fF70D206', address2 : '0xBDf5bAfEE1291EEc45Ae3aadAc89BE8152D4E673', address3 : '0x51971c86b04516062c1e708CDC048CB04fbe959f', chainCEX : 'BEP20' },
+            BYBIT: { address : '0xf89d7b9c864f589bbf53a82105107622b35eaa40', chainCEX : 'BSC' },
+        },
+        PAIRDEXS: {
+            "BNB": { symbolPair: "BNB", scAddressPair: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", desPair: "18" },
+            "USDT": { symbolPair: "USDT", scAddressPair: "0x55d398326f99059fF775485246999027B3197955", desPair: "18" },
+            "ETH": { symbolPair: "ETH", scAddressPair: "0x2170ed0880ac9a755fd29b2688956bd959f933f8", desPair: "18" },
+            "NON": { symbolPair: "NON", scAddressPair: "0x", desPair: "18" }
+        }        
+    },   
     polygon: { 
         Kode_Chain: 137, 
         Nama_Chain: "polygon", 
@@ -116,11 +163,11 @@ const CONFIG_CHAINS = {
         URL_Chain: "https://polygonscan.com", 
         ICON: "https://s2.coinmarketcap.com/static/img/coins/200x200/3890.png",
         WARNA:"#a05df6",
-        DATAJSON: 'https://multichecker.vercel.app/DATAJSON/poly.json',
+        DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/POLYGON.json',
         BaseFEEDEX : "MATICUSDT", // Corrected from POLUSDT
         RPC: 'https://polygon-pokt.nodies.app',
         GASLIMIT: 80000,
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
+        DEXS: [ "1inch", "paraswap", "odos", "kyber", "0x", "okx"],
         LINKS: {
             explorer: {
                 token: (address) => `https://polygonscan.com/token/${address}`,
@@ -135,7 +182,7 @@ const CONFIG_CHAINS = {
            KUCOIN: { address : '0x9AC5637d295FEA4f51E086C329d791cC157B1C84', address2 : '0xD6216fC19DB775Df9774a6E33526131dA7D19a2c', chainCEX : 'Polygon POS' },
            BITGET: { address : '0x0639556F03714A74a5fEEaF5736a4A64fF70D206', address2 : '0x51971c86b04516062c1e708CDC048CB04fbe959f', address3 : '0xBDf5bAfEE1291EEc45Ae3aadAc89BE8152D4E673', chainCEX : 'Polygon' },
            BYBIT: { address : '0xf89d7b9c864f589bbF53a82105107622B35EaA40', chainCEX : 'Polygon PoS' },
-          // INDODAX: { address : '0x3C02290922a3618A4646E3BbCa65853eA45FE7C6', address2 : '0x91Dca37856240E5e1906222ec79278b16420Dc92', chainCEX : 'POLYGON' },   
+           INDODAX: { address : '0x3C02290922a3618A4646E3BbCa65853eA45FE7C6', address2 : '0x91Dca37856240E5e1906222ec79278b16420Dc92', chainCEX : 'POLYGON' },   
         },
         PAIRDEXS: {
            "USDT": { symbolPair: 'USDT', scAddressPair: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', desPair: '6' },
@@ -145,7 +192,7 @@ const CONFIG_CHAINS = {
         }
     },
     arbitrum: { 
-        Kode_Chain: 42161, Nama_Chain: "arbitrum", Nama_Pendek: "arb", URL_Chain: "https://arbiscan.io", WARNA:"#a6b0c3", ICON:"https://wiki.dextrac.com:3443/images/1/11/Arbitrum_Logo.png", DATAJSON: 'https://multichecker.vercel.app/DATAJSON/arb.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://arbitrum-one-rpc.publicnode.com', GASLIMIT: 100000,
+        Kode_Chain: 42161, Nama_Chain: "arbitrum", Nama_Pendek: "arb", URL_Chain: "https://arbiscan.io", WARNA:"#a6b0c3", ICON:"https://wiki.dextrac.com:3443/images/1/11/Arbitrum_Logo.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/ARBITRUM.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://arbitrum-one-rpc.publicnode.com', GASLIMIT: 100000,
         LINKS: {
             explorer: {
                 token: (address) => `https://arbiscan.io/token/${address}`,
@@ -153,7 +200,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://arbiscan.io/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
+        DEXS: [ "1inch", "paraswap", "odos", "kyber", "0x", "okx"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'ARBITRUM' },
             BINANCE: { address : '0x290275e3db66394C52272398959845170E4DCb88', address2 : '0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245', chainCEX : 'ARBITRUM' },
@@ -169,7 +216,7 @@ const CONFIG_CHAINS = {
         },           
     }, 
     ethereum: { 
-        Kode_Chain: 1, Nama_Chain: "ethereum", Nama_Pendek: "erc", URL_Chain: "https://etherscan.io", WARNA:"#8098ee", ICON:"https://icons.iconarchive.com/icons/cjdowner/cryptocurrency-flat/256/Ethereum-ETH-icon.png", DATAJSON: 'https://multichecker.vercel.app/DATAJSON/erc.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://eth.llamarpc.com', GASLIMIT: 250000,
+        Kode_Chain: 1, Nama_Chain: "ethereum", Nama_Pendek: "erc", URL_Chain: "https://etherscan.io", WARNA:"#8098ee", ICON:"https://icons.iconarchive.com/icons/cjdowner/cryptocurrency-flat/256/Ethereum-ETH-icon.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/ETHEREUM.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://eth-mainnet.public.blastapi.io', GASLIMIT: 250000,
         LINKS: {
             explorer: {
                 token: (address) => `https://etherscan.io/token/${address}`,
@@ -177,7 +224,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://etherscan.io/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
+        DEXS: [ "1inch", "paraswap", "odos", "kyber", "0x", "okx"],
         WALLET_CEX: {
             GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'ETH' },
             BINANCE: { address : '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', address2 : '0x28C6c06298d514Db089934071355E5743bf21d60', address3 : '0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549', chainCEX : 'ETH' },
@@ -194,34 +241,9 @@ const CONFIG_CHAINS = {
             "NON": { symbolPair: "NON", scAddressPair: "0x", desPair: "18" }
         } 
     }, 
-    bsc: { 
-        Kode_Chain: 56, Nama_Chain: "bsc", Nama_Pendek: "bsc", URL_Chain: "https://bscscan.com", WARNA:"#f0af18", ICON:"https://bridge.umbria.network/assets/images/svg/bsc.svg", DATAJSON: 'https://multichecker.vercel.app/DATAJSON/bsc.json', BaseFEEDEX : "BNBUSDT", RPC: 'https://bsc-dataseed.binance.org/', GASLIMIT: 80000,
-        LINKS: {
-            explorer: {
-                token: (address) => `https://bscscan.com/token/${address}`,
-                address: (address) => `https://bscscan.com/address/${address}`,
-                tx: (hash) => `https://bscscan.com/tx/${hash}`
-            }
-        },
-        DEXS: ["1inch", "odos", "kyber", "0x", "fly", "okx"],
-        WALLET_CEX: {
-            GATE: { address : '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX : 'BSC' },
-            BINANCE: { address : '0x8894E0a0c962CB723c1976a4421c95949bE2D4E3', address2 : '0xe2fc31F816A9b94326492132018C3aEcC4a93aE1', chainCEX : 'BSC' },
-            MEXC: { address : '0x4982085C9e2F89F2eCb8131Eca71aFAD896e89CB', chainCEX : 'BSC' }, 
-            INDODAX: { address : '0xaBa3002AB1597433bA79aBc48eeAd54DC10A45F2', address2 : '0x3C02290922a3618A4646E3BbCa65853eA45FE7C6', chainCEX : 'BSC' },
-            KUCOIN: { address : '0x58edF78281334335EfFa23101bBe3371b6a36A51', address2 : '0xD6216fC19DB775Df9774a6E33526131dA7D19a2c', chainCEX : 'BEP20' },
-            BITGET: { address : '0x0639556F03714A74a5fEEaF5736a4A64fF70D206', address2 : '0xBDf5bAfEE1291EEc45Ae3aadAc89BE8152D4E673', address3 : '0x51971c86b04516062c1e708CDC048CB04fbe959f', chainCEX : 'BEP20' },
-            BYBIT: { address : '0xf89d7b9c864f589bbf53a82105107622b35eaa40', chainCEX : 'BSC' },
-        },
-        PAIRDEXS: {
-            "BNB": { symbolPair: "BNB", scAddressPair: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", desPair: "18" },
-            "USDT": { symbolPair: "USDT", scAddressPair: "0x55d398326f99059fF775485246999027B3197955", desPair: "18" },
-            "ETH": { symbolPair: "ETH", scAddressPair: "0x2170ed0880ac9a755fd29b2688956bd959f933f8", desPair: "18" },
-            "NON": { symbolPair: "NON", scAddressPair: "0x", desPair: "18" }
-        }        
-    },
+   
     base: { 
-        Kode_Chain: 8453, Nama_Chain: "base", Nama_Pendek: "base", URL_Chain: "https://basescan.org/", WARNA:"#1e46f9", ICON:"https://avatars.githubusercontent.com/u/108554348?v=4", DATAJSON: 'https://multichecker.vercel.app/DATAJSON/base.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://base.llamarpc.com', GASLIMIT: 100000,
+        Kode_Chain: 8453, Nama_Chain: "base", Nama_Pendek: "base", URL_Chain: "https://basescan.org/", WARNA:"#1e46f9", ICON:"https://avatars.githubusercontent.com/u/108554348?v=4", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/BASE.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://base.llamarpc.com', GASLIMIT: 100000,
         LINKS: {
             explorer: {
                 token: (address) => `https://basescan.org/token/${address}`,
@@ -229,7 +251,7 @@ const CONFIG_CHAINS = {
                 tx: (hash) => `https://basescan.org/tx/${hash}`
             }
         },
-        DEXS: ["1inch", "odos", "kyber", "0x", "okx", "fly"],
+        DEXS: ["1inch", "paraswap", "odos", "kyber", "0x", "okx"],
         WALLET_CEX: {
             GATE: { address: '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe', chainCEX: 'BASE' },
             BINANCE: { address: '0xDFd5293D8e347dFe59E90eFd55b2956a1343963d', address2: '0x28C6c06298d514Db089934071355E5743bf21d60', chainCEX: 'BASE' },
@@ -247,11 +269,80 @@ const CONFIG_CHAINS = {
     }       
 };
 
+const CONFIG_UI = {
+    CEXES: [
+        { key: 'BINANCE', label: 'Binance', short: 'BINC', badgeClass: 'bg-binance' },
+        { key: 'MEXC', label: 'MEXC', short: 'MEXC', badgeClass: 'bg-mexc' },
+        { key: 'GATE', label: 'Gateio', short: 'GATE', badgeClass: 'bg-gateio' },
+        { key: 'INDODAX', label: 'INDODAX', short: 'INDX', badgeClass: 'bg-indodax' }
+    ],
+    DEXES: [
+        { key: '0x', label: 'Matcha', badgeClass: 'bg-matcha', fallbackSlug: '0x' },
+        { key: 'kyber', label: 'KyberSwap', badgeClass: 'bg-kyberswap', fallbackSlug: 'kyberswap' },
+        { key: '1inch', label: '1inch', badgeClass: 'bg-1inch', fallbackSlug: '1inch' },
+        { key: 'paraswap', label: 'ParaSwap', badgeClass: 'bg-paraswap', fallbackSlug: 'paraswap' },
+        { key: 'odos', label: 'ODOS', badgeClass: 'bg-odos', fallbackSlug: 'odos', skipDelay: true },
+        { key: 'okx', label: 'OKXDEX', badgeClass: 'bg-okxdex', fallbackSlug: 'okx' }
+    ],
+    CHAINS: [
+        { key: 'polygon', label: 'Polygon', short: 'POLY', badgeClass: 'bg-success text-light' },
+        { key: 'arbitrum', label: 'Arbitrum', short: 'ARB', badgeClass: 'bg-info text-dark' },
+        { key: 'ethereum', label: 'Ethereum', short: 'ETH', badgeClass: 'bg-primary text-light' },
+        { key: 'bsc', label: 'BSC', short: 'BSC', badgeClass: 'bg-warning text-dark' },
+        { key: 'base', label: 'Base', short: 'BASE', badgeClass: 'bg-dark text-light' }
+    ]
+};
+
+function buildChainConfig(chainSource = {}, uiChains = []) {
+    const uiByKey = {};
+    (Array.isArray(uiChains) ? uiChains : []).forEach(item => {
+        if (!item || !item.key) return;
+        uiByKey[String(item.key).toLowerCase()] = {
+            label: item.label,
+            short: item.short,
+            badgeClass: item.badgeClass
+        };
+    });
+
+    const map = {};
+    Object.entries(chainSource || {}).forEach(([key, data]) => {
+        const lowerKey = String(key).toLowerCase();
+        const ui = uiByKey[lowerKey] || {};
+        const basePair = String(data?.BaseFEEDEX || '');
+        const symbol = basePair.toUpperCase().endsWith('USDT')
+            ? basePair.toUpperCase().slice(0, -4)
+            : (ui.short || data?.Nama_Pendek || data?.Nama_Chain || key || '').toString().toUpperCase();
+
+        map[lowerKey] = {
+            key: lowerKey,
+            name: ui.label || data?.Nama_Chain || key,
+            short: ui.short || (data?.Nama_Pendek || data?.Nama_Chain || key || '').toString().toUpperCase(),
+            symbol,
+            badgeClass: ui.badgeClass || 'bg-dark text-light',
+            rpc: data?.RPC || '',
+            explorer: data?.URL_Chain || '',
+            code: data?.Kode_Chain,
+            gasLimit: data?.GASLIMIT,
+            color: data?.WARNA,
+            baseFeePair: basePair,
+            walletCex: data?.WALLET_CEX || {},
+            pairs: data?.PAIRD || data?.PAIRDEXS || {},
+            raw: data
+        };
+    });
+    return map;
+}
+
+const CHAIN_CONFIG = buildChainConfig(CONFIG_CHAINS, CONFIG_UI.CHAINS);
+
 // CONFIG_DEXS moved to dex-config.js to avoid duplication and keep this file data-centric
      
 // Expose globals for runtime consumers (registry/services)
 window.CONFIG_CEX = window.CONFIG_CEX || CONFIG_CEX;
 window.CONFIG_CHAINS = window.CONFIG_CHAINS || CONFIG_CHAINS;
+window.CONFIG_UI = window.CONFIG_UI || CONFIG_UI;
+window.CHAIN_CONFIG = window.CHAIN_CONFIG || CHAIN_CONFIG;
+window.CEXWallets = window.CEXWallets || CONFIG_CHAINS;
 
 // Optional proxy settings for DEX/network calls
 // Define a list of CORS proxy servers; one will be chosen at random per access
@@ -387,101 +478,184 @@ try {
 } catch(_){}
 
 // DEX builder config (moved from dex-config.js)
+/**
+ * PANDUAN KONFIGURASI fetchdex:
+ *
+ * - tokentopair: Strategi untuk CEX → DEX (Actionkiri: beli token di exchanger, swap token ke pair di DEX)
+ * - pairtotoken: Strategi untuk DEX → CEX (ActionKanan: swap pair ke token di DEX, jual token ke exchanger)
+ *
+ * ========================================
+ * 3 KATEGORI STRATEGI FALLBACK:
+ * ========================================
+ *
+ * KATEGORI 1: SAME PRIMARY + INTERNAL ALTERNATIVE (Kyber, ODOS, 1inch)
+ * - Primary: Sama untuk kedua arah (kyber/odos2/odos3/hinkal-1inch)
+ * - Alternative: Provider internal untuk kedua arah (zero-kyber/hinkal-odos/zero-1inch)
+ * - Mengurangi beban ke SWOOP/DZAP dengan menggunakan provider internal yang reliable
+ * - Contoh: kyber (zero-kyber), odos (hinkal-odos), 1inch (hinkal ↔ zero)
+ *
+ * KATEGORI 2: SAME PRIMARY + SWOOP/DZAP ALTERNATIVE (0x, OKX)
+ * - Primary: Sama untuk kedua arah (0x/okx API langsung)
+ * - Alternative: SWOOP untuk CEX→DEX (entry), DZAP untuk DEX→CEX (exit)
+ * - Contoh: 0x, okx
+ *
+ * KATEGORI 3: DIFFERENT PRIMARY + SWOOP/DZAP ALTERNATIVE (ParaSwap)
+ * - Primary: Berbeda per arah (v6 vs v5)
+ * - Alternative: SWOOP untuk CEX→DEX (entry), DZAP untuk DEX→CEX (exit)
+ * - Contoh: paraswap (v6/v5)
+ *
+ * ========================================
+ * FALLBACK POLICY:
+ * ========================================
+ * - primary: Strategi utama yang dipilih pertama kali
+ * - alternative: Strategi cadangan saat primary gagal (error 429, 500+, atau timeout)
+ * - allowFallback: true/false - izinkan fallback ke alternative
+ */
 const CONFIG_DEXS = {
     kyber: {
-        proxy: false,
-        warna: "#436ef0ff", // hijau tosca KyberSwap
-        builder: ({ chainName, tokenAddress, pairAddress }) => 
+        label: 'KyberSwap',
+        badgeClass: 'bg-kyberswap',
+
+        warna: "#0b7e18ff", // hijau tosca KyberSwap
+        builder: ({ chainName, tokenAddress, pairAddress }) =>
             `https://kyberswap.com/swap/${chainName}/${tokenAddress}-to-${pairAddress}`,
-        // Rute fetch per arah
+        // Strategi internal: Zero-Kyber sebagai alternative untuk mengurangi beban ke SWOOP/DZAP
         fetchdex: {
             primary: {
-                tokentopair: 'kyber',
-                pairtotoken: 'kyber'
+                tokentopair: 'kyber',       // CEX→DEX (Actionkiri): KyberSwap API langsung
+                pairtotoken: 'kyber'        // DEX→CEX (ActionKanan): KyberSwap API langsung
             },
             alternative: {
-                tokentopair: 'swoop',
-                pairtotoken: 'lifi'
+                tokentopair: 'zero-kyber',  // Fallback CEX→DEX: ZeroSwap Kyber (internal provider)
+                pairtotoken: 'zero-kyber'   // Fallback DEX→CEX: ZeroSwap Kyber (internal provider)
             }
         },
-        allowFallback: false,
+        allowFallback: true,
+        // Note: Menggunakan Zero-Kyber untuk kedua arah agar tidak membebani SWOOP/DZAP
     },
     '0x': {
-        proxy: false,
-        warna: "#069e1aff", // hitam abu-abu (Matcha/0x)
-        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) => 
+        label: 'Matcha',
+        badgeClass: 'bg-matcha',
+
+        warna: "#61ee73ff", // hitam abu-abu (Matcha/0x)
+        builder: ({ chainName, tokenAddress, pairAddress, chainCode }) =>
             `https://matcha.xyz/tokens/${chainName}/${String(tokenAddress||'').toLowerCase()}?buyChain=${chainCode}&buyAddress=${String(pairAddress||'').toLowerCase()}`,
         fetchdex: {
             primary: {
-                tokentopair: '0x',
-                pairtotoken: '0x'
-            }
-        },
-        allowFallback: false,
-    },
-    odos: {
-        proxy: true,
-        warna: "#f4a20aff", // ungu-biru Odos
-        builder: () => `https://app.odos.xyz`,
-        fetchdex: {
-            primary: {
-                tokentopair: 'odos',
-                pairtotoken: 'hinkal'
-            },alternative: {
-                tokentopair: 'swoop',
-                pairtotoken: 'lifi'
+                tokentopair: '0x',      // CEX→DEX (Actionkiri): Matcha (0x) API langsung
+                pairtotoken: '0x'       // DEX→CEX (ActionKanan): Matcha (0x) API langsung
+            },
+            alternative: {
+                tokentopair: 'swoop',   // Fallback CEX→DEX: SWOOP aggregator
+                pairtotoken: 'dzap'     // Fallback DEX→CEX: DZAP (multi-provider, exit focused)
             }
         },
         allowFallback: true,
     },
+    odos: {
+        label: 'ODOS',
+        badgeClass: 'bg-odos',
+
+        warna: "#6e2006ff", // ungu-biru Odos
+        builder: () => `https://app.odos.xyz`,
+        // Strategi internal: Hinkal-ODOS sebagai alternative untuk mengurangi beban ke SWOOP/DZAP
+        fetchdex: {
+            primary: {
+                tokentopair: 'odos2',       // CEX→DEX (Actionkiri): ODOS API v2
+                pairtotoken: 'odos3'        // DEX→CEX (ActionKanan): ODOS API v3 (lebih stabil)
+            },
+            alternative: {
+                tokentopair: 'hinkal-odos',  // Fallback CEX→DEX: Hinkal ODOS proxy (internal provider)
+                pairtotoken: 'hinkal-odos'   // Fallback DEX→CEX: Hinkal ODOS proxy (internal provider)
+            }
+        },
+        allowFallback: true,
+        // Note: Menggunakan Hinkal-ODOS untuk kedua arah agar tidak membebani SWOOP/DZAP
+    },
     okx: {
-        proxy: false,
+        label: 'OKXDEX',
+        badgeClass: 'bg-okxdex',
+
         warna: "#000000", // hitam (brand OKX)
-        builder: ({ chainCode, tokenAddress, pairAddress }) => 
+        builder: ({ chainCode, tokenAddress, pairAddress }) =>
             `https://www.okx.com/web3/dex-swap?inputChain=${chainCode}&inputCurrency=${tokenAddress}&outputChain=501&outputCurrency=${pairAddress}`,
         fetchdex: {
             primary: {
-                tokentopair: 'okx',
-                pairtotoken: 'okx'
+                tokentopair: 'okx',     // CEX→DEX (Actionkiri): OKX DEX API langsung
+                pairtotoken: 'okx'      // DEX→CEX (ActionKanan): OKX DEX API langsung
             },
             alternative: {
-                tokentopair: 'swoop',
-                pairtotoken: 'lifi'
+                tokentopair: 'swoop',   // Fallback CEX→DEX: SWOOP aggregator
+                pairtotoken: 'dzap'     // Fallback DEX→CEX: DZAP (multi-provider, exit focused)
             }
         },
         allowFallback: true,
     },
     '1inch': {
-        proxy: true,
-        warna: "#b41313ff", // biru tua 1inch
-        builder: ({ chainCode, tokenAddress, pairAddress }) => 
-            `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
-        // Rute fetch per arah (utama + alternatif)
-        fetchdex: {
-            primary: {
-                tokentopair: '1inch',
-                pairtotoken: 'lifi'
-            } ,
-             allowFallback: false,
-        },
-        // allowFallback intentionally disabled untuk 1inch direct; fallback diatur oleh fetchdex
-    },
+        label: '1inch',
+        badgeClass: 'bg-1inch',
 
-    fly: {
-        proxy: true,
-        warna: "#ba28f9ff", // fly teal
-        builder: ({ chainName, tokenAddress, pairAddress }) => {
-            const net = String(chainName || '').toLowerCase() || 'ethereum';
-            return `https://app.fly.trade/swap/${net}/${String(tokenAddress).toLowerCase()}/${net}/${String(pairAddress).toLowerCase()}`;
-        },
+        warna: "#06109bff", // red 1inch branding
+        builder: ({ chainCode, tokenAddress, pairAddress }) => `https://app.1inch.io/advanced/swap?network=${chainCode}&src=${tokenAddress}&dst=${pairAddress}`,
+
+        // Strategi khusus: Primary SELALU Hinkal, Alternative SELALU ZeroSwap (tidak bergantung arah)
         fetchdex: {
             primary: {
-                tokentopair: 'fly',
-                pairtotoken: 'fly'
+                tokentopair: 'hinkal-1inch',   // CEX→DEX: Hinkal proxy (privacy, 0.1 Gwei)
+                pairtotoken: 'hinkal-1inch'    // DEX→CEX: Hinkal proxy (privacy, 0.1 Gwei)
+            },
+            alternative: {
+                tokentopair: 'zero-1inch',     // Fallback CEX→DEX: ZeroSwap (jika Hinkal gagal)
+                pairtotoken: 'zero-1inch'      // Fallback DEX→CEX: ZeroSwap (jika Hinkal gagal)
             }
         },
-        allowFallback: false,
+        allowFallback: true,
+        // Note: Hinkal diutamakan untuk privacy & gas rendah (0.1 Gwei) di semua arah
+        // ZeroSwap sebagai fallback yang lebih cepat jika Hinkal error/timeout
     },
+    paraswap: {
+        label: 'ParaSwap',
+        badgeClass: 'bg-paraswap',
+
+        warna: "#1c64f2ff",
+        builder: ({ chainCode, tokenAddress, pairAddress }) => {
+            const network = chainCode || '';
+            const from = String(tokenAddress || '').toLowerCase();
+            const to = String(pairAddress || '').toLowerCase();
+            return `https://app.paraswap.io/#/?network=${network}&from=${from}&to=${to}`;
+        },
+        fetchdex: {
+            primary: {
+                tokentopair: 'paraswap6',   // CEX→DEX (Actionkiri): ParaSwap API v6 (terbaru)
+                pairtotoken: 'paraswap5'    // DEX→CEX (ActionKanan): ParaSwap API v5 (lebih stabil)
+            },
+            alternative: {
+                tokentopair: 'swoop',   // Fallback CEX→DEX: SWOOP aggregator (entry focused)
+                pairtotoken: 'dzap'     // Fallback DEX→CEX: DZAP aggregator (exit focused)
+            }
+        },
+        allowFallback: true,
+    }
+
+    // fly: {
+    //     label: 'FLY',
+    //     badgeClass: 'bg-fly',
+    //     proxy: true,
+    //     warna: "#ba28f9ff", // fly teal
+    //     builder: ({ chainName, tokenAddress, pairAddress }) => {
+    //         const net = String(chainName || '').toLowerCase() || 'ethereum';
+    //         return `https://app.fly.trade/swap/${net}/${String(tokenAddress).toLowerCase()}/${net}/${String(pairAddress).toLowerCase()}`;
+    //     },
+    //     fetchdex: {
+    //         primary: {
+    //             tokentopair: 'fly',
+    //             pairtotoken: 'fly'
+    //         }
+    //     },
+    //     allowFallback: false,
+    // },
+    
+     
 };
 
 try { if (typeof window !== 'undefined') { window.CONFIG_DEXS = window.CONFIG_DEXS || CONFIG_DEXS; } } catch(_){}

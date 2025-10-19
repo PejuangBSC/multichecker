@@ -1,12 +1,21 @@
-// =================================================================================
-// UI AND DOM MANIPULATION FUNCTIONS
-// =================================================================================
-
 /**
- * Gate interactive UI controls based on readiness state (settings/tokens).
- * @param {string} state - 'READY'|'MISSING_SETTINGS'|'MISSING_TOKENS'|'MISSING_BOTH'
+ * Manages the visibility of main application sections, ensuring only one is visible at a time.
+ * @param {string | null} sectionIdToShow The ID of the section to show. If null, all main sections are hidden.
  */
-function applyControlsFor(state) {
+function showMainSection(sectionIdToShow) {
+    const allSections = [
+        '#database-viewer-section',
+        '#token-management',
+        '#form-setting-app',
+        '#update-wallet-section',
+        '#iframe-container',
+        // Main scanner view is a combination of these elements
+        '#scanner-config',
+        '#sinyal-container',
+        '#filter-card',
+        '#monitoring-scroll'
+    ];
+
     const $form   = $("#FormScanner");
     const $start  = $('#startSCAN');
     const $stop   = $('#stopSCAN');
@@ -16,6 +25,35 @@ function applyControlsFor(state) {
     const $toolIcons = $('.header-card .icon');
     const $chainLinks = $('#chain-links-container a, #chain-links-container .chain-link');
     const $filterControls = $('#filter-card').find('input, .toggle-radio, button, label');
+    const $sortToggles = $('.sort-toggle');
+
+    // Hide all sections first
+    allSections.forEach(id => $(id).hide());
+
+    if (sectionIdToShow === 'scanner') {
+        // Special case for the main scanner view
+        $('#scanner-config, #sinyal-container, #filter-card, #monitoring-scroll').show();
+    } else if (sectionIdToShow) {
+        $(sectionIdToShow).show();
+    }
+}
+
+// =================================================================================
+// UI AND DOM MANIPULATION FUNCTIONS
+// =================================================================================
+
+/**
+ * Gate interactive UI controls based on readiness state (settings/tokens).
+ * @param {string} state - 'READY'|'MISSING_SETTINGS'|'MISSING_TOKENS'|'MISSING_BOTH'
+ */
+function applyControlsFor(state) {
+    const $start  = $('#startSCAN');
+    const $stop   = $('#stopSCAN');
+    const $import = $('#uploadJSON');
+    const $export = $('a[onclick="downloadTokenScannerCSV()"], #btnExportTokens');
+    const $settingsIcon = $('#SettingConfig');
+    const $toolIcons = $('.header-card .icon');
+    const $chainLinks = $('#chain-links-container a, #chain-links-container .chain-link');
     const $sortToggles = $('.sort-toggle');
 
     function toggleFilterControls(enabled){
@@ -45,6 +83,7 @@ function applyControlsFor(state) {
     setClickableEnabled($toolIcons.add($chainLinks), false);
     setClickableEnabled($sortToggles, false);
     toggleFilterControls(false);
+    $settingsIcon.removeClass('cta-settings icon-alert-missing');
 
     if (state === 'READY') {
         try {
@@ -65,15 +104,15 @@ function applyControlsFor(state) {
         setClickableEnabled($toolIcons.add($chainLinks), true);
         setClickableEnabled($sortToggles, true);
         toggleFilterControls(true);
-        // remove onboarding callouts
-        $settingsIcon.removeClass('cta-settings').attr('title','CONFIG SCANNER');
         try { $('#sync-tokens-btn').removeClass('cta-highlight'); } catch(_){ }
         try { $('#ManajemenKoin').removeClass('cta-highlight'); } catch(_){ }
+        try { $('#ManajemenKoin img.icon').removeClass('icon-alert-missing'); } catch(_){ }
         try { $('#btnImportTokens, #btnExportTokens').removeClass('cta-settings cta-highlight'); } catch(_){ }
         // Ensure Update Wallet CEX is enabled when tokens exist
         try { $('#UpdateWalletCEX').css({ opacity: '', pointerEvents: '' }).prop('disabled', false); } catch(_) {}
     } else if (state === 'MISSING_SETTINGS') {
         // Inform user and gate the UI strictly per requirement
+        $settingsIcon.addClass('cta-settings icon-alert-missing').attr('title','⚠️ Klik untuk membuka Pengaturan');
         $('#infoAPP').html('⚠️ Lengkapi <b>SETTING</b> terlebih dahulu. Form pengaturan dibuka otomatis.').show();
         // Disable all inputs globally then re-enable only the settings form controls
         try {
@@ -108,11 +147,14 @@ function applyControlsFor(state) {
         setClickableEnabled($sortToggles, false);
         // Disable khusus tombol Update Wallet CEX sampai ada token tersimpan
         try { $('#UpdateWalletCEX').css({ opacity: '0.5', pointerEvents: 'none' }).prop('disabled', true); } catch(_) {}
+        // Remove setting icon alert since settings exist
         // Info
         $('#infoAPP').html('⚠️ Tambahkan / Import / Sinkronisasi <b>DATA KOIN</b> terlebih dahulu.').show();
+        try { $('#ManajemenKoin img.icon').addClass('icon-alert-missing'); } catch(_) {}
     } else {
         $('#infoAPP').html('⚠️ Lengkapi <b>SETTING</b> & <b>DATA KOIN</b> terlebih dahulu.').show();
-        $settingsIcon.addClass('cta-settings').attr('title','Klik untuk membuka Pengaturan');
+        $settingsIcon.addClass('cta-settings').attr('title','⚠️ Klik untuk membuka Pengaturan');
+        try { $('#ManajemenKoin img.icon').addClass('icon-alert-missing'); } catch(_) {}
         setClickableEnabled($toolIcons.not($settingsIcon), false);
         setClickableEnabled($settingsIcon, true);
     }
@@ -250,8 +292,26 @@ function RenderCardSignal() {
 // Expose updater to switch theme for signal cards when dark mode toggles
 window.updateSignalTheme = function() {
     try {
-        // refactor: use shared dark-mode helper
-        const isDark = (window.isDarkMode && window.isDarkMode()) || (document.body && document.body.classList.contains('dark-mode'));
+        // refactor: ikuti dark mode aplikasi saja (abaikan preferensi OS)
+        const bodyHasDark = (typeof document !== 'undefined') &&
+                            document.body &&
+                            document.body.classList &&
+                            document.body.classList.contains('dark-mode');
+        let isDark = false;
+        if (bodyHasDark) {
+            isDark = true;
+        } else {
+            try {
+                if (typeof getTheme === 'function' && String(getTheme()).toLowerCase().indexOf('dark') !== -1) {
+                    isDark = true;
+                } else if (typeof getDarkMode === 'function' && !!getDarkMode()) {
+                    isDark = true;
+                } else if (typeof window !== 'undefined' && typeof window.isDarkMode === 'function' && window.isDarkMode()) {
+                    isDark = true;
+                }
+            } catch(_) {}
+        }
+
         let chainColor = '#5c9514';
         const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
         if (m.type === 'single') {
@@ -260,19 +320,24 @@ window.updateSignalTheme = function() {
         }
         const container = document.getElementById('sinyal-container');
         if (!container) return;
-        const cards = container.querySelectorAll('.uk-card');
+        const cards = container.querySelectorAll('.signal-card');
         cards.forEach(card => {
-            // Body warna: putih (light), abu-abu gelap (dark)
-            card.style.background = isDark ? '#424743ff' : '#ffffffff';
-            card.style.color = isDark ? '#d8ff41' : '#000000';
+            // Pas-kan body card dengan palet dark mode aplikasi
+            card.style.backgroundColor = isDark ? '#2c2c2e' : '#ffffff';
+            card.style.color = isDark ? '#e7e7ec' : '#000000';
+            const body = card.querySelector('.uk-card-body');
+            if (body) {
+                body.style.backgroundColor = isDark ? '#2c2c2e' : '#ffffff';
+                body.style.color = isDark ? '#e7e7ec' : '#000000';
+            }
             const header = card.querySelector('.uk-card-header');
             if (header) {
-                // Header warna: chainColor (light), hitam (dark)
-                header.style.backgroundColor = isDark ? '#000000' : chainColor;
-                header.style.color = '#d8ff41';
+                header.style.backgroundColor = isDark ? '#1f2024' : chainColor;
+                header.style.color = isDark ? '#f3f4f6' : '#ffffff';
+                header.style.borderBottomColor = isDark ? '#383a40' : '#000000';
             }
             const span = card.querySelector('[id^="sinyal"]');
-            if (span) span.style.color = isDark ? '#d8ff41' : '#000000';
+            if (span) span.style.color = isDark ? '#e7e7ec' : '#000000';
         });
     } catch(_) {}
 };
@@ -510,7 +575,8 @@ function buildDexCheckboxForKoin(token = {}) {
         const leftVal  = stored.left  ?? 0;
         const rightVal = stored.right ?? 0;
         const safeId = dexKeyLower.replace(/[^a-z0-9_-]/gi, '');
-        container.append(`<div class="uk-flex uk-flex-middle uk-margin-small"><label class="uk-margin-small-right"><input type="checkbox" class="uk-checkbox dex-edit-checkbox" id="dex-${safeId}" value="${dexName}" ${isChecked ? 'checked' : ''}> <b>${dexName.toUpperCase()}</b></label><div class="uk-flex uk-flex-middle" style="gap:6px;"><input type="number" class="uk-input uk-form-xxsmall dex-left" id="dex-${safeId}-left" placeholder="KIRI" value="${leftVal}" style="width:88px;"><input type="number" class="uk-input uk-form-xxsmall dex-right" id="dex-${safeId}-right" placeholder="KANAN" value="${rightVal}" style="width:88px;"></div></div>`);
+        // Use lowercase canonical key as value for consistency
+        container.append(`<div class="uk-flex uk-flex-middle uk-margin-small"><label class="uk-margin-small-right"><input type="checkbox" class="uk-checkbox dex-edit-checkbox" id="dex-${safeId}" value="${dexKeyLower}" ${isChecked ? 'checked' : ''}> <b>${dexName.toUpperCase()}</b></label><div class="uk-flex uk-flex-middle" style="gap:6px;"><input type="number" class="uk-input uk-form-xxsmall dex-left" id="dex-${safeId}-left" placeholder="KIRI" value="${leftVal}" style="width:88px;"><input type="number" class="uk-input uk-form-xxsmall dex-right" id="dex-${safeId}-right" placeholder="KANAN" value="${rightVal}" style="width:88px;"></div></div>`);
     });
 
     // Removed 4-DEX selection cap: no checkbox limit handler

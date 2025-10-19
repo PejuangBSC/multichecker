@@ -1,11 +1,19 @@
 // =================================================================================
 // SCANNER LOGIC
 // =================================================================================
-
-// refactor: small DOM helpers to eliminate duplicate span creation logic
+/**
+ * Memastikan sebuah sel DEX memiliki elemen <span> untuk menampilkan status.
+ * Jika belum ada, fungsi ini akan membuatnya dan menambahkannya ke dalam sel.
+ * Ini menjaga struktur DOM tetap konsisten untuk pembaruan status.
+ * @param {HTMLElement} cell - Elemen <td> dari sel DEX.
+ * @returns {HTMLElement|null} Elemen <span> untuk status, atau null jika sel tidak valid.
+ */
 function ensureDexStatusSpan(cell) {
+    // Jika sel tidak ada, kembalikan null.
     if (!cell) return null;
+    // Cari span status yang sudah ada.
     let statusSpan = cell.querySelector('.dex-status');
+    // Jika sudah ada, langsung kembalikan.
     if (statusSpan) return statusSpan;
     const strong = cell.querySelector('strong');
     if (strong) {
@@ -16,66 +24,121 @@ function ensureDexStatusSpan(cell) {
         br.insertAdjacentElement('afterend', statusSpan);
         return statusSpan;
     }
+    // Jika tidak ada elemen <strong>, buat span baru dan tambahkan di akhir sel.
     statusSpan = document.createElement('span');
     statusSpan.className = 'dex-status';
     cell.appendChild(statusSpan);
     return statusSpan;
 }
 
-// refactor: normalized setter for error background honoring dark-mode
+/**
+ * Mengatur latar belakang sel menjadi merah untuk menandakan error.
+ * Menggunakan kelas CSS 'dex-error' agar bisa di-styling secara terpusat,
+ * termasuk untuk mode gelap (dark mode).
+ * @param {HTMLElement} cell - Elemen <td> dari sel DEX yang error.
+ */
 function setDexErrorBackground(cell) {
     if (!cell) return;
     try { cell.classList.add('dex-error'); } catch(_) {}
 }
 
-// refactor: global watchdog helpers to avoid duplicate inline implementations
-function getDexWatchdogMap(){
-    if (typeof window === 'undefined') return new Map();
-    window._DEX_WATCHDOGS = window._DEX_WATCHDOGS || new Map();
-    return window._DEX_WATCHDOGS;
-}
-function setDexWatchdog(key, fn, delay){
-    const map = getDexWatchdogMap();
-    if (map.has(key)) clearTimeout(map.get(key));
-    // Prevent false timeouts when tab is inactive by postponing error triggers until visible
-    const schedule = (ms) => setTimeout(() => {
-        try {
-            if (typeof document !== 'undefined' && document.hidden) {
-                // re-arm with modest delay until visible
-                const t = schedule(Math.min(1000, Math.max(250, ms)));
-                map.set(key, t);
-                return;
-            }
-        } catch(_) {}
-        try { fn(); } finally { map.delete(key); }
-    }, Math.max(0, ms||0));
-    const timerId = schedule(delay);
-    map.set(key, timerId);
-}
-function clearDexWatchdog(key){
-    const map = getDexWatchdogMap();
-    if (map.has(key)) { clearTimeout(map.get(key)); map.delete(key); }
-}
-function clearDexWatchdogs(keys){
-    (Array.isArray(keys) ? keys : [keys]).forEach(k => clearDexWatchdog(k));
-}
+// REMOVED: Watchdog functions removed as per user request
 
-// Ticker countdown per-sel DEX (untuk menampilkan sisa waktu "Check")
+/**
+ * Menghapus/membersihkan interval timer countdown (misal: "Checking (4s)" atau "SWOOP (3s)")
+ * yang terkait dengan sebuah sel DEX.
+ * @param {string} id - ID dari sel DEX.
+ */
 function clearDexTickerById(id){
     try {
         window._DEX_TICKERS = window._DEX_TICKERS || new Map();
         const key = String(id) + ':ticker';
         if (window._DEX_TICKERS.has(key)) {
+            // Hapus interval timer.
             clearInterval(window._DEX_TICKERS.get(key));
             window._DEX_TICKERS.delete(key);
         }
     } catch(_) {}
 }
 
+// Variabel global untuk mengelola state pemindaian.
+// ID untuk loop `requestAnimationFrame` yang meng-update UI.
 let animationFrameId;
+// Flag boolean yang menandakan apakah proses pemindaian sedang berjalan atau tidak.
+// NOTE: Ini adalah per-tab state, tidak akan conflict dengan tab lain
 let isScanRunning = false;
+// Counter untuk melacak jumlah request DEX yang masih berjalan (termasuk fallback).
+let activeDexRequests = 0;
+// Resolver yang menunggu seluruh request DEX selesai sebelum finalisasi.
+let dexRequestWaiters = [];
 
-// Toggle page title to indicate active scan for the current page/tab (single-chain only)
+/**
+ * Helper function untuk check apakah tab ini sedang scanning
+ * Menggunakan sessionStorage untuk per-tab isolation
+ */
+function isThisTabScanning() {
+    try {
+        // Check internal flag
+        if (isScanRunning) return true;
+
+        // Check session storage sebagai backup
+        if (typeof sessionStorage !== 'undefined') {
+            const tabScanning = sessionStorage.getItem('TAB_SCANNING');
+            return tabScanning === 'YES';
+        }
+
+        return false;
+    } catch(e) {
+        return isScanRunning;
+    }
+}
+
+function markDexRequestStart() {
+    try { activeDexRequests += 1; } catch(_) { activeDexRequests = 1; }
+}
+
+function markDexRequestEnd() {
+    try {
+        activeDexRequests = Math.max(0, activeDexRequests - 1);
+        if (activeDexRequests === 0 && dexRequestWaiters.length > 0) {
+            const waiters = dexRequestWaiters.slice();
+            dexRequestWaiters.length = 0;
+            waiters.forEach(fn => {
+                try { fn(); } catch(_) {}
+            });
+        }
+    } catch(_) {}
+}
+
+function waitForPendingDexRequests(timeoutMs = 8000) {
+    if (activeDexRequests === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+        let settled = false;
+        const done = () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+        };
+        try { dexRequestWaiters.push(done); } catch(_) { dexRequestWaiters = [done]; }
+        if (timeoutMs > 0) {
+            setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                try {
+                    const idx = dexRequestWaiters.indexOf(done);
+                    if (idx !== -1) dexRequestWaiters.splice(idx, 1);
+                } catch(_) {}
+                resolve();
+            }, timeoutMs);
+        }
+    });
+}
+
+/**
+ * Mengubah judul halaman untuk menandakan pemindaian sedang aktif.
+ * Ini hanya berlaku untuk mode single-chain untuk memberikan feedback visual yang jelas.
+ * @param {boolean} running - True jika pemindaian sedang berjalan.
+ */
 function setPageTitleForRun(running){
     try {
         const m = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
@@ -90,15 +153,30 @@ function setPageTitleForRun(running){
     } catch(_) {}
 }
 
-// Title helpers for DEX cells: maintain a joined title log per cell
+/**
+ * Kumpulan fungsi untuk mengelola tooltip (title) pada sel DEX.
+ * Tooltip ini digunakan untuk menampilkan log detail dari proses kalkulasi.
+ */
+
+/**
+ * Mengatur teks tooltip untuk sebuah elemen sel.
+ * @param {HTMLElement} cell - Elemen sel.
+ * @param {string} text - Teks tooltip yang akan diatur.
+ */
 function setCellTitleByEl(cell, text){
     try {
         cell.dataset.titleLog = String(text || '');
         cell.setAttribute('title', cell.dataset.titleLog);
+        // Juga terapkan pada span status di dalamnya agar tooltip konsisten.
         const span = cell.querySelector('.dex-status');
         if (span) span.setAttribute('title', cell.dataset.titleLog);
     } catch(_) {}
 }
+/**
+ * Menambahkan baris baru ke teks tooltip yang sudah ada pada sebuah elemen sel.
+ * @param {HTMLElement} cell - Elemen sel.
+ * @param {string} line - Baris teks baru yang akan ditambahkan.
+ */
 function appendCellTitleByEl(cell, line){
     try {
         const prev = cell.dataset && cell.dataset.titleLog ? String(cell.dataset.titleLog) : '';
@@ -106,6 +184,11 @@ function appendCellTitleByEl(cell, line){
         setCellTitleByEl(cell, next);
     } catch(_) {}
 }
+/**
+ * Menambahkan baris baru ke teks tooltip berdasarkan ID sel.
+ * @param {string} id - ID elemen sel.
+ * @param {string} line - Baris teks baru.
+ */
 function appendCellTitleById(id, line){
     const cell = document.getElementById(id);
     if (!cell) return;
@@ -117,21 +200,25 @@ function appendCellTitleById(id, line){
  * - For each token: fetch CEX orderbook → quote DEX routes → compute PNL → update UI
  */
 async function startScanner(tokensToScan, settings, tableBodyId) {
-    // Cancel any pending autorun countdown when a new scan starts // REFACTORED
+    // Batalkan countdown auto-run yang mungkin sedang berjalan saat scan baru dimulai.
     clearInterval(window.__autoRunInterval);
     window.__autoRunInterval = null;
-    $('#autoRunCountdown').text(''); // REFACTORED
-    // Do not use infoAPP for history while scanning; the banner is reserved for RUN status
+    $('#autoRunCountdown').text('');
 
+    // Ambil konfigurasi scan dari argumen.
     const ConfigScan = settings;
+    // Dapatkan mode aplikasi saat ini (multi-chain atau single-chain).
     const mMode = getAppMode();
     let allowedChains = [];
+    // Tentukan chain mana saja yang aktif berdasarkan mode.
     if (mMode.type === 'single') {
         allowedChains = [String(mMode.chain).toLowerCase()];
     } else {
         const fm = getFilterMulti();
         allowedChains = (fm.chains && fm.chains.length)
+            // Jika ada filter chain, gunakan itu.
             ? fm.chains.map(c => String(c).toLowerCase())
+            // Jika tidak, gunakan semua chain dari konfigurasi.
             : Object.keys(CONFIG_CHAINS || {});
     }
 
@@ -140,28 +227,33 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         return;
     }
 
-    // This global is still used by other functions, so we set it here for now.
+    // Simpan data setting dan chain aktif ke variabel global untuk diakses oleh fungsi lain.
     window.SavedSettingData = ConfigScan;
     window.CURRENT_CHAINS = allowedChains;
 
-    // Resolve active DEX selection and lock it for the duration of this scan
+    // Tentukan daftar DEX yang aktif dan "kunci" daftar ini selama proses scan.
+    // Ini memastikan struktur kolom tabel tidak berubah di tengah jalan.
     let allowedDexs = [];
     try { allowedDexs = (typeof window.resolveActiveDexList === 'function') ? window.resolveActiveDexList() : []; } catch(_) { allowedDexs = []; }
     try { if (typeof window !== 'undefined') window.__LOCKED_DEX_LIST = (allowedDexs || []).slice(); } catch(_) {}
 
-    // Use the passed parameter directly, and filter by the currently allowed chains and DEX selection (token must have at least one selected DEX)
+    // Filter daftar token yang akan dipindai:
+    // 1. Token harus berada di salah satu chain yang diizinkan.
+    // 2. Token harus memiliki minimal satu DEX yang juga aktif di filter.
     const flatTokens = tokensToScan
         .filter(t => allowedChains.includes(String(t.chain).toLowerCase()))
         .filter(t => {
             try { return (Array.isArray(t.dexs) && t.dexs.some(d => allowedDexs.includes(String(d.dex||'').toLowerCase()))); } catch(_) { return true; }
         });
 
+    // Jika tidak ada token yang lolos filter, hentikan proses dan beri notifikasi.
     if (!flatTokens || flatTokens.length === 0) {
         if (typeof toast !== 'undefined' && toast.info) toast.info('Tidak ada token pada chain terpilih untuk dipindai.');
         return;
     }
 
-    // Ensure UI skeleton (header + rows + all DEX cells) is present before any calculation/updates
+    // Siapkan "kerangka" tabel monitoring (header dan semua baris token).
+    // Ini penting agar sel-sel tujuan untuk update UI sudah ada sebelum kalkulasi dimulai.
     try {
         const bodyId = tableBodyId || 'dataTableBody';
         if (typeof window.prepareMonitoringSkeleton === 'function') {
@@ -171,8 +263,84 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         }
     } catch(_) {}
 
+    // --- PERSIAPAN STATE & UI SEBELUM SCAN ---
+
+    // === CHECK GLOBAL SCAN LOCK ===
+    try {
+        const lockCheck = typeof checkCanStartScan === 'function' ? checkCanStartScan() : { canScan: true };
+
+        if (!lockCheck.canScan) {
+            console.warn('[SCANNER] Cannot start scan - locked by another tab:', lockCheck.lockInfo);
+
+            // Show user-friendly notification
+            if (typeof toast !== 'undefined' && toast.warning) {
+                const lockInfo = lockCheck.lockInfo || {};
+                const mode = lockInfo.mode || 'UNKNOWN';
+                const ageMin = Math.floor((lockInfo.age || 0) / 60000);
+                const ageSec = Math.floor(((lockInfo.age || 0) % 60000) / 1000);
+                const timeStr = ageMin > 0 ? `${ageMin}m ${ageSec}s` : `${ageSec}s`;
+
+                toast.warning(
+                    `⚠️ SCAN SEDANG BERJALAN!\n\n` +
+                    `Mode: ${mode}\n` +
+                    `Durasi: ${timeStr}\n\n` +
+                    `Tunggu scan selesai atau tutup tab lain yang sedang scanning.`,
+                    { timeOut: 5000 }
+                );
+            }
+
+            // Reset UI state
+            $('#startSCAN').prop('disabled', false).text('START').removeClass('uk-button-disabled');
+            return; // Exit early - don't start scan
+        }
+    } catch(e) {
+        console.error('[SCANNER] Error checking global scan lock:', e);
+        // On error checking lock, allow scan to proceed
+    }
+
+    // === SET GLOBAL SCAN LOCK ===
+    try {
+        const mode = getAppMode();
+        const chainLabel = allowedChains.map(c => String(c).toUpperCase()).join(', ');
+        const filterKey = getActiveFilterKey();
+
+        const lockAcquired = typeof setGlobalScanLock === 'function'
+            ? setGlobalScanLock(filterKey, {
+                tabId: typeof getTabId === 'function' ? getTabId() : null,
+                mode: mode.type === 'multi' ? 'MULTICHAIN' : (mode.chain || 'UNKNOWN').toUpperCase(),
+                chain: chainLabel
+            })
+            : true;
+
+        if (!lockAcquired) {
+            console.error('[SCANNER] Failed to acquire global scan lock');
+            if (typeof toast !== 'undefined' && toast.error) {
+                toast.error('Gagal memulai scan - ada scan lain yang berjalan');
+            }
+            $('#startSCAN').prop('disabled', false).text('START').removeClass('uk-button-disabled');
+            return; // Exit early
+        }
+
+        console.log('[SCANNER] Global scan lock acquired:', filterKey);
+
+        // Set per-tab scanning state (sessionStorage - per-tab isolation)
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem('TAB_SCANNING', 'YES');
+            sessionStorage.setItem('TAB_SCAN_CHAIN', chainLabel);
+            sessionStorage.setItem('TAB_SCAN_START', Date.now().toString());
+        }
+
+        // Notify TabManager untuk broadcast ke tab lain
+        if (window.TabManager && typeof window.TabManager.notifyScanStart === 'function') {
+            window.TabManager.notifyScanStart(chainLabel);
+            console.log(`[SCANNER] Tab ${window.getTabId()} started scanning: ${chainLabel}`);
+        }
+    } catch(e) {
+        console.error('[SCANNER] Error setting scan start state:', e);
+    }
+
+    // Set state aplikasi menjadi 'berjalan' (run: 'YES').
     setAppState({ run: 'YES' });
-    // Update page title to indicate active scanning (single-chain view only)
     setPageTitleForRun(true);
     try {
         if (typeof window.updateRunStateCache === 'function') {
@@ -187,38 +355,47 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         }
         if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
     } catch(_){}
+
+    // Update tampilan tombol dan banner.
     $('#startSCAN').prop('disabled', true).text('Running...').addClass('uk-button-disabled');
-    // Standardized banner will be updated by updateRunningChainsBanner
-    // Keep user's search query intact; do not reset searchInput here.
-    // Clear previous signals (container uses <div id="sinyal...">)
+    // Bersihkan kartu sinyal dari scan sebelumnya.
     $('#sinyal-container [id^="sinyal"]').empty();
-    // Hide empty signal cards so none appear at start // REFACTORED
     if (typeof window.hideEmptySignalCards === 'function') window.hideEmptySignalCards();
-    // Apply gating first, then disable globally to ensure edit remains locked during scan
-    if (typeof setScanUIGating === 'function') setScanUIGating(true); // REFACTORED
+
+    // Nonaktifkan sebagian besar kontrol UI untuk mencegah perubahan konfigurasi saat scan.
+    if (typeof setScanUIGating === 'function') setScanUIGating(true);
     form_off();
     $("#autoScrollCheckbox").show().prop('disabled', false);
     $("#stopSCAN").show().prop('disabled', false);
-    // Gating already applied above
     $('.statusCheckbox').css({ 'pointer-events': 'auto', 'opacity': '1' }).prop('disabled', false);
 
+    // Kirim notifikasi status 'ONLINE' ke Telegram.
     sendStatusTELE(ConfigScan.nickname, 'ONLINE');
 
+    // Ambil parameter jeda dan kecepatan dari settings.
     let scanPerKoin = parseInt(ConfigScan.scanPerKoin || 1);
     let jedaKoin = parseInt(ConfigScan.jedaKoin || 500);
     let jedaTimeGroup = parseInt(ConfigScan.jedaTimeGroup || 1000);
     // Jeda tambahan agar urutan fetch mengikuti pola lama (tanpa mengubah logika hasil)
     // Catatan: gunakan nilai dari SETTING_SCANNER
-    // - Jeda CEX: per-CEX dari ConfigScan.JedaCexs[cex]
-    // - Jeda DEX: per-DEX dari ConfigScan.JedaDexs[dex]
+    // - Jeda DEX: per-DEX dari ConfigScan.JedaDexs[dex] (Jeda CEX dihapus)
     let speedScan = Math.round(parseFloat(ConfigScan.speedScan || 2) * 1000);
 
     const jedaDexMap = (ConfigScan || {}).JedaDexs || {};
     const getJedaDex = (dx) => parseInt(jedaDexMap[dx]) || 0;
 
+    // Fungsi helper untuk membuat jeda (delay).
     function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+    // Fungsi helper untuk memeriksa apakah checkbox posisi (KIRI/KANAN) dicentang.
     const isPosChecked = (val) => $('input[type="checkbox"][value="' + val + '"]').is(':checked');
 
+    /**
+     * Memperbarui progress bar dan teks status di UI.
+     * @param {number} current - Jumlah item yang sudah diproses.
+     * @param {number} total - Jumlah total item.
+     * @param {number} startTime - Timestamp awal proses.
+     * @param {string} TokenPair - Nama token yang sedang diproses.
+     */
     function updateProgress(current, total, startTime, TokenPair) {
         let duration = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
         let progressPercentage = Math.floor((current / total) * 100);
@@ -228,8 +405,14 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         $('#progress').text(progressText);
     }
 
+    // `uiUpdateQueue` adalah antrian untuk semua tugas pembaruan UI.
+    // Daripada memanipulasi DOM secara langsung setiap kali ada hasil,
+    // objek hasil (sukses/error) dimasukkan ke array ini. `processUiUpdates`
+    // akan mengambil dari antrian ini dan meng-update UI secara efisien
+    // menggunakan `requestAnimationFrame` untuk mencegah browser lag.
     let uiUpdateQueue = [];
-    // Ensure UI updates flush promptly when tab becomes visible again
+
+    // Pastikan update UI segera dijalankan saat tab kembali aktif (visible).
     try {
         if (typeof window !== 'undefined' && !window.__UI_VIS_LISTENER_SET__) {
             document.addEventListener('visibilitychange', () => {
@@ -239,7 +422,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         }
     } catch(_) {}
 
-    // Suspend auto-scroll when the user interacts (wheel/touch/mouse/keys)
+    // Jeda auto-scroll sementara jika pengguna berinteraksi dengan halaman
+    // (scroll, klik, dll.) agar tidak mengganggu.
     try {
         if (typeof window !== 'undefined' && !window.__AUTO_SCROLL_SUSPENDER_SET__) {
             const suspend = () => { try { window.__AUTO_SCROLL_SUSPEND_UNTIL = Date.now() + 4000; } catch(_) {} };
@@ -250,18 +434,69 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         }
     } catch(_) {}
 
+    /**
+     * Mengambil data order book dari CEX dengan mekanisme coba ulang (retry).
+     * @param {object} token - Objek data token.
+     * @param {string} tableBodyId - ID dari tbody tabel.
+     * @param {object} options - Opsi tambahan (maxAttempts, delayMs).
+     * @returns {Promise<{ok: boolean, data: object|null, error: any}>} Hasil fetch.
+     */
+    async function fetchCEXWithRetry(token, tableBodyId, options = {}) {
+        const maxAttempts = Number(options.maxAttempts) > 0 ? Number(options.maxAttempts) : 3;
+        const delayMs = Number(options.delayMs) >= 0 ? Number(options.delayMs) : 400;
+        let attempts = 0;
+        let lastError = null;
+        let lastData = null;
+
+        while (attempts < maxAttempts) {
+            // Coba panggil getPriceCEX.
+            try {
+                const data = await getPriceCEX(token, token.symbol_in, token.symbol_out, token.cex, tableBodyId);
+                lastData = data;
+                const prices = [
+                    data?.priceBuyToken,
+                    data?.priceSellToken,
+                    data?.priceBuyPair,
+                    data?.priceSellPair
+                ];
+                // Validasi bahwa semua harga yang dibutuhkan adalah angka positif.
+                const valid = prices.every(p => Number.isFinite(p) && Number(p) > 0);
+                if (valid) {
+                    return { ok: true, data };
+                }
+                lastError = 'Harga CEX tidak lengkap';
+            } catch (error) {
+                lastError = error;
+            }
+            // Jika gagal, tunggu sebentar sebelum mencoba lagi.
+            attempts += 1;
+            if (attempts < maxAttempts) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+        }
+        return { ok: false, data: lastData, error: lastError };
+    }
+
+    /**
+     * Loop utama yang memproses antrian pembaruan UI (`uiUpdateQueue`).
+     * Dijalankan menggunakan `requestAnimationFrame` untuk performa optimal.
+     */
     function processUiUpdates() {
+        // Jika scan sudah berhenti dan antrian kosong, hentikan loop.
         if (!isScanRunning && uiUpdateQueue.length === 0) return;
 
         const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        // Batas waktu eksekusi per frame (misal, 8ms) untuk menjaga UI tetap responsif.
         const budgetMs = 8; // aim to keep under one frame @120Hz
         let processed = 0;
 
-        // Safety sweep: finalize any DEX cell that exceeded its deadline but never flipped from "Check"
+        // "Penyapuan keamanan": Finalisasi sel DEX yang melewati batas waktu (timeout)
+        // tapi belum di-update statusnya. Ini mencegah sel terjebak di status "Checking".
         try {
             const nowTs = Date.now();
             const cells = document.querySelectorAll('td[data-deadline]');
             cells.forEach(cell => {
+                // Cek apakah deadline sudah lewat dan sel belum difinalisasi.
                 try {
                     const d = Number(cell.dataset.deadline || 0);
                     const done = String(cell.dataset.final || '') === '1';
@@ -269,7 +504,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                         const dexName = (cell.dataset.dex || '').toUpperCase() || 'DEX';
                         // stop any lingering ticker for this cell
                         try { clearDexTickerById(cell.id); } catch(_) {}
-                        // Force finalize to TIMEOUT directly (no closure dependency)
+                        // Paksa finalisasi ke status TIMEOUT.
                         try { cell.classList.add('dex-error'); } catch(_) {}
                         const span = ensureDexStatusSpan(cell);
                         try {
@@ -284,12 +519,27 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             });
         } catch(_) {}
 
+        // Proses item dari antrian selama masih ada dan budget waktu belum habis.
+        if (uiUpdateQueue.length > 0) {
+            //(`[PROCESS QUEUE] Processing ${uiUpdateQueue.length} items in queue`);
+        }
         while (uiUpdateQueue.length) {
             const updateData = uiUpdateQueue.shift();
+            if (updateData) {
+               // console.log(`[PROCESS ITEM]`, { type: updateData?.type, id: updateData?.id || updateData?.idPrefix + updateData?.baseId });
+            }
+            // Jika item adalah error, update sel dengan pesan error.
             if (updateData && updateData.type === 'error') {
                 const { id, message, swapMessage } = updateData;
                 const cell = document.getElementById(id);
                 if (cell) {
+                    // Skip if already finalized by a successful result
+                    try {
+                        if (cell.dataset && cell.dataset.final === '1') {
+                            processed++;
+                            continue;
+                        }
+                    } catch(_) {}
                     // finalize error: stop ticker, mark final, clear checking/deadline
                     try { clearDexTickerById(id); } catch(_) {}
                     try { cell.dataset.final = '1'; delete cell.dataset.checking; delete cell.dataset.deadline; } catch(_) {}
@@ -301,15 +551,18 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                     statusSpan.textContent = swapMessage || '[ERROR]';
                     statusSpan.title = message || '';
                 }
+            // Jika item adalah hasil sukses, panggil DisplayPNL untuk merender hasilnya.
             } else if (updateData) {
                 DisplayPNL(updateData);
             }
             processed++;
             const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            // Jika waktu eksekusi melebihi budget, hentikan dan serahkan ke frame berikutnya.
             if ((now - start) >= budgetMs) break; // yield to next frame
         }
 
-        // If page is hidden, do not rely on RAF (throttled/paused). Use setTimeout loop to keep UI in sync.
+        // Jika halaman tidak terlihat (tab tidak aktif), `requestAnimationFrame` akan dijeda oleh browser.
+        // Gunakan `setTimeout` sebagai fallback untuk memastikan UI tetap di-update.
         if (typeof document !== 'undefined' && document.hidden) {
             setTimeout(processUiUpdates, 150);
         } else {
@@ -317,6 +570,11 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         }
     }
 
+    /**
+     * Memproses satu token: mengambil data CEX, lalu memproses semua DEX yang terkait.
+     * @param {object} token - Objek data token yang akan diproses.
+     * @param {string} tableBodyId - ID dari tbody tabel.
+     */
     async function processRequest(token, tableBodyId) {
         if (!allowedChains.includes(String(token.chain).toLowerCase())) return;
         // Skip processing if token has been deleted during scanning
@@ -333,12 +591,15 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             if (!stillExists) return; // token removed; do not fetch
         } catch(_) {}
         try {
-            const DataCEX = await getPriceCEX(token, token.symbol_in, token.symbol_out, token.cex, tableBodyId);
+            // 1. Ambil data harga dari CEX dengan mekanisme retry.
+            const cexResult = await fetchCEXWithRetry(token, tableBodyId, { maxAttempts: 3, delayMs: 450 });
+            const DataCEX = cexResult.data || {};
 
-            const prices = [DataCEX.priceBuyToken, DataCEX.priceSellToken, DataCEX.priceBuyPair, DataCEX.priceSellPair];
-            if (prices.some(p => !isFinite(p) || p <= 0)) {
-                if (typeof toast !== 'undefined' && toast.error) toast.error(`CEK MANUAL ${token.symbol_in} di ${token.cex}`);
-                // Inform all DEX cells for this token that CEX prices are invalid
+            // Jika pengambilan data CEX gagal setelah semua percobaan, tandai semua sel DEX sebagai error.
+            if (!cexResult.ok) {
+                if (typeof toast !== 'undefined' && toast.error) {
+                    toast.error(`CEK MANUAL ${token.symbol_in} di ${token.cex}`);
+                }
                 try {
                     if (Array.isArray(token.dexs)) {
                         token.dexs.forEach((dd) => {
@@ -346,18 +607,19 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                             const dex = String(dd.dex||'').toLowerCase();
                             ['TokentoPair','PairtoToken'].forEach(dir => {
                                 const isKiri = dir === 'TokentoPair';
-                                const baseIdRaw = `${String(token.cex).toUpperCase()}_${String(dex).toUpperCase()}_`
-                                  + `${String(isKiri ? token.symbol_in : token.symbol_out).toUpperCase()}_`
-                                  + `${String(isKiri ? token.symbol_out : token.symbol_in).toUpperCase()}_`
-                                  + `${String(token.chain).toUpperCase()}_`
-                                  + `${String(token.id||'').toUpperCase()}`;
-                                const idCELL = tableBodyId + '_' + baseIdRaw.replace(/[^A-Z0-9_]/g,'');
+                                // ID generation: include token ID for uniqueness
+                                const sym1 = isKiri ? String(token.symbol_in).toUpperCase() : String(token.symbol_out).toUpperCase();
+                                const sym2 = isKiri ? String(token.symbol_out).toUpperCase() : String(token.symbol_in).toUpperCase();
+                                const tokenId = String(token.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                                const baseIdRaw = `${String(token.cex).toUpperCase()}_${String(dex).toUpperCase()}_${sym1}_${sym2}_${String(token.chain).toUpperCase()}_${tokenId}`;
+                                const baseId = baseIdRaw.replace(/[^A-Z0-9_]/g,'');
+                                const idCELL = tableBodyId + '_' + baseId;
                                 const cell = document.getElementById(idCELL);
                                 if (!cell) return;
                                 setDexErrorBackground(cell);
                                 const span = ensureDexStatusSpan(cell);
                                 span.className = 'dex-status uk-text-danger';
-                                span.innerHTML = `<span class=\"uk-label uk-label-danger\">ERROR</span>`;
+                                span.innerHTML = `<span class=\"uk-label uk-label-danger\">ERROR5</span>`;
                                 appendCellTitleByEl(cell, '[CEX] INVALID PRICES');
                                 try { if (cell.dataset) cell.dataset.final = '1'; } catch(_) {}
                             });
@@ -367,38 +629,46 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 return;
             }
 
-            // Beri jeda setelah CEX siap sebelum DEX dieksekusi berdasarkan setting per-CEX
-            try {
-                const cexDelayMap = (ConfigScan || {}).JedaCexs || {};
-                const afterCEX = parseInt(cexDelayMap[token.cex]) || 0;
-                if (afterCEX > 0) await new Promise(r => setTimeout(r, afterCEX));
-            } catch(_) {}
+            // 2. Lanjut ke DEX tanpa jeda CEX terkonfigurasi (fitur dihapus)
 
             if (token.dexs && Array.isArray(token.dexs)) {
+                // 3. Loop untuk setiap DEX yang terkonfigurasi untuk token ini.
                 token.dexs.forEach((dexData) => {
                             // Skip DEX not included in active selection
                             try { if (!allowedDexs.includes(String(dexData.dex||'').toLowerCase())) return; } catch(_) {}
-                            const dex = dexData.dex.toLowerCase();
+                            // Normalize DEX name to handle aliases (kyberswap->kyber, matcha->0x, etc)
+                            let dex = String(dexData.dex || '').toLowerCase();
+                            try {
+                                if (typeof window !== 'undefined' && window.DEX && typeof window.DEX.normalize === 'function') {
+                                    dex = window.DEX.normalize(dex);
+                                }
+                            } catch(_) {}
                             const modalKiri = dexData.left;
                             const modalKanan = dexData.right;
                             const amount_in_token = parseFloat(modalKiri) / DataCEX.priceBuyToken;
                             const amount_in_pair = parseFloat(modalKanan) / DataCEX.priceBuyPair;
 
+                            /**
+                             * Fungsi internal untuk memanggil API DEX untuk satu arah transaksi.
+                             * @param {string} direction - Arah transaksi ('TokentoPair' atau 'PairtoToken').
+                             */
                             const callDex = (direction) => {
                                 const isKiri = direction === 'TokentoPair';
+                                // Periksa apakah posisi (KIRI/KANAN) diaktifkan di UI.
                                 if (isKiri && !isPosChecked('Actionkiri')) { return; }
                                 if (!isKiri && !isPosChecked('ActionKanan')) { return; }
 
-                                const baseIdRaw = `${String(token.cex).toUpperCase()}_${String(dex).toUpperCase()}_`
-                                  + `${String(isKiri ? token.symbol_in : token.symbol_out).toUpperCase()}_`
-                                  + `${String(isKiri ? token.symbol_out : token.symbol_in).toUpperCase()}_`
-                                  + `${String(token.chain).toUpperCase()}_`
-                                  + `${String(token.id||'').toUpperCase()}`;
+                                // ID generation: include token ID for uniqueness
+                                const sym1 = isKiri ? String(token.symbol_in||'').toUpperCase() : String(token.symbol_out||'').toUpperCase();
+                                const sym2 = isKiri ? String(token.symbol_out||'').toUpperCase() : String(token.symbol_in||'').toUpperCase();
+                                const tokenId = String(token.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                                const baseIdRaw = `${String(token.cex).toUpperCase()}_${String(dex).toUpperCase()}_${sym1}_${sym2}_${String(token.chain).toUpperCase()}_${tokenId}`;
                                 const baseId = baseIdRaw.replace(/[^A-Z0-9_]/g,'');
                                 const idCELL = tableBodyId + '_' + baseId;
                                 let lastPrimaryError = null;
 
-                                // Resolve safe token addresses/decimals especially for NON pair
+                                // Normalisasi alamat kontrak dan desimal, terutama untuk pair 'NON'
+                                // agar menggunakan nilai default jika tidak ada.
                                 const chainCfgSafe = (window.CONFIG_CHAINS || {})[String(token.chain).toLowerCase()] || {};
                                 const pairDefsSafe = chainCfgSafe.PAIRDEXS || {};
                                 const nonDef = pairDefsSafe['NON'] || {};
@@ -415,11 +685,22 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     }
                                 }
 
+                                /**
+                                 * Memperbarui status visual sel DEX (misal: "Checking...", "ERROR").
+                                 * @param {string} status - 'checking', 'fallback', 'error', 'failed', 'fallback_error'.
+                                 * @param {string} dexName - Nama DEX.
+                                 * @param {string} [message=''] - Pesan tambahan untuk tooltip.
+                                 */
                                 const updateDexCellStatus = (status, dexName, message = '') => {
                                     const cell = document.getElementById(idCELL);
                                     if (!cell) return;
                                     // Do not overwrite if cell already finalized by a prior UPDATE/ERROR
-                                    try { if (cell.dataset && cell.dataset.final === '1') return; } catch(_) {}
+                                try {
+                                    if (cell.dataset && cell.dataset.final === '1') {
+                                        // NEVER overwrite a finalized cell, regardless of new status
+                                        return;
+                                    }
+                                } catch(_) {}
                                     // Presentation only: spinner for checking, badge for error
                                     try { cell.classList.remove('dex-error'); } catch(_) {}
                                     let statusSpan = ensureDexStatusSpan(cell);
@@ -451,18 +732,16 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     } else if (status === 'fallback') {
                                         statusSpan.classList.add('uk-text-warning');
                                         statusSpan.innerHTML = `<span class=\"uk-margin-small-right\" uk-spinner=\"ratio: 0.5\"></span>SWOOP`;
-                                        // Tooltip: show only raw DEX response if present
-                                        if (message) {
-                                            statusSpan.title = String(message);
-                                            setCellTitleByEl(cell, String(message));
-                                        }
+                                        // REFACTORED: Tidak menampilkan error message dari primary DEX
+                                        // Tooltip tetap menampilkan header info checking saja
                                         try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                     } else if (status === 'fallback_error') {
                                         setDexErrorBackground(cell);
                                         statusSpan.classList.remove('uk-text-warning');
                                         statusSpan.classList.add('uk-text-danger');
                                         statusSpan.innerHTML = `<span class=\"uk-label uk-label-warning\">TIMEOUT</span>`;
-                                        // Tooltip: raw DEX error/timeout only
+                                        // REFACTORED: Tooltip menampilkan error dari fallback saja (bukan primary)
+                                        // Message berisi error dari alternatif DEX
                                         if (message) {
                                             statusSpan.title = String(message);
                                             setCellTitleByEl(cell, String(message));
@@ -508,7 +787,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     }
                                 };
 
-                                // Lightweight readiness checks to avoid unnecessary DEX requests
+                                /**
+                                 * Validasi cepat sebelum memanggil API DEX untuk menghindari request yang tidak perlu.
+                                 * @returns {{ok: boolean, reason?: string}}
+                                 */
                                 const validateDexReadiness = () => {
                                     const modal = isKiri ? modalKiri : modalKanan;
                                     const amtIn = isKiri ? amount_in_token : amount_in_pair;
@@ -527,14 +809,25 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                 const ready = validateDexReadiness();
                                 if (!ready.ok) { updateDexCellStatus('failed', dex, ready.reason); return; }
 
-                                const wdKeyCheck = idCELL + ':check';
-                                const wdKeyFallback = idCELL + ':fallback';
-                                const clearAllWatchdogs = () => { clearDexWatchdogs([wdKeyCheck, wdKeyFallback]); };
+                                // REMOVED: Watchdog keys removed
 
-                                const handleSuccess = (dexResponse, isFallback = false) => {
-                                    clearAllWatchdogs();
-                                    // Avoid appending any "via SWOOP" suffix; keep only the base dex title
-                                    const finalDexRes = isFallback ? { ...dexResponse, dexTitle: (dexResponse.dexTitle || dex) } : dexResponse;
+                                /**
+                                 * Handler yang dijalankan jika panggilan API DEX (atau fallback-nya) berhasil.
+                                 * @param {object} dexResponse - Respons dari `getPriceDEX` atau `getPriceAltDEX`.
+                                 * @param {boolean} [isFallback=false] - True jika ini adalah hasil dari fallback.
+                                 * @param {string} [fallbackSource=''] - Sumber fallback ('DZAP' atau 'SWOOP').
+                                 */
+                                const handleSuccess = (dexResponse, isFallback = false, fallbackSource = '') => {
+                                    try {
+                                    // REMOVED: clearAllWatchdogs()
+                                    // REFACTORED: Tambahkan info sumber alternatif ke dexResponse
+                                    const finalDexRes = isFallback ? {
+                                        ...dexResponse,
+                                        dexTitle: (dexResponse.dexTitle || dex),
+                                        isFallback: true,  // Flag untuk DisplayPNL
+                                        fallbackSource: fallbackSource || 'UNKNOWN'
+                                    } : dexResponse;
+                                    // Panggil `calculateResult` untuk menghitung PNL dan data lainnya.
                                     const update = calculateResult(
                                         baseId, tableBodyId, finalDexRes.amount_out, finalDexRes.FeeSwap,
                                         isKiri ? token.sc_in : token.sc_out, isKiri ? token.sc_out : token.sc_in,
@@ -546,7 +839,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         dex, token.chain, CONFIG_CHAINS[token.chain.toLowerCase()].Kode_Chain,
                                         direction, 0, finalDexRes
                                     );
-                                    // debug logs removed
+                                    // Buat log ringkasan untuk console jika diaktifkan.
                                     // Console log summary for this successful check (cleaned)
                                     try {
                                         // Compute DEX USD rate based on direction
@@ -581,12 +874,12 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         const chainName = (chainCfg.Nama_Chain || token.chain || '').toString().toUpperCase();
                                         const ce  = String(token.cex||'').toUpperCase();
                                         const dx  = String((finalDexRes?.dexTitle)||dex||'').toUpperCase();
-                                        // Sumber nilai: jika alternatif dipakai tampilkan 'via LIFI' atau 'via SWOOP'
+                                        // Sumber nilai: jika alternatif dipakai tampilkan 'via DZAP' atau 'via SWOOP'
                                         const viaText = (function(){
                                             try {
                                                 if (isFallback === true) {
-                                                    // Jika fallback LIFI (memiliki routeTool/routeOverrideDex dari services), tampilkan via LIFI
-                                                    if (finalDexRes && (typeof finalDexRes.routeTool !== 'undefined' || typeof finalDexRes.routeOverrideDex !== 'undefined')) return ' via LIFI';
+                                                    // Jika fallback DZAP (memiliki routeTool dari services), tampilkan via DZAP
+                                                    if (finalDexRes && typeof finalDexRes.routeTool !== 'undefined') return ' via DZAP';
                                                     // Selain itu fallback dianggap SWOOP
                                                     return ' via SWOOP';
                                                 }
@@ -634,7 +927,13 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         const viaName = (function(){
                                             try {
                                                 if (isFallback === true) {
-                                                    if (finalDexRes && (typeof finalDexRes.routeTool !== 'undefined' || typeof finalDexRes.routeOverrideDex !== 'undefined')) return 'LIFI';
+                                                    const routeTool = String(finalDexRes?.routeTool || '').toUpperCase();
+                                                    if (routeTool) {
+                                                        if (/DZAP|PARASWAP|1INCH|0X|KYBER/i.test(routeTool)) {
+                                                            return `DZAP (${routeTool})`;
+                                                        }
+                                                        return routeTool;
+                                                    }
                                                     return 'SWOOP';
                                                 }
                                             } catch(_) {}
@@ -643,25 +942,47 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         const prosesLine = isKiri
                                           ? `PROSES : ${ce} => ${dx} (VIA ${viaName})`
                                           : `PROSES : ${dx} => ${ce} (VIA ${viaName})`;
+                                        // REFACTORED: Jika fallback berhasil, statusnya TETAP "OK"
+                                        // Tidak perlu menampilkan error dari primary DEX karena sudah berhasil via fallback
                                         let statusLine = 'STATUS DEX : OK';
-                                        if (isFallback === true && lastPrimaryError) {
-                                            let s = 'FAILED';
-                                            try {
-                                                const ts = String(lastPrimaryError.textStatus||'').toLowerCase();
-                                                if (ts === 'timeout' || /timeout/i.test(String(lastPrimaryError.pesanDEX||''))) s = 'TIMEOUT';
-                                            } catch(_) { s = 'FAILED'; }
-                                            const codeNum = Number(lastPrimaryError.statusCode);
-                                            statusLine = `STATUS DEX : ${s} (KODE ERROR : ${Number.isFinite(codeNum)?codeNum:'NA'})`;
-                                        }
                                         const headerBlock = [
                                             '======================================',
                                             `Time: ${nowStr}`,
                                            // `ID CELL: ${idCELL}`,
-                                            prosesLine,
+                                            `PROSES : ${isKiri ? `${ce} => ${dx}` : `${dx} => ${ce}`} (VIA ${viaName})`,
                                             statusLine
                                         ].join('\n');
+                                        // Token info untuk debugging
+                                        const tokenInInfo = isKiri
+                                            ? `    📥 Token IN  : ${nameIn} (${String(token.sc_in).substring(0,10)}...)`
+                                            : `    📥 Token IN  : ${nameIn} (${String(token.sc_out).substring(0,10)}...)`;
+                                        const tokenOutInfo = isKiri
+                                            ? `    📤 Token OUT : ${nameOut} (${String(token.sc_out).substring(0,10)}...)`
+                                            : `    📤 Token OUT : ${nameOut} (${String(token.sc_in).substring(0,10)}...)`;
+                                        // Info sumber alternatif untuk console log
+                                        const sourceInfo = (function(){
+                                            try {
+                                                if (isFallback === true) {
+                                                    const routeTool = String(finalDexRes?.routeTool || '').toUpperCase();
+                                                    if (routeTool) {
+                                                        // DZAP dengan provider spesifik
+                                                        if (/DZAP|PARASWAP|1INCH|0X|KYBER/i.test(routeTool)) {
+                                                            return `    🔄 SUMBER: DZAP (Provider: ${routeTool})`;
+                                                        }
+                                                        return `    🔄 SUMBER: ${routeTool}`;
+                                                    }
+                                                    // Default SWOOP
+                                                    return `    🔄 SUMBER: SWOOP`;
+                                                }
+                                            } catch(_) {}
+                                            return ''; // Tidak ada info sumber jika bukan fallback
+                                        })();
+
                                         const lines = [
                                             headerBlock,
+                                            sourceInfo, // Tambahkan info sumber di bawah header
+                                            tokenInInfo,
+                                            tokenOutInfo,
                                             `    🪙 Modal: $${modal.toFixed(2)}`,
                                             buyLine,
                                             buyIdrLine,
@@ -676,17 +997,34 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             `    🧾 Total Fee: ~$${totalFee.toFixed(2)}`,
                                             '',
                                             `    📈 PNL: ${bruto>=0?'+':''}${bruto.toFixed(2)} USDT (${pnlPct.toFixed(2)}%)`,
-                                            `    🚀 PROFIT : ${profitLoss>=0?'+':''}${profitLoss.toFixed(2)} USDT`
-                                        ].join('\n');
+                                            `    🚀 PROFIT : ${profitLoss>=0?'+':''}${profitLoss.toFixed(2)} USDT`,
+                                            `idCELL: ${idCELL}`,
+                                        ].filter(Boolean).join('\n'); // filter(Boolean) menghapus string kosong
                                         appendCellTitleById(idCELL, lines);
                                         try { if (window.SCAN_LOG_ENABLED) console.log(lines); } catch(_) {}
                                     } catch(_) {}
+                                    // Masukkan hasil kalkulasi ke antrian pembaruan UI.
+                                   // console.log(`[PUSH TO QUEUE] Pushing update to uiUpdateQueue`, { idCELL, isFallback, type: update.type });
                                     uiUpdateQueue.push(update);
+                                    if (!isScanRunning) {
+                                        try {
+                                            animationFrameId = requestAnimationFrame(processUiUpdates);
+                                        } catch(_) {
+                                            try { processUiUpdates(); } catch(_) {}
+                                        }
+                                    }
+                                    } finally {
+                                        markDexRequestEnd();
+                                    }
                                 };
 
+                                /**
+                                 * Handler yang dijalankan jika panggilan API DEX utama gagal.
+                                 * @param {object} initialError - Objek error dari `getPriceDEX`.
+                                 */
                                 const handleError = (initialError) => {
                                     try { lastPrimaryError = initialError; } catch(_) {}
-                                    clearAllWatchdogs();
+                                    // REMOVED: clearAllWatchdogs()
                                     // debug logs removed
                                     const dexConfig = CONFIG_DEXS[dex.toLowerCase()];
                                     // Build richer error title with HTTP status code only if not already present
@@ -699,12 +1037,19 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             else msg = `[HTTP ${code}] ${msg}`;
                                         }
                                     } catch(_) {}
+                                    // Periksa apakah DEX ini dikonfigurasi untuk menggunakan fallback.
                                     if (dexConfig && dexConfig.allowFallback) {
-                                        updateDexCellStatus('fallback', dex, msg);
-                                        // Mulai countdown untuk SWOOP fallback (5 detik)
+                                        // REFACTORED: Tidak update UI dengan error dari primary DEX
+                                        // Langsung tampilkan status fallback (SWOOP) tanpa menampilkan error primary
+                                       // console.log(`[FALLBACK] Primary DEX ${dex.toUpperCase()} error, trying fallback...`, { idCELL, error: msg });
+                                        updateDexCellStatus('fallback', dex, '');
+                                        // Mulai countdown untuk SWOOP fallback (menggunakan speedScan dari setting user)
                                         try {
+                                            // Hapus ticker lama dan mulai ticker baru untuk fallback.
                                             clearDexTickerById(idCELL);
-                                            const endAtFB = Date.now() + 5000;
+                                            // FIXED: Gunakan speedScan dari user setting, bukan hardcoded 5000ms
+                                            const fallbackTimeout = Math.max(speedScan, 2000); // minimum 2 detik untuk fallback
+                                            const endAtFB = Date.now() + fallbackTimeout;
                                             // Use shared ticker helper
                                             const renderFB = (secs, cell) => {
                                                 const span = ensureDexStatusSpan(cell);
@@ -712,7 +1057,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                 try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                             };
                                             const onEndFB = () => {
-                                                const rawMsg = msg || 'Request Timeout';
+                                                // REFACTORED: Tidak menampilkan error dari primary, hanya info timeout fallback
+                                                const rawMsg = 'Fallback Timeout';
                                                 if (!(typeof document !== 'undefined' && document.hidden)) {
                                                     try { updateDexCellStatus('fallback_error', dex, rawMsg); } catch(_) {}
                                                 }
@@ -730,7 +1076,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                         if (!cell) { clearDexTickerById(idCELL); return; }
                                                         if (cell.dataset && cell.dataset.final === '1') { clearDexTickerById(idCELL); return; }
                                                         render(secs, cell);
-                                                        if (rem <= 0) { clearDexTickerById(idCELL); if (typeof onEnd === 'function') onEnd(); }
+                                                        if (rem <= 0) { clearDexTickerById(idCELL); /*if (typeof onEnd === 'function') onEnd();*/ }
                                                     };
                                                     const intId = setInterval(tick, 1000);
                                                     window._DEX_TICKERS.set(key, intId);
@@ -739,11 +1085,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             };
                                             startTicker(endAtFB, renderFB, onEndFB);
                                         } catch(_) {}
-                                        setDexWatchdog(wdKeyFallback, () => {
-                                            const m2 = msg || 'Request Timeout';
-                                            try { clearDexTickerById(idCELL); } catch(_) {}
-                                            updateDexCellStatus('fallback_error', dex, m2);
-                                        }, 5000);
+                                        // REMOVED: Watchdog for fallback removed
+                                        // Panggil API fallback.
                                         getPriceAltDEX(
                                             isKiri ? token.sc_in : token.sc_out, isKiri ? token.des_in : token.des_out,
                                             isKiri ? token.sc_out : token.sc_in, isKiri ? token.des_out : token.des_in,
@@ -751,14 +1094,29 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                             isKiri ? token.symbol_in : token.symbol_out, isKiri ? token.symbol_out : token.symbol_in,
                                             token.cex, token.chain, CONFIG_CHAINS[token.chain.toLowerCase()].Kode_Chain, direction
                                         )
+                                        // Jika fallback berhasil, panggil `handleSuccess`.
                                         .then((fallbackRes) => {
-                                            clearDexWatchdog(wdKeyFallback);
+                                            // REMOVED: clearDexWatchdog(wdKeyFallback)
                                             try { clearDexTickerById(idCELL); } catch(_) {}
-                                            handleSuccess(fallbackRes, true);
+                                            // REFACTORED: Deteksi sumber fallback dari response
+                                            const routeTool = String(fallbackRes?.routeTool || '').toUpperCase();
+                                            let source = 'SWOOP'; // Default
+                                            if (routeTool) {
+                                                if (/DZAP|PARASWAP|1INCH|0X|KYBER/i.test(routeTool)) {
+                                                    source = `DZAP (${routeTool})`;
+                                                } else {
+                                                    source = routeTool;
+                                                }
+                                            }
+                                           // console.log(`[FALLBACK SUCCESS] ${dex.toUpperCase()} fallback succeeded via ${source}`, { idCELL, amount_out: fallbackRes.amount_out });
+                                            handleSuccess(fallbackRes, true, source);
                                         })
+                                        // Jika fallback juga gagal, tampilkan error final.
                                         .catch((fallbackErr) => {
-                                            if (window._DEX_WATCHDOGS.has(wdKeyFallback)) clearTimeout(window._DEX_WATCHDOGS.get(wdKeyFallback));
-                                            let finalMessage = (fallbackErr && fallbackErr.pesanDEX) ? fallbackErr.pesanDEX : (msg || 'Unknown');
+                                            try {
+                                            // REMOVED: watchdog cleanup
+                                            // REFACTORED: Gunakan error dari fallback, bukan dari primary
+                                            let finalMessage = (fallbackErr && fallbackErr.pesanDEX) ? fallbackErr.pesanDEX : 'Fallback Error';
                                             try {
                                                 const sc = Number(fallbackErr && fallbackErr.statusCode);
                                                 if (Number.isFinite(sc) && sc > 0) {
@@ -768,6 +1126,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                 }
                                             } catch(_) {}
                                             try { clearDexTickerById(idCELL); } catch(_) {}
+                                            // REFACTORED: Tampilkan error dari alternatif, bukan error dari primary
+                                            //console.log(`[FALLBACK ERROR] ${dex.toUpperCase()} fallback also failed`, { idCELL, error: finalMessage });
                                             updateDexCellStatus('fallback_error', dex, finalMessage);
                                             try {
                                                 // Align console info with requested orderbook logic
@@ -789,20 +1149,14 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                 // refactor: removed unused local debug variables (buy/sell/pnl lines)
                                                 
                                             } catch(_) {}
+                                            } finally {
+                                                markDexRequestEnd();
+                                            }
                                         });
                                     } else {
+                                        // Jika tidak ada fallback, langsung tampilkan error.
                                         // Use formatted message with HTTP code when available (avoid duplicate prefix)
-                                        updateDexCellStatus('error', dex, (function(){
-                                            let m = (initialError && initialError.pesanDEX) ? String(initialError.pesanDEX) : 'Unknown Error';
-                                            const hasPrefix2 = /\[(HTTP \d{3}|XHR ERROR 200)\]/.test(m);
-                                            try {
-                                                const code = Number(initialError && initialError.statusCode);
-                                                if (!hasPrefix2 && Number.isFinite(code) && code > 0) {
-                                                    if (code === 200) m = `[XHR ERROR 200] ${m}`; else m = `[HTTP ${code}] ${m}`;
-                                                }
-                                            } catch(_) {}
-                                            return m;
-                                        })());
+                                        updateDexCellStatus('error', dex, msg);
                                         // Tambahkan header block ke tooltip + console (jika Log ON)
                                         try {
                                             const nowStr = (new Date()).toLocaleTimeString();
@@ -833,17 +1187,18 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         try {
                                             // Align console info with requested orderbook logic (logs removed)
                                         } catch(_) {}
+                                        markDexRequestEnd();
                                     }
                                 };
 
-                                // debug logs removed
+                                // Update UI ke status "Checking" sebelum memanggil API.
                                 // Include CEX summary in title while checking
                                 const fmt6 = v => (Number.isFinite(+v) ? (+v).toFixed(6) : String(v));
                                 const cexSummary = `CEX READY BT=${fmt6(DataCEX.priceBuyToken)} ST=${fmt6(DataCEX.priceSellToken)} BP=${fmt6(DataCEX.priceBuyPair)} SP=${fmt6(DataCEX.priceSellPair)}`;
                                 updateDexCellStatus('checking', dex, cexSummary);
+                                // REMOVED: Watchdog for primary DEX removed
                                 const dexTimeoutWindow = getJedaDex(dex) + Math.max(speedScan) + 300;
-                                setDexWatchdog(wdKeyCheck, () => { updateDexCellStatus('error', dex, `${dex.toUpperCase()}: Request Timeout`); }, dexTimeoutWindow);
-                                // Mulai ticker countdown untuk menampilkan sisa detik pada label "Check"
+                                // Mulai ticker countdown untuk menampilkan sisa detik pada label "Checking".
                                 try {
                                     const endAt = Date.now() + dexTimeoutWindow;
                                     // Stamp a deadline on the cell for a global safety sweeper
@@ -854,10 +1209,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         try { if (window.UIkit && UIkit.update) UIkit.update(cell); } catch(_) {}
                                     };
                                     const onEndCheck = () => {
-                                        // If tab is hidden, don't finalize ERROR here; watchdog defers until visible
-                                        if (!(typeof document !== 'undefined' && document.hidden)) {
-                                            try { updateDexCellStatus('error', dex, `${String(dex||'').toUpperCase()}: Request Timeout`); } catch(_) {}
-                                        }
+                                        // REMOVED: Watchdog logic removed
+                                        // Timeout will be handled by ticker and safety sweeper in processUiUpdates
                                     };
                                     // Define lightweight helper locally (reused)
                                     const startTicker = (endAt, render, onEnd) => {
@@ -872,7 +1225,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                                 if (!cell) { clearDexTickerById(idCELL); return; }
                                                 if (cell.dataset && cell.dataset.final === '1') { clearDexTickerById(idCELL); return; }
                                                 render(secs, cell);
-                                                if (rem <= 0) { clearDexTickerById(idCELL); if (typeof onEnd === 'function') onEnd(); }
+                                                if (rem <= 0) { clearDexTickerById(idCELL); /*if (typeof onEnd === 'function') onEnd();*/ }
                                             };
                                             const intId = setInterval(tick, 1000);
                                             window._DEX_TICKERS.set(key, intId);
@@ -882,7 +1235,13 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                     startTicker(endAt, renderCheck, onEndCheck);
                                 } catch(_) {}
 
+                                // Panggil API DEX setelah jeda yang dikonfigurasi.
                                 setTimeout(() => {
+                                    markDexRequestStart();
+                                    if (!isScanRunning) {
+                                        markDexRequestEnd();
+                                        return;
+                                    }
                                     getPriceDEX(
                                         scInSafe, desInSafe,
                                         scOutSafe, desOutSafe,
@@ -890,11 +1249,12 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                                         isKiri ? token.symbol_in : token.symbol_out, isKiri ? token.symbol_out : token.symbol_in,
                                         token.cex, token.chain, CONFIG_CHAINS[token.chain.toLowerCase()].Kode_Chain, direction, tableBodyId
                                     )
-                                    .then((dexRes) => { clearAllWatchdogs(); handleSuccess(dexRes); })
+                                    // Panggil handler yang sesuai berdasarkan hasil promise.
+                                    .then((dexRes) => { /* REMOVED: clearAllWatchdogs() */ handleSuccess(dexRes); })
                                     .catch((err) => { handleError(err); });
                                 }, getJedaDex(dex));
                             };
-                            // Jalankan arah Token→Pair terlebih dahulu; lalu arah Pair→Token setelah jeda per-DEX dari setting
+                            // Jalankan untuk kedua arah: CEX->DEX dan DEX->CEX.
                             callDex('TokentoPair');
                             (function(){
                                 const gap = getJedaDex(dex) || 0;
@@ -903,6 +1263,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                             })();
                         });
                     }
+            // Beri jeda antar token dalam satu grup.
             await delay(jedaKoin);
         } catch (error) {
             console.error(`Kesalahan saat memproses ${token.symbol_in}_${token.symbol_out}:`, error);
@@ -910,17 +1271,21 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
     }
 
     async function processTokens(tokensToProcess, tableBodyId) {
+        // Set flag bahwa scan sedang berjalan dan mulai loop update UI.
         isScanRunning = true;
         animationFrameId = requestAnimationFrame(processUiUpdates);
 
         const startTime = Date.now();
+        // Bagi daftar token menjadi beberapa grup kecil.
         const tokenGroups = [];
         for (let i = 0; i < tokensToProcess.length; i += scanPerKoin) {
             tokenGroups.push(tokensToProcess.slice(i, i + scanPerKoin));
         }
         let processed = 0; // track tokens completed across groups
 
-        // Inform user that app is checking GAS/GWEI per active chains
+        // --- PROSES UTAMA ---
+
+        // 1. Ambil data harga gas dan kurs USDT/IDR sebelum memulai loop token.
         try {
            
             $('#progress-bar').css('width', '5%');
@@ -934,10 +1299,13 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         } catch(_) {}
         await getRateUSDT();
 
+        // 2. Loop melalui setiap grup token.
         for (let groupIndex = 0; groupIndex < tokenGroups.length; groupIndex++) {
+            // Jika user menekan STOP, hentikan loop.
             if (!isScanRunning) { break; }
             const groupTokens = tokenGroups[groupIndex];
 
+            // Jika auto-scroll aktif, scroll ke baris token pertama dari grup saat ini.
             if ($('#autoScrollCheckbox').is(':checked') && groupTokens.length > 0) {
                 const first = groupTokens[0];
                 const suffix = `DETAIL_${first.cex.toUpperCase()}_${first.symbol_in.toUpperCase()}_${first.symbol_out.toUpperCase()}_${first.chain.toUpperCase()}`.replace(/[^A-Z0-9_]/g, '');
@@ -969,7 +1337,8 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 });
             }
 
-            // Run this group's tokens in parallel, staggered by jedaKoin per index
+            // Proses token-token dalam satu grup secara paralel,
+            // dengan jeda kecil antar pemanggilan untuk menghindari rate-limit.
             const jobs = groupTokens.map((token, tokenIndex) => (async () => {
                 if (!isScanRunning) return;
                 // Stagger start per token within the group
@@ -977,21 +1346,106 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 if (!isScanRunning) return;
                 try { await processRequest(token, tableBodyId); } catch(e) { console.error(`Err token ${token.symbol_in}_${token.symbol_out}`, e); }
                 // Update progress as each token finishes
-        // REFACTORED
-        processed += 1;
-        updateProgress(processed, tokensToProcess.length, startTime, `${token.symbol_in}_${token.symbol_out}`);
+                processed += 1;
+                updateProgress(processed, tokensToProcess.length, startTime, `${token.symbol_in}_${token.symbol_out}`);
             })());
 
+            // Tunggu semua proses dalam grup selesai.
             await Promise.allSettled(jobs);
             if (!isScanRunning) break;
+            // Beri jeda antar grup.
             if (groupIndex < tokenGroups.length - 1) { await delay(jedaTimeGroup); }
         }
 
+        // --- FINALISASI SETELAH SEMUA TOKEN SELESAI ---
+
         updateProgress(tokensToProcess.length, tokensToProcess.length, startTime, 'SELESAI');
+
+        // REFACTORED: Tunggu semua request DEX (termasuk fallback) benar-benar selesai.
+       //('[FINAL] Waiting for pending DEX requests to settle...');
+        await waitForPendingDexRequests(8000);
+        if (activeDexRequests > 0) {
+            console.warn(`[FINAL] Continuing with ${activeDexRequests} pending DEX request(s) after timeout window.`);
+        }
+
+        // Trigger final processUiUpdates untuk memastikan semua item di queue diproses
+       // console.log(`[FINAL] Queue length before final processing: ${uiUpdateQueue.length}`);
+
+        if (uiUpdateQueue.length > 0) {
+           // console.log(`[FINAL] Processing remaining ${uiUpdateQueue.length} items in queue...`);
+
+            // Process semua item yang ada di queue
+            while (uiUpdateQueue.length > 0) {
+                const updateData = uiUpdateQueue.shift();
+                if (!updateData) { continue; }
+                if (updateData.type === 'error') {
+                    const { id, message, swapMessage } = updateData;
+                    const cell = document.getElementById(id);
+                    if (cell) {
+                        try {
+                            if (cell.dataset && cell.dataset.final === '1') {
+                                continue;
+                            }
+                        } catch(_) {}
+                        try { clearDexTickerById(id); } catch(_) {}
+                        try { if (cell.dataset) { cell.dataset.final = '1'; delete cell.dataset.checking; delete cell.dataset.deadline; } } catch(_) {}
+                        setDexErrorBackground(cell);
+                        const statusSpan = ensureDexStatusSpan(cell);
+                        if (statusSpan) {
+                            try { statusSpan.className = 'dex-status uk-text-danger'; } catch(_) {}
+                            try {
+                                statusSpan.classList.remove('uk-text-muted', 'uk-text-warning');
+                                statusSpan.classList.add('uk-text-danger');
+                            } catch(_) {}
+                            statusSpan.textContent = swapMessage || '[ERROR]';
+                            statusSpan.title = message || '';
+                        }
+                    }
+                    continue;
+                }
+               // console.log(`[FINAL PROCESS]`, { idCELL: updateData.idPrefix + updateData.baseId });
+                try {
+                    DisplayPNL(updateData);
+                } catch(e) {
+                    console.error('[FINAL PROCESS ERROR]', e);
+                }
+            }
+           // console.log('[FINAL] All items processed.');
+        } else {
+           // console.log('[FINAL] No items in queue to process.');
+        }
+
+        // Set flag dan hentikan loop UI.
         isScanRunning = false;
         cancelAnimationFrame(animationFrameId);
-        // Restore page title after scan completes
         setPageTitleForRun(false);
+
+        // === RELEASE GLOBAL SCAN LOCK ===
+        try {
+            // Clear global scan lock
+            const filterKey = typeof getActiveFilterKey === 'function' ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+            if (typeof clearGlobalScanLock === 'function') {
+                clearGlobalScanLock(filterKey);
+                console.log('[SCANNER] Global scan lock released:', filterKey);
+            }
+
+            // Clear per-tab scanning state
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('TAB_SCANNING');
+                sessionStorage.removeItem('TAB_SCAN_CHAIN');
+                sessionStorage.removeItem('TAB_SCAN_START');
+            }
+
+            // Notify TabManager untuk broadcast ke tab lain
+            if (window.TabManager && typeof window.TabManager.notifyScanStop === 'function') {
+                window.TabManager.notifyScanStop();
+                console.log(`[SCANNER] Tab ${window.getTabId()} stopped scanning`);
+            }
+        } catch(e) {
+            console.error('[SCANNER] Error releasing scan state:', e);
+        }
+
+        // Aktifkan kembali UI.
         form_on();
         $("#stopSCAN").hide().prop("disabled", true);
         $('#startSCAN').prop('disabled', false).text('Start').removeClass('uk-button-disabled');
@@ -1000,7 +1454,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         // Persist run=NO reliably before any potential next action
         await persistRunStateNo();
 
-        // Unlock DEX header list after scan completes and refresh header to reflect current selection
+        // Buka kunci daftar DEX dan refresh header tabel.
         try {
             if (typeof window !== 'undefined') { window.__LOCKED_DEX_LIST = null; }
             if (typeof window.renderMonitoringHeader === 'function' && typeof window.computeActiveDexList === 'function') {
@@ -1008,7 +1462,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             }
         } catch(_) {}
 
-        // Schedule autorun if enabled
+        // Jika auto-run aktif, mulai countdown untuk scan berikutnya.
         try {
             if (window.AUTORUN_ENABLED === true) {
                 const total = 10; // seconds
@@ -1043,19 +1497,45 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
 
 /**
  * Stops the currently running scanner.
+ * Ini adalah "hard stop" yang akan me-reload halaman.
  */
 async function stopScanner() {
-    isScanRunning = false; // REFACTORED
+    isScanRunning = false;
     try { cancelAnimationFrame(animationFrameId); } catch(_) {}
-    clearInterval(window.__autoRunInterval); // REFACTORED
+    clearInterval(window.__autoRunInterval);
     window.__autoRunInterval = null;
-    // Restore page title if user stops the scan
     setPageTitleForRun(false);
-    if (typeof form_on === 'function') form_on(); // REFACTORED
-    try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
-    // Persist run=NO and refresh indicators before reload
+    if (typeof form_on === 'function') form_on();
+
+    // === RELEASE GLOBAL SCAN LOCK (MANUAL STOP) ===
+    try {
+        // Clear global scan lock
+        const filterKey = typeof getActiveFilterKey === 'function' ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+        if (typeof clearGlobalScanLock === 'function') {
+            clearGlobalScanLock(filterKey);
+            console.log('[SCANNER] Global scan lock released (manual stop):', filterKey);
+        }
+
+        // Clear per-tab scanning state
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.removeItem('TAB_SCANNING');
+            sessionStorage.removeItem('TAB_SCAN_CHAIN');
+            sessionStorage.removeItem('TAB_SCAN_START');
+            sessionStorage.setItem('APP_FORCE_RUN_NO', '1');
+        }
+
+        // Notify TabManager untuk broadcast ke tab lain
+        if (window.TabManager && typeof window.TabManager.notifyScanStop === 'function') {
+            window.TabManager.notifyScanStop();
+            console.log(`[SCANNER] Tab ${window.getTabId()} stopped scanning (manual stop)`);
+        }
+    } catch(e) {
+        console.error('[SCANNER] Error releasing scan state on manual stop:', e);
+    }
+
+    // Simpan state 'run:NO' dan update indikator UI sebelum reload.
     await persistRunStateNo();
-    location.reload(); // REFACTORED
+    location.reload();
 }
 
 /**
@@ -1063,16 +1543,45 @@ async function stopScanner() {
  * Useful before running long operations (e.g., Update Wallet CEX).
  */
 function stopScannerSoft() {
-    isScanRunning = false; // REFACTORED
+    isScanRunning = false;
     try { cancelAnimationFrame(animationFrameId); } catch(_) {}
-    // Persist run=NO and refresh indicators without reload
+
+    // === RELEASE GLOBAL SCAN LOCK (SOFT STOP) ===
+    try {
+        // Clear global scan lock
+        const filterKey = typeof getActiveFilterKey === 'function' ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
+        if (typeof clearGlobalScanLock === 'function') {
+            clearGlobalScanLock(filterKey);
+            console.log('[SCANNER] Global scan lock released (soft stop):', filterKey);
+        }
+
+        // Clear per-tab scanning state
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.removeItem('TAB_SCANNING');
+            sessionStorage.removeItem('TAB_SCAN_CHAIN');
+            sessionStorage.removeItem('TAB_SCAN_START');
+        }
+
+        // Notify TabManager untuk broadcast ke tab lain
+        if (window.TabManager && typeof window.TabManager.notifyScanStop === 'function') {
+            window.TabManager.notifyScanStop();
+            console.log(`[SCANNER] Tab ${window.getTabId()} soft stopped scanning`);
+        }
+    } catch(e) {
+        console.error('[SCANNER] Error releasing scan state on soft stop:', e);
+    }
+
+    // Simpan state 'run:NO' tanpa me-reload halaman.
     try { (async()=>{ await persistRunStateNo(); })(); } catch(_) {}
-    clearInterval(window.__autoRunInterval); // REFACTORED
+    clearInterval(window.__autoRunInterval);
     window.__autoRunInterval = null;
-    if (typeof form_on === 'function') form_on(); // REFACTORED
+    if (typeof form_on === 'function') form_on();
 }
 
-// Update info banner with all chains currently running. Optionally seed with a list.
+/**
+ * Memperbarui banner info di atas untuk menunjukkan chain mana saja yang sedang dipindai.
+ * @param {string[]} [seedChains] - Daftar awal chain yang akan ditampilkan.
+ */
 function updateRunningChainsBanner(seedChains) {
     try {
         const setKeys = new Set();
@@ -1096,7 +1605,10 @@ function updateRunningChainsBanner(seedChains) {
 
 try { window.updateRunningChainsBanner = window.updateRunningChainsBanner || updateRunningChainsBanner; } catch(_){}
 
-// Consolidated helper: persist run state NO and refresh indicators
+/**
+ * Helper terpusat untuk menyimpan state `run: 'NO'` ke storage,
+ * dan memperbarui indikator UI yang relevan.
+ */
 async function persistRunStateNo() {
     try {
         const key = (typeof getActiveFilterKey === 'function') ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
@@ -1118,4 +1630,25 @@ async function persistRunStateNo() {
         if (typeof window.updateRunningChainsBanner === 'function') window.updateRunningChainsBanner();
         if (typeof window.updateToolbarRunIndicators === 'function') window.updateToolbarRunIndicators();
     } catch(_){}
+}
+
+// =================================================================================
+// EXPORT TO APP NAMESPACE
+// =================================================================================
+// Register scanner functions to window.App.Scanner for use by main.js
+if (typeof window !== 'undefined' && window.App && typeof window.App.register === 'function') {
+    window.App.register('Scanner', {
+        startScanner,
+        stopScanner,
+        stopScannerSoft,
+        // Return per-tab scanning state (not global)
+        isScanRunning: () => isThisTabScanning(),
+        // Expose helper untuk external access
+        isThisTabScanning: isThisTabScanning
+    });
+}
+
+// Expose untuk backward compatibility
+if (typeof window !== 'undefined') {
+    window.isThisTabScanning = isThisTabScanning;
 }

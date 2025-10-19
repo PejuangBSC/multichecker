@@ -1,8 +1,17 @@
     // IndexedDB-based storage with in-memory cache.
-    // Object store (table) names use prefix MULTICHECKER_.
+    // Uses a single application database defined in CONFIG_APP / CONFIG_DB.
     (function initIndexedDBStorage(){
-        const DB_NAME = 'MULTICHECKER_DB';
-        const STORE_KV = 'MULTICHECKER_KV';
+        const root = (typeof window !== 'undefined') ? window : {};
+        const appCfg = (root.CONFIG_APP && root.CONFIG_APP.APP) ? root.CONFIG_APP.APP : {};
+        const dbCfg = root.CONFIG_DB || {};
+        const DB_NAME = dbCfg.NAME || appCfg.NAME || 'MULTIALL-PLUS';
+        const STORE_KV = (dbCfg.STORES && dbCfg.STORES.KV) ? dbCfg.STORES.KV : 'APP_KV_STORE';
+        const STORE_SNAPSHOT = (dbCfg.STORES && dbCfg.STORES.SNAPSHOT) ? dbCfg.STORES.SNAPSHOT : null;
+        const STORE_LOCALSTORAGE = (dbCfg.STORES && dbCfg.STORES.LOCALSTORAGE) ? dbCfg.STORES.LOCALSTORAGE : null;
+        const BC_NAME = dbCfg.BROADCAST_CHANNEL || `${DB_NAME}_CHANNEL`;
+        const requiredStores = Array.from(new Set(
+            [STORE_KV, STORE_SNAPSHOT, STORE_LOCALSTORAGE].filter(Boolean)
+        ));
         const cache = {}; // runtime cache for sync reads
         let db = null;
 
@@ -14,26 +23,39 @@
                     const req = indexedDB.open(DB_NAME);
                     req.onupgradeneeded = (ev)=>{
                         const d = ev.target.result;
-                        if (!d.objectStoreNames.contains(STORE_KV)) d.createObjectStore(STORE_KV, { keyPath:'key' });
+                        requiredStores.forEach(storeName=>{
+                            if (!d.objectStoreNames.contains(storeName)) {
+                                d.createObjectStore(storeName, { keyPath:'key' });
+                            }
+                        });
                     };
                     req.onsuccess = (ev)=>{
                         const d = ev.target.result;
-                        // Ensure required store exists; if not, perform lightweight upgrade to add it
-                        if (!d.objectStoreNames.contains(STORE_KV)){
+                        const missing = requiredStores.filter(storeName => !d.objectStoreNames.contains(storeName));
+                        if (missing.length){
                             const nextVersion = (d.version || 1) + 1;
-                            d.close();
+                            try { d.close(); } catch(_){}
                             const up = indexedDB.open(DB_NAME, nextVersion);
                             up.onupgradeneeded = (e2)=>{
                                 const udb = e2.target.result;
-                                if (!udb.objectStoreNames.contains(STORE_KV)) udb.createObjectStore(STORE_KV, { keyPath:'key' });
+                                requiredStores.forEach(storeName=>{
+                                    if (!udb.objectStoreNames.contains(storeName)) {
+                                        udb.createObjectStore(storeName, { keyPath:'key' });
+                                    }
+                                });
                             };
-                            up.onsuccess = (e2)=>{ db = e2.target.result; resolve(db); };
+                            up.onsuccess = (e2)=>{
+                                db = e2.target.result;
+                                resolve(db);
+                            };
                             up.onerror = (e2)=>{ reject(e2.target.error || new Error('IDB upgrade failed')); };
+                            up.onblocked = ()=>{ reject(new Error('IDB upgrade blocked')); };
                         } else {
                             db = d; resolve(db);
                         }
                     };
                     req.onerror = (ev)=>{ reject(ev.target.error || new Error('IDB open failed')); };
+                    req.onblocked = ()=>{ reject(new Error('IDB open blocked')); };
                 } catch(e){ reject(e); }
             });
         }
@@ -117,7 +139,7 @@
         try { window.whenStorageReady = warmCacheAll(); } catch(_){}
 
         // Initialize cross-tab channel for state sync (best-effort)
-        try { window.__MC_BC = window.__MC_BC || new BroadcastChannel('MULTICHECKER_APP'); } catch(_) {}
+        try { window.__MC_BC = window.__MC_BC || new BroadcastChannel(BC_NAME); } catch(_) {}
 
         // Public API (kept sync signatures to avoid large refactor)
         window.getFromLocalStorage = function(key, defaultValue){
@@ -333,49 +355,112 @@
         } catch(_) { return 'MULTICHAIN'; }
     }
 
+    /**
+     * Export tokens to CSV with human-readable expanded format
+     * - CEX columns: CEX_BINANCE, CEX_MEXC, etc. (TRUE/FALSE)
+     * - DEX columns: DEX_1INCH, DEX_PARASWAP, etc. (left|right modal)
+     * - Auto-generates columns based on CONFIG_CEX and CONFIG_DEXS
+     * - No ID/NO columns (auto-generated on import)
+     * - No JSON fields (all plain text)
+     */
     function downloadTokenScannerCSV() {
         const tokenData = getFromLocalStorage(getActiveTokenKeyLocal(), []);
         const chainLabel = getActiveChainLabel();
+        const appName = (typeof window !== 'undefined' && window.CONFIG_APP && window.CONFIG_APP.APP && window.CONFIG_APP.APP.NAME)
+            ? window.CONFIG_APP.APP.NAME
+            : 'MULTIALL-PLUS';
+        const safeApp = (function(name){
+            try {
+                const safe = String(name || '').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+                return safe ? safe.toUpperCase() : 'APP';
+            } catch(_) { return 'APP'; }
+        })(appName);
 
-        // Header sesuai struktur
-        const headers = [
-            "id","no","symbol_in","symbol_out","chain",
-            "sc_in","des_in","sc_out","des_out",
-            "dataCexs","dataDexs","status","selectedCexs","selectedDexs"
+        // Get all available CEX and DEX from config
+        const allCex = Object.keys(window.CONFIG_CEX || {}).map(c => c.toUpperCase());
+        const allDex = Object.keys(window.CONFIG_DEXS || {}).map(d => d.toLowerCase());
+
+        // Build dynamic headers with expanded CEX and DEX columns
+        const baseHeaders = [
+            "symbol_in", "symbol_out", "chain",
+            "sc_in", "des_in", "sc_out", "des_out", "status"
         ];
 
-        // Konversi setiap item
-        const rows = tokenData.map(token => [
-            token.id ?? "",
-            token.no ?? "",
-            token.symbol_in ?? "",
-            token.symbol_out ?? "",
-            token.chain ?? "",
-            token.sc_in ?? "",
-            token.des_in ?? "",
-            token.sc_out ?? "",
-            token.des_out ?? "",
-            JSON.stringify(token.dataCexs ?? {}),    // object → JSON string
-            JSON.stringify(token.dataDexs ?? {}),
-            token.status ? "true" : "false",         // boolean → string
-            (token.selectedCexs ?? []).join("|"),    // array → A|B|C
-            (token.selectedDexs ?? []).join("|")
-        ].map(v => `"${String(v).replace(/"/g, '""')}"`)); // escape CSV
+        // CEX columns: CEX_BINANCE, CEX_MEXC, etc.
+        const cexHeaders = allCex.map(cex => `CEX_${cex}`);
+
+        // DEX columns: DEX_1INCH, DEX_PARASWAP, etc. (format: left|right)
+        const dexHeaders = allDex.map(dex => `DEX_${dex.toUpperCase()}`);
+
+        const headers = [...baseHeaders, ...cexHeaders, ...dexHeaders];
+
+        // Convert each token to row with expanded columns
+        const rows = tokenData.map(token => {
+            const baseValues = [
+                token.symbol_in ?? "",
+                token.symbol_out ?? "",
+                token.chain ?? "",
+                token.sc_in ?? "",
+                token.des_in ?? "",
+                token.sc_out ?? "",
+                token.des_out ?? "",
+                token.status ? "TRUE" : "FALSE"
+            ];
+
+            // CEX values: true/false based on selectedCexs
+            const selectedCexs = (token.selectedCexs || []).map(c => c.toUpperCase());
+            const cexValues = allCex.map(cex => selectedCexs.includes(cex) ? "TRUE" : "FALSE");
+
+            // DEX values: left|right or empty
+            // Token stores DEX data in selectedDexs (array) and dataDexs (object with modal data)
+            const selectedDexs = (token.selectedDexs || []).map(d => String(d).toLowerCase());
+            const dataDexs = token.dataDexs || {};
+
+            const dexValues = allDex.map(dex => {
+                const dexLower = dex.toLowerCase();
+                // Check if this DEX is selected
+                if (selectedDexs.includes(dexLower)) {
+                    const dexData = dataDexs[dexLower];
+                    if (dexData && typeof dexData.left !== 'undefined' && typeof dexData.right !== 'undefined') {
+                        // ✅ EXPORT NILAI ASLI dari aplikasi (NO DEFAULT)
+                        return `${dexData.left}|${dexData.right}`;
+                    }
+                    // Jika tidak ada modal data, skip (return empty)
+                    return "";
+                }
+                return "";
+            });
+
+            const allValues = [...baseValues, ...cexValues, ...dexValues];
+            return allValues.map(v => `"${String(v).replace(/"/g, '""')}"`);
+        });
 
         // Gabungkan jadi CSV
         const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+
+        // Debug logging untuk sample token
+        if (tokenData.length > 0) {
+            const sampleToken = tokenData[0];
+            console.log('[EXPORT CSV] Sample token structure:', {
+                selectedDexs: sampleToken.selectedDexs,
+                dataDexs: sampleToken.dataDexs,
+                selectedCexs: sampleToken.selectedCexs
+            });
+        }
 
         // Buat file download
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `KOIN_MULTICHECKER_${chainLabel}.csv`;
+        a.download = `KOIN_${safeApp}_${chainLabel}.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
+        console.log(`[EXPORT CSV] Exported ${tokenData.length} tokens with ${cexHeaders.length} CEX and ${dexHeaders.length} DEX columns`);
+        console.log(`[EXPORT CSV] DEX columns:`, dexHeaders);
         try { setLastAction(`EXPORT DATA KOIN`, 'success'); } catch(_) {}
     }
 
@@ -390,18 +475,42 @@
         reader.onload = function(e) {
             try {
                 const csvText = e.target.result.trim();
-                const rows = csvText.split("\n");
+                const rows = csvText.split("\n").filter(r => r.trim());
 
-                // Ambil header
-                const headers = rows[0].split(",").map(h => h.trim());
+                if (rows.length < 2) {
+                    throw new Error("CSV file is empty or has no data rows");
+                }
+
+                // Ambil header dan normalize (remove quotes, trim)
+                const rawHeaders = rows[0].split(",").map(h => {
+                    let clean = h.trim();
+                    if (clean.startsWith('"') && clean.endsWith('"')) {
+                        clean = clean.slice(1, -1);
+                    }
+                    return clean;
+                });
+
+                console.log('[IMPORT CSV] Headers detected:', rawHeaders);
+
+                // Detect format: NEW (expanded CEX/DEX columns) or OLD (compact)
+                const hasExpandedFormat = rawHeaders.some(h => h.startsWith('CEX_') || h.startsWith('DEX_'));
+                console.log('[IMPORT CSV] Format detected:', hasExpandedFormat ? 'NEW (Expanded)' : 'OLD (Compact)');
 
                 // Parse tiap baris → object
-                const tokenData = rows.slice(1).map(row => {
+                const tokenData = rows.slice(1).map((row, rowIndex) => {
                     // Split CSV aman, mempertahankan koma dalam tanda kutip
                     const values = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-                    let obj = {};
-                    headers.forEach((header, index) => {
+                    let obj = {
+                        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + rowIndex,
+                        selectedCexs: [],
+                        dexs: [],
+                        dataCexs: {},
+                        dataDexs: {},
+                        status: true
+                    };
+
+                    rawHeaders.forEach((header, index) => {
                         let val = values[index] ? values[index].trim() : "";
 
                         // Hapus tanda kutip luar & ganti "" jadi "
@@ -409,29 +518,155 @@
                             val = val.slice(1, -1).replace(/""/g, '"');
                         }
 
-                        // Parsing field sesuai tipe
-                        if (header === "dataCexs" || header === "dataDexs") {
-                            try { val = JSON.parse(val || "{}"); } catch { val = {}; }
+                        // === NEW FORMAT: Expanded CEX/DEX columns ===
+                        if (header.startsWith('CEX_')) {
+                            const cexName = header.substring(4).toUpperCase();
+                            const isActive = (val || '').toString().trim().toUpperCase() === 'TRUE';
+                            if (isActive && !obj.selectedCexs.includes(cexName)) {
+                                obj.selectedCexs.push(cexName);
+                                // Initialize dataCexs entry
+                                obj.dataCexs[cexName] = {
+                                    feeWDToken: 0,
+                                    feeWDPair: 0,
+                                    depositToken: false,
+                                    withdrawToken: false,
+                                    depositPair: false,
+                                    withdrawPair: false
+                                };
+                            }
                         }
-                        else if (header === "selectedCexs" || header === "selectedDexs") {
-                            val = val ? val.split("|") : [];
+                        else if (header.startsWith('DEX_')) {
+                            const dexName = header.substring(4).toLowerCase();
+                            if (val && val.includes('|')) {
+                                const parts = val.split('|');
+                                const left = parseFloat(parts[0].trim());
+                                const right = parseFloat(parts[1].trim());
+
+                                // ✅ IMPORT NILAI ASLI dari CSV (NO DEFAULT - parse exact values)
+                                if (!isNaN(left) && !isNaN(right)) {
+                                    obj.dexs.push({
+                                        dex: dexName,
+                                        left: left,
+                                        right: right
+                                    });
+                                    // Also add to selectedDexs
+                                    if (!obj.selectedDexs) obj.selectedDexs = [];
+                                    if (!obj.selectedDexs.includes(dexName)) {
+                                        obj.selectedDexs.push(dexName);
+                                    }
+                                }
+                            }
                         }
-                        else if (header === "no" || header === "des_in" || header === "des_out") {
-                            val = val ? Number(val) : null;
+                        // === OLD FORMAT: Compact columns ===
+                        else if (header === "dataCexs") {
+                            try { obj.dataCexs = JSON.parse(val || "{}"); } catch { obj.dataCexs = {}; }
+                        }
+                        else if (header === "dataDexs") {
+                            try { obj.dataDexs = JSON.parse(val || "{}"); } catch { obj.dataDexs = {}; }
+                        }
+                        else if (header === "selectedCexs") {
+                            obj.selectedCexs = val ? val.split("|").map(c => c.trim().toUpperCase()) : [];
+                            // Auto-initialize dataCexs for each selected CEX with default values
+                            obj.selectedCexs.forEach(cexName => {
+                                if (!obj.dataCexs[cexName]) {
+                                    obj.dataCexs[cexName] = {
+                                        feeWDToken: 0,
+                                        feeWDPair: 0,
+                                        depositToken: false,
+                                        withdrawToken: false,
+                                        depositPair: false,
+                                        withdrawPair: false
+                                    };
+                                }
+                            });
+                        }
+                        else if (header === "selectedDexs") {
+                            // OLD FORMAT: selectedDexs | dataDexs columns
+                            obj.selectedDexs = val ? val.split("|").map(d => d.trim().toLowerCase()) : [];
+                            // dataDexs will be parsed separately from dataDexs column
+                            // NO DEFAULT VALUES - use exact data from dataDexs JSON
+                        }
+                        // === Common fields ===
+                        else if (header === "id" || header === "no") {
+                            // Skip - we auto-generate ID
+                        }
+                        else if (header === "des_in" || header === "des_out") {
+                            obj[header] = val ? Number(val) : 0;
                         }
                         else if (header === "status") {
-                            val = (val || "").toString().trim().toLowerCase() === "true";
+                            obj.status = (val || "").toString().trim().toUpperCase() === "TRUE";
                         }
+                        else {
+                            obj[header] = val;
+                        }
+                    });
 
-                        obj[header] = val;
+                    // === POST-PROCESSING: Convert obj.dexs to selectedDexs + dataDexs ===
+                    if (obj.dexs && obj.dexs.length > 0) {
+                        // Build selectedDexs array
+                        obj.selectedDexs = obj.dexs.map(d => d.dex);
+
+                        // Build dataDexs object with EXACT values from CSV (NO DEFAULT)
+                        obj.dexs.forEach(dexItem => {
+                            obj.dataDexs[dexItem.dex] = {
+                                left: dexItem.left,   // ✅ Exact value dari CSV
+                                right: dexItem.right  // ✅ Exact value dari CSV
+                            };
+                        });
+
+                        // Clear temporary dexs array (not needed in final structure)
+                        delete obj.dexs;
+                    } else {
+                        obj.selectedDexs = obj.selectedDexs || [];
+                    }
+
+                    // === POST-PROCESSING: Auto-fill missing dataCexs with default values ===
+                    // Ensure all selectedCexs have dataCexs entries
+                    (obj.selectedCexs || []).forEach(cexName => {
+                        if (!obj.dataCexs[cexName]) {
+                            console.log(`[IMPORT CSV] Auto-filling dataCexs for ${cexName} with defaults`);
+                            obj.dataCexs[cexName] = {
+                                feeWDToken: 0,           // Default: no fee
+                                feeWDPair: 0,            // Default: no fee
+                                depositToken: false,     // Default: deposit closed
+                                withdrawToken: false,    // Default: withdraw closed
+                                depositPair: false,      // Default: deposit closed
+                                withdrawPair: false      // Default: withdraw closed
+                            };
+                        } else {
+                            // Ensure all required fields exist with defaults
+                            const defaults = {
+                                feeWDToken: 0,
+                                feeWDPair: 0,
+                                depositToken: false,
+                                withdrawToken: false,
+                                depositPair: false,
+                                withdrawPair: false
+                            };
+                            // Merge with defaults to fill missing fields
+                            obj.dataCexs[cexName] = { ...defaults, ...obj.dataCexs[cexName] };
+                        }
+                    });
+
+                    // === POST-PROCESSING: Clean up dataCexs - remove entries not in selectedCexs ===
+                    const selectedSet = new Set((obj.selectedCexs || []).map(c => c.toUpperCase()));
+                    Object.keys(obj.dataCexs || {}).forEach(cexName => {
+                        if (!selectedSet.has(cexName.toUpperCase())) {
+                            console.log(`[IMPORT CSV] Removing unused dataCexs entry: ${cexName}`);
+                            delete obj.dataCexs[cexName];
+                        }
                     });
 
                     return obj;
                 });
 
+                console.log('[IMPORT CSV] Parsed tokens:', tokenData.length);
+                console.log('[IMPORT CSV] Sample token:', tokenData[0]);
+
                 // Simpan ke storage (IndexedDB KV)
                 const chainLabel = getActiveChainLabel();
                 saveToLocalStorage(getActiveTokenKeyLocal(), tokenData);
+
                 // Hitung jumlah token yang diimport
                 let jumlahToken = Array.isArray(tokenData) ? tokenData.length : 0;
 
@@ -444,7 +679,6 @@
                         notify('success', `✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`, null, { persist: true });
                         location.reload();
                     } else if (typeof toast !== 'undefined' && toast.success) {
-                        // refactor: route via toast helper
                         toast.success(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
                         location.reload();
                     } else {
@@ -456,7 +690,11 @@
             } catch (error) {
                 console.error("Error parsing CSV:", error);
                 try { setLastAction('IMPORT DATA KOIN', 'error', { error: String(error && error.message || error) }); } catch(_) {}
-                if (typeof toast !== 'undefined' && toast.error) toast.error("Format file CSV tidak valid!"); else alert("Format file CSV tidak valid!");
+                if (typeof toast !== 'undefined' && toast.error) {
+                    toast.error(`Format file CSV tidak valid: ${error.message}`);
+                } else {
+                    alert(`Format file CSV tidak valid: ${error.message}`);
+                }
             }
         };
         reader.readAsText(file);

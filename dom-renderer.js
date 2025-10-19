@@ -27,12 +27,20 @@ function computeActiveDexList() {
 // Build a normalized column specification for the monitoring table header
 function getMonitoringColumnSpec(dexList) {
   const spec = [];
+  const activeDexList = Array.isArray(dexList) ? dexList : [];
   spec.push({ type: 'orderbook-left', label: 'ORDERBOOK', classes: 'uk-text-center uk-text-bolder th-orderbook' });
-  (dexList || []).forEach(d => spec.push({ type: 'dex', side: 'left', key: String(d).toLowerCase(), label: String(d).toUpperCase(), classes: 'uk-text-center uk-text-small th-dex' }));
+  activeDexList.forEach(d => spec.push({ type: 'dex', side: 'left', key: String(d).toLowerCase(), label: String(d).toUpperCase(), classes: 'uk-text-center uk-text-small th-dex' }));
   spec.push({ type: 'detail', label: 'DETAIL TOKEN', classes: 'uk-text-center uk-text-bolder th-detail' });
-  (dexList || []).forEach(d => spec.push({ type: 'dex', side: 'right', key: String(d).toLowerCase(), label: String(d).toUpperCase(), classes: 'uk-text-center uk-text-small th-dex' }));
+  activeDexList.forEach(d => spec.push({ type: 'dex', side: 'right', key: String(d).toLowerCase(), label: String(d).toUpperCase(), classes: 'uk-text-center uk-text-small th-dex' }));
   spec.push({ type: 'orderbook-right', label: 'ORDERBOOK', classes: 'uk-text-center uk-text-bolder th-orderbook' });
   return spec;
+}
+
+// Helper function to calculate total column count based on active DEX list
+function getTotalColumnCount(dexList) {
+  const activeDexCount = Array.isArray(dexList) ? dexList.length : 0;
+  // Formula: 1 (ORDERBOOK left) + activeDexCount (DEX left) + 1 (DETAIL) + activeDexCount (DEX right) + 1 (ORDERBOOK right)
+  return 3 + (activeDexCount * 2);
 }
 
 // Render the monitoring table header from a spec; exposed globally for reuse (e.g., Start Scan)
@@ -45,7 +53,7 @@ function renderMonitoringHeader(dexList) {
     thead.innerHTML = `<tr style="border-bottom: 1px solid black;">${cells.join('')}</tr>`;
   } catch(_) {}
 }
-try { if (typeof window !== 'undefined') { window.renderMonitoringHeader = renderMonitoringHeader; window.computeActiveDexList = computeActiveDexList; } } catch(_) {}
+try { if (typeof window !== 'undefined') { window.renderMonitoringHeader = renderMonitoringHeader; window.computeActiveDexList = computeActiveDexList; window.getTotalColumnCount = getTotalColumnCount; } } catch(_) {}
 
 /**
  * Render monitoring table rows for the given flat token list.
@@ -75,7 +83,7 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
             </td>`;
     }
 
-    function buildDexSlots(direction, data, dexList, idPrefix) {
+    function buildDexSlots(direction, data, dexList, idPrefix, rowIndex) {
         const isLeft = direction === 'LEFT';
         let html = '';
         const lowerDexs = (data.dexs || []).map(d => ({
@@ -86,17 +94,48 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
             const dexKeyLower = String(dexKey).toLowerCase();
             const found = lowerDexs.find(x => x.dex === dexKeyLower);
             if (found) {
-                const dexName = String(dexKey); // display label (from config)
-                const canonicalDex = String(found.dex || dexKeyLower); // used for IDs to match scanner
+                // Get proper display label from CONFIG_DEXS
+                const dexConfig = (typeof window !== 'undefined' && window.CONFIG_DEXS) ? window.CONFIG_DEXS[dexKeyLower] : null;
+                const dexName = (dexConfig && dexConfig.label) ? String(dexConfig.label) : String(dexKey).toUpperCase();
+                // Normalize DEX name using registry to handle aliases (kyberswap->kyber, matcha->0x)
+                let canonicalDex = String(found.dex || dexKeyLower);
+                try {
+                    if (typeof window !== 'undefined' && window.DEX && typeof window.DEX.normalize === 'function') {
+                        canonicalDex = window.DEX.normalize(canonicalDex);
+                    }
+                } catch(_) {}
                 const modal = isLeft ? (found.left ?? 0) : (found.right ?? 0);
-                const idCellRaw = isLeft
-                    ? `${String(data.cex).toUpperCase()}_${canonicalDex.toUpperCase()}_${String(data.symbol_in||'').toUpperCase()}_${String(data.symbol_out||'').toUpperCase()}_${String(data.chain).toUpperCase()}_${String(data.id||'').toUpperCase()}`
-                    : `${String(data.cex).toUpperCase()}_${canonicalDex.toUpperCase()}_${String(data.symbol_out||'').toUpperCase()}_${String(data.symbol_in||'').toUpperCase()}_${String(data.chain).toUpperCase()}_${String(data.id||'').toUpperCase()}`;
-                const safeIdCell = (idCellRaw).replace(/[^A-Z0-9_]/g, '');
+                // ID generation: include token ID and CEX for uniqueness across multiple rows with same symbol pair
+                const sym1 = isLeft ? String(data.symbol_in||'').toUpperCase() : String(data.symbol_out||'').toUpperCase();
+                const sym2 = isLeft ? String(data.symbol_out||'').toUpperCase() : String(data.symbol_in||'').toUpperCase();
+                const tokenId = String(data.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                const baseIdRaw = `${String(data.cex).toUpperCase()}_${canonicalDex.toUpperCase()}_${sym1}_${sym2}_${String(data.chain).toUpperCase()}_${tokenId}`;
+                const baseId = baseIdRaw.replace(/[^A-Z0-9_]/g, '');
+                const fullCellId = `${idPrefix}${baseId}`;
+                // Debug: log cell ID yang dibuat
+                if (window.DEBUG_CELL_IDS) {
+                    console.log(`[buildDexSlots] Created cell:`, {
+                        id: fullCellId,
+                        dex: dexName,
+                        direction: direction,
+                        modal: modal,
+                        symbolIn: data.symbol_in,
+                        symbolOut: data.symbol_out,
+                        cex: data.cex,
+                        chain: data.chain
+                    });
+                }
                 html += `
-                    <td class="td-dex" id="${idPrefix}${safeIdCell}" style="text-align: center; vertical-align: middle;">
-                        <strong class="uk-align-center" style="display:inline-block; margin:0;">${dexName.toUpperCase()} [$${modal}]</strong></br>
-                        <span class="dex-status uk-text-muted">🔒</span>
+                    <td class="td-dex" id="${fullCellId}"
+                        data-cex="${String(data.cex).toUpperCase()}"
+                        data-dex="${canonicalDex}"
+                        data-sym1="${sym1}"
+                        data-sym2="${sym2}"
+                        data-chain="${String(data.chain).toUpperCase()}"
+                        data-row-index="${rowIndex}"
+                        style="text-align: center; vertical-align: middle;">
+                        <strong class="uk-align-center" style="display:inline-block; margin:0;">${dexName.toUpperCase().substring(0, 6)} [$${modal}] </strong></br>
+                        <span class="dex-status uk-text-muted"> 🔒 </span>
                     </td>`;
             } else {
                 html += '<td class="td-dex dex-slot-empty">-</td>';
@@ -105,74 +144,45 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         return html;
     }
 
-    function buildDetailCell(data, chainConfig, idPrefix, warnaChain) {
-        const urlScIn = chainConfig.URL_Chain ? `${chainConfig.URL_Chain}/token/${data.sc_in}` : '#';
-        const urlScOut = chainConfig.URL_Chain ? `${chainConfig.URL_Chain}/token/${data.sc_out}` : '#';
-        const urlsCEX = GeturlExchanger(data.cex, data.symbol_in, data.symbol_out) || {};
-        const tradeTokenUrl = safeUrl(urlsCEX.tradeToken, urlScIn);
-        const tradePairUrl  = safeUrl(urlsCEX.tradePair,  urlScOut);
-        const withdrawTokenUrl = safeUrl(urlsCEX.withdrawTokenUrl || urlsCEX.withdrawUrl, urlScIn);
-        const depositTokenUrl  = safeUrl(urlsCEX.depositTokenUrl  || urlsCEX.depositUrl,  urlScIn);
-        const withdrawPairUrl  = safeUrl(urlsCEX.withdrawPairUrl  || urlsCEX.withdrawUrl, urlScOut);
-        const depositPairUrl   = safeUrl(urlsCEX.depositPairUrl   || urlsCEX.depositUrl,  urlScOut);
-
-        const linkToken = createHoverLink(tradeTokenUrl, (data.symbol_in||'').toUpperCase());
-        const linkPair  = createHoverLink(tradePairUrl,  (data.symbol_out||'').toUpperCase());
-        const WD_TOKEN = linkifyStatus(data.withdrawToken, 'WD', withdrawTokenUrl);
-        const DP_TOKEN = linkifyStatus(data.depositToken,  'DP', depositTokenUrl);
-        const WD_PAIR  = linkifyStatus(data.withdrawPair,  'WD', withdrawPairUrl);
-        const DP_PAIR  = linkifyStatus(data.depositPair,   'DP', depositPairUrl);
-
-        const chainData = getChainData(data.chain);
-        const walletObj = chainData?.CEXCHAIN?.[data.cex] || {};
-        const chainCEX  = (walletObj?.chainCEX || '').toUpperCase();
-        const symbolIn  = (data.symbol_in||'').toUpperCase();
-        const symbolOut = (data.symbol_out||'').toUpperCase();
-
-        const linkStokToken = chainCEX ? `<b>${chainCEX}:</b> ${symbolIn}` : `${symbolIn}`;
-        const linkStokPair  = chainCEX ? `<b>${chainCEX}:</b> ${symbolOut}`: `${symbolOut}`;
-
-        const linkSCtoken = chainConfig.URL_Chain ? `<a href="${chainConfig.URL_Chain}/token/${data.sc_in}" target="_blank">SC_TOKEN</a>` : 'SC_TOKEN';
-        const linkSCpair  = chainConfig.URL_Chain ? `<a href="${chainConfig.URL_Chain}/token/${data.sc_out}" target="_blank">SC_PAIR</a>` : 'SC_PAIR';
-
-        const linkUNIDEX = generateDexLink('unidex', chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
-        const linkOKDEX  = generateDexLink('okx',    chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
-        const linkDEFIL  = generateDexLink('defillama', chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
-        const linkLiFi   = generateDexLink('lifi',   chainData?.Nama_Chain || data.chain, chainData?.Kode_Chain, symbolIn, data.sc_in, symbolOut, data.sc_out) || '';
-
-        return `
-            <td style="vertical-align: middle;">
-                <span class="uk-text-small uk-text-muted">
-                    <span id="${idPrefix}EditMulti-${data.id}"
-                          data-id="${data.id}"
-                          data-chain="${String(data.chain).toLowerCase()}"
-                          data-cex="${String(data.cex).toUpperCase()}"
-                          data-symbol-in="${String(data.symbol_in).toUpperCase()}"
-                          data-symbol-out="${String(data.symbol_out).toUpperCase()}"
-                          title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span></span>
-                <span class="detail-line"><span style="color: ${warnaChain}; font-weight:bolder;">${linkToken} </span>
-                ⇄ <span style="color: ${warnaChain}; font-weight:bolder;">${linkPair} </span>
-                <span id="${idPrefix}DelMulti-${data.id}"
-                      data-id="${data.id}"
-                      data-chain="${String(data.chain).toLowerCase()}"
-                      data-cex="${String(data.cex).toUpperCase()}"
-                      data-symbol-in="${String(data.symbol_in).toUpperCase()}"
-                      data-symbol-out="${String(data.symbol_out).toUpperCase()}"
-                      title="HAPUS DATA KOIN"
-                      uk-icon="icon: trash; ratio: 0.6"
-                      class="uk-text-danger uk-text-bolder delete-token-button"
-                      style="cursor:pointer;"></span></span>
-               
-                <span class="detail-line uk-text-bolder">${WD_TOKEN}~ ${DP_TOKEN} | ${WD_PAIR}~ ${DP_PAIR}</span>
-                <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_in||'').toUpperCase()}</span> ${linkSCtoken} : ${linkStokToken}</span>
-                <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_out||'').toUpperCase()}</span> ${linkSCpair} : ${linkStokPair}</span>
-                <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}</span>
-            </td>`;
-    }
     const dexList = computeActiveDexList();
     if (tableBodyId === 'dataTableBody') { RenderCardSignal(); }
     renderMonitoringHeader(dexList);
     const $tableBody = $('#' + tableBodyId);
+    const $startButton = $('#startSCAN');
+    const hasRows = Array.isArray(filteredData) && filteredData.length > 0;
+    const scanningActive = (() => {
+        try {
+            if (typeof getAppState === 'function') {
+                const state = getAppState();
+                return state && state.run === 'YES';
+            }
+        } catch(_) {}
+        return false;
+    })();
+
+    if ($startButton.length) {
+        if (hasRows) {
+            $startButton.show();
+            if ($startButton.attr('data-disabled-empty') === '1') {
+                $startButton.removeAttr('data-disabled-empty');
+                if (!scanningActive) {
+                    $startButton.prop('disabled', false).removeClass('uk-button-disabled');
+                }
+            }
+        } else {
+            if (!scanningActive) {
+                $startButton.prop('disabled', true).addClass('uk-button-disabled');
+            }
+            $startButton.attr('data-disabled-empty', '1').hide();
+        }
+    }
+
+    if (!hasRows) {
+        const totalCols = getTotalColumnCount(dexList);
+        if ($tableBody.length) $tableBody.html(`<tr><td colspan="${totalCols}" class="uk-text-center">No tokens to display.</td></tr>`);
+        return;
+    }
+
     // Manage concurrent renders per table body // REFACTORED
     if (typeof window !== 'undefined') {
         window.__TABLE_RENDER_JOBS = window.__TABLE_RENDER_JOBS || new Map();
@@ -181,14 +191,6 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
     const __prevJob = window.__TABLE_RENDER_JOBS.get(__jobKey);
     // Cancel previous job safely without try/catch // REFACTORED
     if (__prevJob && typeof __prevJob.cancel === 'function') { __prevJob.cancel(); }
-
-    if (!Array.isArray(filteredData) || filteredData.length === 0) {
-        // Disable the correct start button based on the table being rendered
-        $('#startSCAN').prop('disabled', true);
-
-        if ($tableBody.length) $tableBody.html('<tr><td colspan="11" class="uk-text-center">No tokens to display.</td></tr>');
-        return;
-    }
 
     const maxSlots = dexList.length;
 
@@ -223,8 +225,8 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         // refactor: gunakan helper kecil untuk orderbook kiri
         rowHtml += buildOrderbookCell('LEFT', data, idPrefix, warnaCex);
 
-        // refactor: render slot DEX kiri via helper
-        rowHtml += buildDexSlots('LEFT', data, dexList, idPrefix);
+        // refactor: render slot DEX kiri via helper (pass row index for unique IDs)
+        rowHtml += buildDexSlots('LEFT', data, dexList, idPrefix, index);
 
         // Detail Info
         const urlScIn = chainConfig.URL_Chain ? `${chainConfig.URL_Chain}/token/${data.sc_in}` : '#';
@@ -260,26 +262,25 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
         const linkSCtoken = createHoverLink(urlScIn, '[SC]', 'uk-text-primary');
         const linkSCpair = createHoverLink(urlScOut, '[SC]', 'uk-text-primary');
 
-        const linkOKDEX = createHoverLink(`https://www.okx.com/web3/dex-swap?inputChain=${chainConfig.Kode_Chain}&inputCurrency=${data.sc_in}&outputChain=501&outputCurrency=${data.sc_out}`, '#OKX', 'uk-text-dark');
+        const linkOKDEX = createHoverLink(`https://www.okx.com/web3/dex-swap?inputChain=${chainConfig.Kode_Chain}&inputCurrency=${data.sc_in}&outputChain=${chainConfig.Kode_Chain}&outputCurrency=${data.sc_out}`, '#OKX', 'uk-text-primary');
         const linkUNIDEX = createHoverLink(`https://app.unidex.exchange/?chain=${chainConfig.Nama_Chain}&from=${data.sc_in}&to=${data.sc_out}`, '#UNX', 'uk-text-success');
-        const linkDEFIL = createHoverLink(`https://swap.defillama.com/?chain=${chainConfig.Nama_Chain}&from=${data.sc_in}&to=${data.sc_out}`, '#DFL', 'uk-text-primary');
-        const linkLiFi = createHoverLink(`https://jumper.exchange/?fromChain=${chainConfig.Kode_Chain}&fromToken=${data.sc_in}&toChain=${chainConfig.Kode_Chain}&toToken==${data.sc_out}`, '#JMX', 'uk-text-danger');
+        const linkDEFIL = createHoverLink(`https://swap.defillama.com/?chain=${chainConfig.Nama_Chain}&from=${data.sc_in}&to=${data.sc_out}`, '#DFL', 'uk-text-danger');
+        const linkDZAP = createHoverLink(`https://app.dzap.io/trade?fromChain=${chainConfig.Kode_Chain}&fromToken=${data.sc_in}&toChain=${chainConfig.Kode_Chain}&toToken=${data.sc_out}`, '#DZP', 'uk-text-dark');
 
         const rowId = `DETAIL_${String(data.cex).toUpperCase()}_${String(data.symbol_in).toUpperCase()}_${String(data.symbol_out).toUpperCase()}_${String(data.chain).toUpperCase()}`.replace(/[^A-Z0-9_]/g,'');
         const chainShort = (data.chain || '').substring(0,3).toUpperCase();
 
         rowHtml += `
-            <td id="${idPrefix}${rowId}" class="uk-text-center uk-background td-detail" style="text-align: center; border:1px solid black; width:10%; padding:10px;">
-                <span class="detail-line">[${index + 1}] <span style="color: ${warnaCex}; font-weight:bolder;">${data.cex} </span>
-                on <span style="color: ${warnaChain}; font-weight:bolder;">${chainShort} </span>
+            <td id="${idPrefix}${rowId}" class="uk-text-center uk-background td-detail" style="text-align: center; border:1px solid black; padding:10px;">
+                <span class="detail-line">[${index + 1}] 
+                <span style="color: ${warnaChain}; font-weight:bolder; font-size:medium;"  >${linkToken} </span> ⇄ <span style="color: ${warnaChain}; font-weight:bolder; font-size:medium;">${linkPair} </span>
                 <span id="${idPrefix}EditMulti-${data.id}" data-id="${data.id}"
                 data-chain="${String(data.chain).toLowerCase()}"
                       data-cex="${String(data.cex).toUpperCase()}"
                       data-symbol-in="${String(data.symbol_in).toUpperCase()}"
                       data-symbol-out="${String(data.symbol_out).toUpperCase()}"
-                       title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-dark uk-text-bolder edit-token-button" style="cursor:pointer"></span></span>
-                <span class="detail-line"><span style="color: ${warnaChain}; font-weight:bolder;">${linkToken} </span>
-                ⇄ <span style="color: ${warnaChain}; font-weight:bolder;">${linkPair} </span>
+                       title="UBAH DATA KOIN" uk-icon="icon: settings; ratio: 0.7" class="uk-text-primary uk-text-bolder edit-token-button" style="cursor:pointer"></span>
+                
                 <span id="${idPrefix}DelMulti-${data.id}"
                       data-id="${data.id}"
                       data-chain="${String(data.chain).toLowerCase()}"
@@ -287,18 +288,21 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
                       data-symbol-in="${String(data.symbol_in).toUpperCase()}"
                       data-symbol-out="${String(data.symbol_out).toUpperCase()}"
                       title="HAPUS DATA KOIN"
-                      uk-icon="icon: trash; ratio: 0.6"
+                      uk-icon="icon: trash; ratio: 0.7"
                       class="uk-text-danger uk-text-bolder delete-token-button"
-                      style="cursor:pointer;"></span></span>
-               
+                      style="cursor:pointer;">
+                </span>
+                </span>
+                               <span style="color: ${warnaCex}; font-weight:bolder;">${data.cex} </span> on <span style="color: ${warnaChain}; font-weight:bolder;">${chainShort} </span>
+
                 <span class="detail-line uk-text-bolder">${WD_TOKEN}~ ${DP_TOKEN} | ${WD_PAIR}~ ${DP_PAIR}</span>
                 <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_in||'').toUpperCase()}</span> ${linkSCtoken} : ${linkStokToken}</span>
                 <span class="detail-line"><span class="uk-text-primary uk-text-bolder">${(data.symbol_out||'').toUpperCase()}</span> ${linkSCpair} : ${linkStokPair}</span>
-                <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkLiFi}</span>
+                <span class="detail-line">${linkUNIDEX} ${linkOKDEX} ${linkDEFIL} ${linkDZAP}</span>
             </td>`;
 
         // refactor: render slot DEX kanan via helper
-        rowHtml += buildDexSlots('RIGHT', data, dexList, idPrefix);
+        rowHtml += buildDexSlots('RIGHT', data, dexList, idPrefix, index);
 
         // refactor: gunakan helper kecil untuk orderbook kanan
         rowHtml += buildOrderbookCell('RIGHT', data, idPrefix, warnaCex);
@@ -483,29 +487,23 @@ function renderTokenManagementList() {
             const name = String(cx).toUpperCase();
             const col = (CONFIG_CEX?.[name]?.WARNA) || '#000';
             const d = (r.dataCexs || {})[name] || {};
-            const dpTok = (d.depositToken === true) ? true : (d.depositToken === false ? false : undefined);
-            const dpPr  = (d.depositPair  === true) ? true : (d.depositPair  === false ? false : undefined);
-            const wdTok = (d.withdrawToken === true) ? true : (d.withdrawToken === false ? false : undefined);
-            const wdPr  = (d.withdrawPair  === true) ? true : (d.withdrawPair  === false ? false : undefined);
+            
+            // REFACTORED: Tampilkan status WD/DP secara terpisah untuk Token dan Pair agar konsisten dengan tabel scanning.
+            const renderStatus = (flag, label) => {
+                if (flag === true) return `<span class="uk-text-success">${label}</span>`; // WD, DP
+                if (flag === false) return `<span class="uk-text-danger">${label === 'WD' ? 'WX' : 'DX'}</span>`; // WX, DX
+                return `<span class="uk-text-muted">?${label}</span>`;
+            };
 
-            function aggFlag(a, b){
-                if (a === true || b === true) return true;
-                if (a === false || b === false) return false;
-                return undefined;
-            }
-            const dp = aggFlag(dpTok, dpPr);
-            const wd = aggFlag(wdTok, wdPr);
+            const dpTokLabel = renderStatus(d.depositToken, 'DP');
+            const wdTokLabel = renderStatus(d.withdrawToken, 'WD');
+            const dpPairLabel = renderStatus(d.depositPair, 'DP');
+            const wdPairLabel = renderStatus(d.withdrawPair, 'WD');
 
-            function renderIndicator(flag, onText, offText, unkText, title){
-                if (flag === true)  return `<span class=\"uk-text-success\" title=\"${title}\">${onText}</span>`;
-                if (flag === false) return `<span class=\"uk-text-danger\" title=\"${title}\">${offText}</span>`;
-                return `<span style=\"color:#000\" title=\"${title}\">${unkText}</span>`;
-            }
-            const title = `Deposit(Token:${dpTok===true?'✔':dpTok===false?'✖':'?'} / Pair:${dpPr===true?'✔':dpPr===false?'✖':'?'}) | Withdraw(Token:${wdTok===true?'✔':wdTok===false?'✖':'?'} / Pair:${wdPr===true?'✔':wdPr===false?'✖':'?'})`;
-            const depLabel = renderIndicator(dp, 'DP', 'DX', 'DP?', title);
-            const wdrLabel = renderIndicator(wd, 'WD', 'WX', 'WD?', title);
-            const sup = `<span style=\"font-size:12px; margin-left:4px; margin-right:4px;\">${depLabel}&nbsp;${wdrLabel}</span>`;
-            return ` <span class=\"cex-chip\" style=\"font-weight:bolder;color:${col}\">${name} [${sup}]</span>`;
+            const tokenStatus = `${wdTokLabel}/${dpTokLabel}`;
+            const pairStatus = `${wdPairLabel}/${dpPairLabel}`;
+
+            return ` <span class="cex-chip" style="font-weight:bolder;color:${col}" title="Status WD/DP untuk ${name}">${name} [${tokenStatus} | ${pairStatus}]</span>`;
         }).join(' ');
 
         const chainName = (CONFIG_CHAINS?.[String(r.chain).toLowerCase()]?.Nama_Chain) || r.chain;
@@ -630,10 +628,15 @@ function updateTableVolCEX(finalResult, cex, tableBodyId = 'dataTableBody') {
         </span>
     `;
 
-    const volumesBuyToken  = finalResult.volumes_buyToken.slice().sort((a, b) => b.price - a.price);
-    const volumesSellPair  = finalResult.volumes_sellPair;
-    const volumesBuyPair   = finalResult.volumes_buyPair.slice().sort((a, b) => b.price - a.price);
-    const volumesSellToken = finalResult.volumes_sellToken.slice().sort((a, b) => b.price - a.price);
+    const volumesBuyTokenAll  = Array.isArray(finalResult.volumes_buyToken) ? finalResult.volumes_buyToken.slice().sort((a, b) => b.price - a.price) : [];
+    const volumesSellPairAll  = Array.isArray(finalResult.volumes_sellPair) ? finalResult.volumes_sellPair.slice() : [];
+    const volumesBuyPairAll   = Array.isArray(finalResult.volumes_buyPair) ? finalResult.volumes_buyPair.slice().sort((a, b) => b.price - a.price) : [];
+    const volumesSellTokenAll = Array.isArray(finalResult.volumes_sellToken) ? finalResult.volumes_sellToken.slice().sort((a, b) => b.price - a.price) : [];
+
+    const volumesSellToken = volumesSellTokenAll.slice(0, 2);
+    const volumesSellPair  = volumesSellPairAll.slice(0, 4);
+    const volumesBuyPair   = volumesBuyPairAll.slice(0, 2);
+    const volumesBuyToken  = volumesBuyTokenAll.slice(0, 4);
 
     const leftId  = idPrefix + ('LEFT_'  + cexName + '_' + TokenPair + '_' + String(finalResult.chainName||'').toUpperCase()).replace(/[^A-Z0-9_]/g,'');
     const rightId = idPrefix + ('RIGHT_' + cexName + '_' + TokenPair + '_' + String(finalResult.chainName||'').toUpperCase()).replace(/[^A-Z0-9_]/g,'');
@@ -688,19 +691,63 @@ function DisplayPNL(data) {
     idPrefix, baseId, linkDEX, dexUsdRate,
     quoteToUSDT: quoteToUSDT_in,
     cexInfo,
-    rates
+    rates,
+    isFallback, fallbackSource  // REFACTORED: Tambahkan info sumber alternatif
   } = data;
 
   const elementId = String(idPrefix || '') + String(baseId || '');
   const el = document.getElementById(elementId);
   if (!el) {
+    // Debug: log missing cell ID dengan console.error agar lebih terlihat
+    console.error(`❌ [DisplayPNL] Cell NOT FOUND!`, {
+      elementId,
+      cex: cex,
+      dex: dextype,
+      direction: trx,
+      symbolIn: Name_in,
+      symbolOut: Name_out,
+      chain: nameChain,
+      baseId: baseId,
+      idPrefix: idPrefix
+    });
+    // List all cells with similar pattern for debugging
     try {
-      // debug logs removed
+      const allCells = Array.from(document.querySelectorAll('[id*="' + String(cex).toUpperCase() + '"]'));
+      const relevantCells = allCells.filter(c => c.id.includes(String(Name_in || '').toUpperCase())).map(c => c.id);
+      if (relevantCells.length) {
+        console.log(`💡 Similar cells found:`, relevantCells);
+      }
     } catch(_) {}
     return;
   }
-  // Clear any prior error background once a successful result renders
+
+  // Success log
+  // console.log(`✅ [DisplayPNL] Cell FOUND & Updated:`, {
+  //   elementId,
+  //   dex: dextype,
+  //   pnl: profitLoss.toFixed(2),
+  //   isFallback,
+  //   fallbackSource
+  // });
+  // REFACTORED: Clear any prior error background and finalize cell
   try { el.classList.remove('dex-error'); } catch(_) {}
+  // REFACTORED: Finalize cell untuk mencegah overwrite oleh error lainnya
+  try {
+    if (el.dataset) {
+      el.dataset.final = '1';
+      delete el.dataset.checking;
+      delete el.dataset.deadline;
+    }
+  } catch(_) {}
+  // REFACTORED: Clear error status span jika ada
+  try {
+    const statusSpan = el.querySelector('.dex-status');
+    if (statusSpan) {
+      // Hapus status error/checking, biarkan DisplayPNL render hasil normal
+      statusSpan.innerHTML = '';
+      statusSpan.className = 'dex-status';
+    }
+  } catch(_) {}
   // Capture existing title log (built during scan in scanner.js) to reuse on price links only
   let __titleLog = null;
   try { __titleLog = (el && el.dataset && el.dataset.titleLog) ? String(el.dataset.titleLog) : null; } catch(_) {}
@@ -791,6 +838,9 @@ function DisplayPNL(data) {
 
   let buyPrice, sellPrice, buyLink, sellLink, tipBuy, tipSell;
 
+  // REFACTORED: Tambahkan info sumber alternatif ke label DEX
+  const dexLabel = isFallback && fallbackSource ? `${DEX} via ${fallbackSource}` : DEX;
+
   if (direction === 'tokentopair') {
     buyPrice  = refCexBuy;
     sellPrice = n(dexUsdtPerToken);
@@ -799,14 +849,14 @@ function DisplayPNL(data) {
 
     tipBuy  = `USDT -> ${Name_in} | ${CEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
     const inv = sellPrice > 0 ? (1/sellPrice) : 0;
-    tipSell = `${Name_in} -> ${Name_out} | ${DEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
+    tipSell = `${Name_in} -> ${Name_out} | ${dexLabel} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   } else {
     buyPrice  = n(dexUsdtPerToken);
     sellPrice = refCexSell;
     buyLink   = linkDEX || '#';
     sellLink  = cexLinks.trade;      // PAIR
 
-    tipBuy  = `${Name_in} -> ${Name_out} | ${DEX} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
+    tipBuy  = `${Name_in} -> ${Name_out} | ${dexLabel} | ${fmtIDR(buyPrice)} | ${fmtUSD(buyPrice)} USDT/${Name_in}`;
     const inv = sellPrice > 0 ? (1/sellPrice) : 0;
     tipSell = `${Name_out} -> USDT | ${CEX} | ${fmtIDR(sellPrice)} | ${inv>0&&isFinite(inv)?inv.toFixed(6):'N/A'} ${Name_in}/${Name_out}`;
   }
@@ -1007,13 +1057,14 @@ function DisplayPNL(data) {
   $mainCell.html(`${dexNameAndModal ? dexNameAndModal + '<br>' : ''}<span class="${resultWrapClass}" style="${boldStyle}">${resultHtml}</span>`);
   try {
     el.dataset.final = '1';
+    el.dataset.finalSuccess = '1';  // Mark as successful (cannot be overridden)
+    delete el.dataset.finalError;    // Clear any prior error flag
     // clear any pending checking metadata so sweepers/tickers stop
     try { delete el.dataset.deadline; } catch(_) {}
     try { delete el.dataset.checking; } catch(_) {}
   } catch(_) {}
 }
 
-/** Append a compact item to the DEX signal panel and play audio. */
 function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair, profitLossPercent, modal, nameChain, codeChain, trx, idPrefix, domIdOverride) {
   const chainData = getChainData(nameChain);
   const chainShort = String(chainData?.SHORT_NAME || chainData?.Nama_Chain || nameChain).toUpperCase();
@@ -1061,8 +1112,8 @@ function InfoSinyal(DEXPLUS, TokenPair, PNL, totalFee, cex, NameToken, NamePair,
 
   const audio = new Audio('audio.mp3');
   audio.play();
-}
- 
+} 
+
 /**
  * Compute rates, value, and PNL for a DEX route result; return data for DisplayPNL.
  */
@@ -1083,29 +1134,28 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     // Early guards for numeric validity to avoid NaN/Infinity propagation
     const idPrefix = tableBodyId + '_';
     const toId = () => String(baseId || '').replace(/[^A-Z0-9_]/g,'');
-    const errorPayload = (msg) => {
-        return { type: 'error', id: idPrefix + toId(), message: msg };
-    };
+    const errorPayload = (msg) => ({ type: 'error', id: idPrefix + toId(), message: msg });
     const isPos = v => Number.isFinite(v) && v >= 0;
     const isPosStrict = v => Number.isFinite(v) && v > 0;
 
     if (!isPosStrict(amount_in)) return errorPayload('Amount_in tidak valid');
     if (!isPos(amount_out)) return errorPayload('Amount_out tidak valid');
-    if (!(isPos(priceBuyToken_CEX) && isPos(priceSellToken_CEX) && isPos(priceBuyPair_CEX) && isPos(priceSellPair_CEX))) {
-        return errorPayload('Harga CEX tidak valid');
-    }
 
-    const rateTokentoPair = amount_out / amount_in;
-    const ratePairtoToken = amount_in / amount_out;
+    const rateTokentoPair = (amount_in > 0) ? (amount_out / amount_in) : 0;
+    const ratePairtoToken = (amount_out > 0) ? (amount_in / amount_out) : 0;
 
     const totalModal = Modal + FeeSwap + FeeWD + FeeTrade;
     const totalFee = FeeSwap + FeeWD + FeeTrade;
 
     let totalValue = 0;
     if (trx === "TokentoPair") {
-        totalValue = amount_out * priceSellPair_CEX;
+        if (priceSellPair_CEX > 0) totalValue = amount_out * priceSellPair_CEX;
+        else if (priceBuyToken_CEX > 0) totalValue = amount_in * priceBuyToken_CEX;
+        else totalValue = amount_out;
     } else {
-        totalValue = amount_out * priceSellToken_CEX;
+        if (priceSellToken_CEX > 0) totalValue = amount_out * priceSellToken_CEX;
+        else if (priceBuyPair_CEX > 0) totalValue = amount_in * priceBuyPair_CEX;
+        else totalValue = amount_out;
     }
 
     // Validate totals before computing PNL
@@ -1115,14 +1165,7 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     const profitLoss = totalValue - totalModal;
     const profitLossPercent = totalModal !== 0 ? (profitLoss / totalModal) * 100 : 0;
 
-    const linkDEX = generateDexLink(dextype,nameChain,codeChain,Name_in,sc_input, Name_out, sc_output);
-
-    if (!linkDEX) {
-        // refactor: use notify directly; shim ensures availability
-        try { if (typeof notify === 'function') notify('error', `DEX Type "${dextype}" tidak valid atau belum didukung.`); } catch(_) {}
-        try { console.error(`DEX Type "${dextype}" tidak valid atau belum didukung.`); } catch(_) {}
-        return { type: 'error', id: idPrefix + baseId, message: `DEX Type "${dextype}" tidak valid.` };
-    }
+    const linkDEX = generateDexLink(dextype,nameChain,codeChain,Name_in,sc_input, Name_out, sc_output) || '#';
 
     let displayRate, tooltipRate, tooltipText;
     tooltipRate = rateTokentoPair;
@@ -1164,11 +1207,15 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     // Fallback if DEX-based USD rate not resolved
     // - TokentoPair: USD/token = (pair per token) * (USD per 1 pair)
     // - PairtoToken: USD/token = langsung harga CEX token (hindari mengalikan hingga jadi USD per PAIR)
-    if (typeof displayRate === 'undefined') {
+    if (!Number.isFinite(displayRate) || displayRate <= 0) {
         if (trx === 'TokentoPair') {
-            displayRate = rateTokentoPair * priceSellPair_CEX;
+            displayRate = priceSellPair_CEX > 0
+                ? priceSellPair_CEX
+                : (priceBuyToken_CEX > 0 ? priceBuyToken_CEX : rateTokentoPair || 0);
         } else {
-            displayRate = priceSellToken_CEX; // correct fallback for Pair->Token in USD/token
+            displayRate = priceSellToken_CEX > 0
+                ? priceSellToken_CEX
+                : (priceBuyPair_CEX > 0 ? priceBuyPair_CEX : (rateTokentoPair > 0 ? (1 / rateTokentoPair) : 0));
         }
     }
 
@@ -1181,6 +1228,10 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     const swapHtml = `<a href="${linkDEX}" target="_blank">${rateLabel}</a>`;
     // debug logs removed
 
+    // REFACTORED: Tambahkan info sumber alternatif dari DataDEX
+    const isFallback = DataDEX && DataDEX.isFallback === true;
+    const fallbackSource = DataDEX && DataDEX.fallbackSource ? String(DataDEX.fallbackSource) : '';
+
     return {
         type: 'update',
         idPrefix: idPrefix,
@@ -1191,7 +1242,8 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
         profitLoss, cex, Name_in, NameX, totalFee, Modal, dextype,
         priceBuyToken_CEX, priceSellToken_CEX, priceBuyPair_CEX, priceSellPair_CEX,
         FeeSwap, FeeWD, sc_input, sc_output, Name_out, totalValue, totalModal,
-        nameChain, codeChain, trx, profitLossPercent, vol
+        nameChain, codeChain, trx, profitLossPercent, vol,
+        isFallback, fallbackSource  // REFACTORED: Tambahkan info sumber alternatif
     };
 }
 

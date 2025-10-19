@@ -27,6 +27,229 @@ function getAppMode() {
     }
 }
 
+// =================================================================================
+// GLOBAL SCAN LOCK SYSTEM
+// =================================================================================
+/**
+ * Global scan lock menggunakan filter.run untuk mencegah multiple scan bersamaan.
+ * Lock disimpan dengan metadata: tabId, timestamp, mode, chain
+ */
+
+/**
+ * Get global scan lock info dari semua filter keys
+ * @returns {Object|null} Lock info jika ada scan berjalan, null jika tidak ada
+ */
+function getGlobalScanLock() {
+    try {
+        const now = Date.now();
+        const LOCK_TIMEOUT = 300000; // 5 minutes - auto cleanup if stale
+
+        // Check FILTER_MULTICHAIN
+        const multiFilter = getFromLocalStorage('FILTER_MULTICHAIN', {});
+        if (multiFilter.run === 'YES' && multiFilter.runMeta) {
+            const age = now - (multiFilter.runMeta.timestamp || 0);
+            if (age < LOCK_TIMEOUT) {
+                return {
+                    mode: 'MULTICHAIN',
+                    key: 'FILTER_MULTICHAIN',
+                    ...multiFilter.runMeta,
+                    age
+                };
+            } else {
+                // Stale lock - auto cleanup
+                clearGlobalScanLock('FILTER_MULTICHAIN');
+            }
+        }
+
+        // Check all FILTER_<CHAIN> keys
+        const chains = Object.keys(window.CONFIG_CHAINS || {});
+        for (const chain of chains) {
+            const key = `FILTER_${chain.toUpperCase()}`;
+            const filter = getFromLocalStorage(key, {});
+            if (filter.run === 'YES' && filter.runMeta) {
+                const age = now - (filter.runMeta.timestamp || 0);
+                if (age < LOCK_TIMEOUT) {
+                    return {
+                        mode: chain.toUpperCase(),
+                        key,
+                        ...filter.runMeta,
+                        age
+                    };
+                } else {
+                    // Stale lock - auto cleanup
+                    clearGlobalScanLock(key);
+                }
+            }
+        }
+
+        return null;
+    } catch(e) {
+        console.error('[SCAN LOCK] Error getting global lock:', e);
+        return null;
+    }
+}
+
+/**
+ * Set global scan lock
+ * @param {string} filterKey - Filter key (FILTER_MULTICHAIN or FILTER_<CHAIN>)
+ * @param {Object} meta - Metadata: { tabId, mode, chain }
+ * @returns {boolean} True if lock acquired, false if already locked
+ */
+function setGlobalScanLock(filterKey, meta = {}) {
+    try {
+        // Check if scan limit is enabled
+        const scanLimitEnabled = typeof window !== 'undefined'
+            && window.CONFIG_APP
+            && window.CONFIG_APP.APP
+            && window.CONFIG_APP.APP.SCAN_LIMIT === true;
+
+        // If scan limit is disabled, skip lock checking (allow multiple scans)
+        if (!scanLimitEnabled) {
+            console.log('[SCAN LOCK] Scan limit disabled - skipping lock enforcement');
+            // Still set the lock data for tracking purposes, but don't enforce uniqueness
+            const filter = getFromLocalStorage(filterKey, {}) || {};
+            filter.run = 'YES';
+            filter.runMeta = {
+                tabId: meta.tabId || (typeof getTabId === 'function' ? getTabId() : null),
+                mode: meta.mode || 'UNKNOWN',
+                chain: meta.chain || null,
+                timestamp: Date.now(),
+                startTime: new Date().toISOString()
+            };
+            saveToLocalStorage(filterKey, filter);
+            startScanLockHeartbeat(filterKey);
+            return true;
+        }
+
+        // Scan limit is enabled - enforce single scan restriction
+        const existingLock = getGlobalScanLock();
+        if (existingLock) {
+            const isSameTab = existingLock.tabId === (meta.tabId || getTabId());
+            if (!isSameTab) {
+                console.warn('[SCAN LOCK] Cannot acquire lock - scan already running:', existingLock);
+                return false;
+            }
+        }
+
+        const filter = getFromLocalStorage(filterKey, {}) || {};
+        filter.run = 'YES';
+        filter.runMeta = {
+            tabId: meta.tabId || (typeof getTabId === 'function' ? getTabId() : null),
+            mode: meta.mode || 'UNKNOWN',
+            chain: meta.chain || null,
+            timestamp: Date.now(),
+            startTime: new Date().toISOString()
+        };
+
+        saveToLocalStorage(filterKey, filter);
+        console.log('[SCAN LOCK] Lock acquired:', filterKey, filter.runMeta);
+
+        // Start heartbeat
+        startScanLockHeartbeat(filterKey);
+
+        return true;
+    } catch(e) {
+        console.error('[SCAN LOCK] Error setting lock:', e);
+        return false;
+    }
+}
+
+/**
+ * Clear global scan lock
+ * @param {string} filterKey - Filter key to clear
+ */
+function clearGlobalScanLock(filterKey) {
+    try {
+        const filter = getFromLocalStorage(filterKey, {}) || {};
+        filter.run = 'NO';
+        delete filter.runMeta;
+        saveToLocalStorage(filterKey, filter);
+        console.log('[SCAN LOCK] Lock cleared:', filterKey);
+
+        // Stop heartbeat
+        stopScanLockHeartbeat();
+    } catch(e) {
+        console.error('[SCAN LOCK] Error clearing lock:', e);
+    }
+}
+
+/**
+ * Check if current tab can start scanning
+ * @returns {Object} { canScan: boolean, reason: string, lockInfo: Object|null }
+ */
+function checkCanStartScan() {
+    try {
+        // Check if scan limit is enabled
+        const scanLimitEnabled = typeof window !== 'undefined'
+            && window.CONFIG_APP
+            && window.CONFIG_APP.APP
+            && window.CONFIG_APP.APP.SCAN_LIMIT === true;
+
+        // If scan limit is disabled, always allow scanning
+        if (!scanLimitEnabled) {
+            console.log('[SCAN LOCK] Scan limit disabled - allowing multiple scans');
+            return { canScan: true, reason: 'Scan limit disabled', lockInfo: null };
+        }
+
+        const lock = getGlobalScanLock();
+
+        if (!lock) {
+            return { canScan: true, reason: 'No active scan', lockInfo: null };
+        }
+
+        const currentTabId = typeof getTabId === 'function' ? getTabId() : null;
+        const isSameTab = lock.tabId === currentTabId;
+
+        if (isSameTab) {
+            return { canScan: true, reason: 'Same tab lock', lockInfo: lock };
+        }
+
+        const ageSeconds = Math.floor(lock.age / 1000);
+        const lockMode = lock.mode || 'UNKNOWN';
+        const reason = `Scan sedang berjalan di tab lain (${lockMode}) - ${ageSeconds}s ago`;
+
+        return { canScan: false, reason, lockInfo: lock };
+    } catch(e) {
+        console.error('[SCAN LOCK] Error checking can scan:', e);
+        return { canScan: true, reason: 'Error checking - allowing scan', lockInfo: null };
+    }
+}
+
+// Heartbeat untuk keep-alive scan lock
+let _scanLockHeartbeatInterval = null;
+let _scanLockHeartbeatKey = null;
+
+function startScanLockHeartbeat(filterKey) {
+    stopScanLockHeartbeat(); // Clear any existing
+
+    _scanLockHeartbeatKey = filterKey;
+    _scanLockHeartbeatInterval = setInterval(() => {
+        try {
+            const filter = getFromLocalStorage(filterKey, {});
+            if (filter.run === 'YES' && filter.runMeta) {
+                // Update timestamp to keep lock alive
+                filter.runMeta.timestamp = Date.now();
+                saveToLocalStorage(filterKey, filter);
+                console.log('[SCAN LOCK] Heartbeat updated:', filterKey);
+            } else {
+                // Lock was cleared elsewhere - stop heartbeat
+                stopScanLockHeartbeat();
+            }
+        } catch(e) {
+            console.error('[SCAN LOCK] Heartbeat error:', e);
+        }
+    }, 30000); // Update every 30 seconds
+}
+
+function stopScanLockHeartbeat() {
+    if (_scanLockHeartbeatInterval) {
+        clearInterval(_scanLockHeartbeatInterval);
+        _scanLockHeartbeatInterval = null;
+        _scanLockHeartbeatKey = null;
+        console.log('[SCAN LOCK] Heartbeat stopped');
+    }
+}
+
 /** Returns the active token storage key based on mode. */
 function getActiveTokenKey() {
     const m = getAppMode();
@@ -310,6 +533,7 @@ function getFeatureReadiness() {
         export: hasSettings && (mode.type === 'single' ? hasTokensChain : hasTokensMulti),
         wallet: hasSettings && (hasTokensChain || hasTokensMulti),
         assets: hasSettings,
+        snapshot: hasSettings,
         proxy: true,
         reload: true
     };
@@ -448,20 +672,18 @@ function safeUrl(u, fallback) {
 function linkifyStatus(flag, label, urlOk, colorOk = 'green') {
     // Selalu pertahankan hyperlink bila URL tersedia; ubah hanya teks + warna
     const safe = (u) => (u && /^https?:\/\//i.test(u)) ? u : '#';
-    let text = label;
-    let color = colorOk;
+    let text, color, className;
     if (flag === true) {
-        text = label; // e.g., 'WD' / 'DP'
-        color = colorOk || 'green';
+        text = label; // WD, DP
+        className = 'uk-text-success';
     } else if (flag === false) {
-        text = (label === 'DP') ? 'DX' : 'WX';
-        color = 'red';
+        text = (label === 'DP') ? 'DX' : 'WX'; // DX, WX
+        className = 'uk-text-danger';
     } else {
-        // Unknown / belum sinkron → tampilkan "WD ?" atau "DP ?"
-        text = `${label}?`;
-        color = 'black';
+        text = `?${label}`; // ?WD, ?DP
+        className = 'uk-text-muted';
     }
-    return `<a href="${safe(urlOk)}" target="_blank" rel="noopener noreferrer" class="uk-text-bold" style="color:${color};">${text}</a>`;
+    return `<a href="${safe(urlOk)}" target="_blank" rel="noopener noreferrer" class="uk-text-bold ${className}">${text}</a>`;
 }
 
 // refactor: remove getStatusLabel (tidak dipakai); gunakan linkifyStatus untuk status DP/WD.
@@ -643,11 +865,15 @@ function flattenDataKoin(dataTokens) {
     (item.selectedCexs || []).forEach(cex => {
       const cexUpper = String(cex).toUpperCase();
       const cexInfo = item.dataCexs?.[cexUpper] || {};
-      const dexArray = (item.selectedDexs || []).map(dex => ({
-        dex: dex,
-        left: item.dataDexs?.[dex]?.left || 0,
-        right: item.dataDexs?.[dex]?.right || 0
-      }));
+      // Normalize DEX keys to lowercase for consistency
+      const dexArray = (item.selectedDexs || []).map(dex => {
+        const dexLower = String(dex).toLowerCase();
+        return {
+          dex: dexLower,
+          left: item.dataDexs?.[dex]?.left || item.dataDexs?.[dexLower]?.left || 0,
+          right: item.dataDexs?.[dex]?.right || item.dataDexs?.[dexLower]?.right || 0
+        };
+      });
 
       flatResult.push({
         no: counter++,
@@ -674,6 +900,40 @@ function flattenDataKoin(dataTokens) {
 
   return flatResult;
 }
+
+/**
+ * Generate consistent DEX cell ID for both skeleton and scanner
+ * @param {Object} params - Parameters for ID generation
+ * @param {string} params.cex - CEX name (e.g., 'BINANCE')
+ * @param {string} params.dex - DEX name (e.g., 'paraswap')
+ * @param {string} params.symbolIn - Input symbol (e.g., 'SAND')
+ * @param {string} params.symbolOut - Output symbol (e.g., 'EDU')
+ * @param {string} params.chain - Chain name (e.g., 'BSC')
+ * @param {boolean} params.isLeft - True for LEFT side (TokentoPair), False for RIGHT (PairtoToken)
+ * @param {string} params.tableBodyId - Table body ID prefix (e.g., 'dataTableBody')
+ * @returns {string} Full cell ID
+ */
+function generateDexCellId({ cex, dex, symbolIn, symbolOut, chain, isLeft, tableBodyId = 'dataTableBody', tokenId = '' }) {
+  const cexUpper = String(cex || '').toUpperCase();
+  const dexUpper = String(dex || '').toLowerCase().toUpperCase(); // normalize
+  const sym1 = isLeft ? String(symbolIn || '').toUpperCase() : String(symbolOut || '').toUpperCase();
+  const sym2 = isLeft ? String(symbolOut || '').toUpperCase() : String(symbolIn || '').toUpperCase();
+  const chainUpper = String(chain || '').toUpperCase();
+  const tokenIdUpper = String(tokenId || '').toUpperCase();
+
+  const baseIdRaw = tokenIdUpper
+    ? `${cexUpper}_${dexUpper}_${sym1}_${sym2}_${chainUpper}_${tokenIdUpper}`
+    : `${cexUpper}_${dexUpper}_${sym1}_${sym2}_${chainUpper}`;
+  const baseId = baseIdRaw.replace(/[^A-Z0-9_]/g, '');
+  return `${tableBodyId}_${baseId}`;
+}
+
+// Export to window
+try {
+  if (typeof window !== 'undefined') {
+    window.generateDexCellId = generateDexCellId;
+  }
+} catch(_) {}
 
 /**
  * Calculates the estimated swap fee in USD for a given chain.
@@ -959,7 +1219,12 @@ try {
             generateDexLink,
             convertIDRtoUSDT,
             debounce,
-            setScanUIGating
+            setScanUIGating,
+            // Global Scan Lock
+            getGlobalScanLock,
+            setGlobalScanLock,
+            clearGlobalScanLock,
+            checkCanStartScan
         });
     }
 } catch(_) {}
