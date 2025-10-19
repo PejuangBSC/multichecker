@@ -15,23 +15,51 @@
     let activeChain = null;
     let selectedCexList = [];
 
-    /**
-     * Apply the same filter rules used by scanner/management tables so wallet view stays in sync.
-     */
+    const chainSynonymResolver = (() => {
+        const map = new Map();
+        const source = (root && root.CHAIN_SYNONYMS) ? root.CHAIN_SYNONYMS : {};
+        Object.keys(source).forEach(key => {
+            const canonical = String(key).toLowerCase();
+            map.set(canonical, canonical);
+            const list = Array.isArray(source[key]) ? source[key] : [];
+            list.forEach(name => {
+                const norm = String(name).toLowerCase();
+                if (!map.has(norm)) {
+                    map.set(norm, canonical);
+                }
+            });
+        });
+        return {
+            canonical(raw) {
+                if (raw === undefined || raw === null) return null;
+                const norm = String(raw).toLowerCase().trim();
+                if (!norm) return null;
+                return map.get(norm) || norm;
+            }
+        };
+    })();
+
+    function getCanonicalChainKey(rawChain) {
+        return chainSynonymResolver.canonical(rawChain);
+    }
+
     function filterTokensForWallet(tokens, mode) {
         if (!Array.isArray(tokens) || tokens.length === 0) return [];
 
         const CONFIG_CHAINS = root.CONFIG_CHAINS || {};
 
         if (mode.type === 'single' && mode.chain) {
-            const chainKey = String(mode.chain).toLowerCase();
+            const chainKey = getCanonicalChainKey(mode.chain) || String(mode.chain).toLowerCase();
             const rawFilter = (typeof getFromLocalStorage === 'function')
                 ? getFromLocalStorage(`FILTER_${String(chainKey).toUpperCase()}`, null)
                 : null;
             const filterVals = (typeof getFilterChain === 'function') ? getFilterChain(chainKey) : { cex: [], pair: [], dex: [] };
             // First load (no saved filter) -> keep all chain tokens
             if (!rawFilter) {
-                return tokens.filter(t => String(t.chain || '').toLowerCase() === chainKey);
+                return tokens.filter(t => {
+                    const tokenChain = getCanonicalChainKey(t.chain) || String(t.chain || '').toLowerCase();
+                    return tokenChain === chainKey;
+                });
             }
 
             const selCex = (filterVals.cex || []).map(x => String(x).toUpperCase());
@@ -46,7 +74,8 @@
             const pairDefs = chainCfg.PAIRDEXS || {};
 
             return tokens.filter(token => {
-                if (String(token.chain || '').toLowerCase() !== chainKey) return false;
+                const tokenChain = getCanonicalChainKey(token.chain) || String(token.chain || '').toLowerCase();
+                if (tokenChain !== chainKey) return false;
 
                 const tokenCexs = (token.selectedCexs || []).map(x => String(x).toUpperCase());
                 const hasCex = tokenCexs.some(cx => selCex.includes(cx));
@@ -72,7 +101,7 @@
             return tokens;
         }
 
-        const chainsSel = (fm.chains || []).map(x => String(x).toLowerCase());
+        const chainsSel = (fm.chains || []).map(x => getCanonicalChainKey(x) || String(x).toLowerCase());
         const cexSel = (fm.cex || []).map(x => String(x).toUpperCase());
         const dexSel = (fm.dex || []).map(x => String(x).toLowerCase());
 
@@ -81,7 +110,7 @@
         }
 
         return tokens.filter(token => {
-            const chainLower = String(token.chain || '').toLowerCase();
+            const chainLower = getCanonicalChainKey(token.chain) || String(token.chain || '').toLowerCase();
             if (!chainsSel.includes(chainLower)) return false;
 
             const tokenCexs = (token.selectedCexs || []).map(x => String(x).toUpperCase());
@@ -96,17 +125,24 @@
     /**
      * Load coins data from storage (localStorage or IndexedDB) and apply active filters.
      */
-    function loadCoinsFromStorage() {
+    function loadCoinsFromStorage(options = {}) {
+        const applyFilter = options.applyFilter !== undefined ? !!options.applyFilter : true;
+        const modeOverride = options.mode || null;
         try {
-            const mode = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
+            const mode = modeOverride || ((typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' });
             let tokens = [];
 
             if (mode.type === 'single' && mode.chain) {
-                tokens = (typeof getTokensChain === 'function') ? getTokensChain(mode.chain) : [];
-                console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins for chain ${mode.chain}`);
+                const chainKey = getCanonicalChainKey(mode.chain) || mode.chain;
+                tokens = (typeof getTokensChain === 'function') ? getTokensChain(chainKey) : [];
+                console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins for chain ${chainKey}`);
             } else {
                 tokens = (typeof getFromLocalStorage === 'function') ? getFromLocalStorage('TOKEN_MULTICHAIN', []) : [];
                 console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins (multichain mode)`);
+            }
+
+            if (!applyFilter) {
+                return Array.isArray(tokens) ? tokens : [];
             }
 
             const filteredTokens = filterTokensForWallet(tokens, mode);
@@ -129,62 +165,141 @@
         }
     }
 
-    /**
-     * Merge wallet data hasil fetch dengan data existing
-     * Update hanya dataCexs untuk CEX yang di-fetch
-     */
-    function mergeWalletData(existingCoins, newCoinsMap, updatedCexes) {
-        const merged = [...existingCoins];
+    function normalizeFlag(value) {
+        if (value === undefined || value === null || value === '-') return undefined;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        const normalized = String(value).toLowerCase();
+        if (['true', 'yes', 'on', 'open', 'enabled', 'enable', '1'].includes(normalized)) return true;
+        if (['false', 'no', 'off', 'close', 'closed', 'disabled', 'disable', '0'].includes(normalized)) return false;
+        return undefined;
+    }
 
-        // Update dataCexs untuk coins yang sudah ada
-        Object.keys(newCoinsMap).forEach(coinKey => {
-            const newCoin = newCoinsMap[coinKey];
+    function normalizeFee(value) {
+        if (value === undefined || value === null || value === '-') return undefined;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : undefined;
+    }
 
-            // Cari existing coin dengan matching symbol_in dan chain
-            const existingIndex = merged.findIndex(c => {
-                const symbolMatch = (c.symbol_in || c.tokenName) === (newCoin.symbol_in || newCoin.tokenName);
-                const chainMatch = String(c.chain || '').toLowerCase() === String(newCoin.chain || '').toLowerCase();
-                return symbolMatch && chainMatch;
+    function normalizeChainKey(rawChain, mode) {
+        const canonical = getCanonicalChainKey(rawChain);
+        if (canonical) return canonical;
+        if (mode?.type === 'single' && mode.chain) {
+            const fallback = getCanonicalChainKey(mode.chain);
+            if (fallback) return fallback;
+            return String(mode.chain).toLowerCase();
+        }
+        const chain = rawChain ? String(rawChain).toLowerCase().trim() : '';
+        return chain || 'unknown';
+    }
+
+    function cloneDataCexs(dataCexs) {
+        if (!dataCexs || typeof dataCexs !== 'object') return {};
+        return Object.keys(dataCexs).reduce((acc, key) => {
+            acc[key] = Object.assign({}, dataCexs[key]);
+            return acc;
+        }, {});
+    }
+
+    function buildCoinIndex(coins) {
+        const index = new Map();
+        const pushIndex = (key, ref) => {
+            if (!index.has(key)) index.set(key, []);
+            index.get(key).push(ref);
+        };
+
+        coins.forEach((coin, idx) => {
+            const chainKey = getCanonicalChainKey(coin.chain) || String(coin.chain || '').toLowerCase();
+            if (!chainKey) return;
+            const tokenSymbol = String(coin.symbol_in || coin.tokenName || '').toUpperCase();
+            if (tokenSymbol) {
+                pushIndex(`${chainKey}:${tokenSymbol}`, { idx, role: 'token' });
+            }
+            const pairSymbol = String(coin.symbol_out || '').toUpperCase();
+            if (pairSymbol) {
+                pushIndex(`${chainKey}:${pairSymbol}`, { idx, role: 'pair' });
+            }
+        });
+
+        return index;
+    }
+
+    function ensureCexEntry(coin, cexName) {
+        coin.dataCexs = coin.dataCexs || {};
+        if (!coin.dataCexs[cexName]) {
+            coin.dataCexs[cexName] = {};
+        }
+        return coin.dataCexs[cexName];
+    }
+
+    function mergeWalletData(existingCoins, walletDataByCex, mode) {
+        const merged = existingCoins.map(coin => {
+            const clone = Object.assign({}, coin);
+            if (coin.dataCexs) {
+                clone.dataCexs = cloneDataCexs(coin.dataCexs);
+            }
+            return clone;
+        });
+
+        const coinIndex = buildCoinIndex(merged);
+
+        Object.keys(walletDataByCex || {}).forEach(cexName => {
+            const walletItems = walletDataByCex[cexName] || [];
+            if (!Array.isArray(walletItems) || walletItems.length === 0) return;
+
+            const normalizedEntries = new Map();
+            walletItems.forEach(item => {
+                const symbol = String(item.tokenName || '').toUpperCase();
+                if (!symbol) return;
+                const chainKey = normalizeChainKey(item.chain, mode);
+                const indexKey = `${chainKey}:${symbol}`;
+                normalizedEntries.set(indexKey, Object.assign({}, item, { _chainKey: chainKey, _symbol: symbol }));
             });
 
-            if (existingIndex >= 0) {
-                // Pastikan dataCexs ada
-                merged[existingIndex].dataCexs = merged[existingIndex].dataCexs || {};
+            normalizedEntries.forEach(entry => {
+                const refs = coinIndex.get(`${entry._chainKey}:${entry._symbol}`);
+                if (!refs || refs.length === 0) {
+                    return;
+                }
 
-                // Loop melalui CEX yang diupdate dari newCoin
-                Object.keys(newCoin.dataCexs).forEach(cexName => {
-                    const newCexData = newCoin.dataCexs[cexName];
-                    merged[existingIndex].dataCexs[cexName] = merged[existingIndex].dataCexs[cexName] || {};
+                refs.forEach(({ idx, role }) => {
+                    const coin = merged[idx];
+                    const target = ensureCexEntry(coin, cexName);
 
-                    // FIX: Update status WD/DP hanya untuk Token.
-                    // Status untuk Pair (biasanya stablecoin) diasumsikan selalu OPEN (true).
-                    merged[existingIndex].dataCexs[cexName].depositToken = newCexData.depositEnable || false;
-                    merged[existingIndex].dataCexs[cexName].withdrawToken = newCexData.withdrawEnable || false;
-                    merged[existingIndex].dataCexs[cexName].depositPair = true; // Asumsi Pair (USDT, dll) selalu OPEN
-                    merged[existingIndex].dataCexs[cexName].withdrawPair = true; // Asumsi Pair (USDT, dll) selalu OPEN
+                    if (role === 'token') {
+                        const depositToken = normalizeFlag(entry.depositEnable);
+                        if (depositToken !== undefined) target.depositToken = depositToken;
 
-                    // Update fee WD untuk Token (asumsi feeWDs dari API adalah untuk token utama)
-                    merged[existingIndex].dataCexs[cexName].feeWDToken = newCexData.feeWDs;
+                        const withdrawToken = normalizeFlag(entry.withdrawEnable);
+                        if (withdrawToken !== undefined) target.withdrawToken = withdrawToken;
 
-                    // Update status trading
-                    merged[existingIndex].dataCexs[cexName].tradingActive = newCexData.tradingActive;
+                        const feeToken = normalizeFee(entry.feeWDs);
+                        if (feeToken !== undefined) target.feeWDToken = feeToken;
+
+                        if (entry.tradingActive !== undefined) {
+                            target.tradingActive = entry.tradingActive !== false;
+                        }
+
+                        if (entry.contractAddress && entry.contractAddress !== '-') {
+                            coin.sc_in = entry.contractAddress;
+                        }
+
+                        if (entry.decimals !== undefined && entry.decimals !== '-' && entry.decimals !== null) {
+                            coin.des_in = entry.decimals;
+                            coin.decimals = entry.decimals;
+                        }
+                    } else if (role === 'pair') {
+                        const depositPair = normalizeFlag(entry.depositEnable);
+                        if (depositPair !== undefined) target.depositPair = depositPair;
+
+                        const withdrawPair = normalizeFlag(entry.withdrawEnable);
+                        if (withdrawPair !== undefined) target.withdrawPair = withdrawPair;
+
+                        const feePair = normalizeFee(entry.feeWDs);
+                        if (feePair !== undefined) target.feeWDPair = feePair;
+                    }
                 });
-
-                // Update SC dan decimals jika ada data baru dari CEX
-                if (newCoin.sc_in && newCoin.sc_in !== '-') {
-                    merged[existingIndex].sc_in = newCoin.sc_in;
-                }
-                if (newCoin.des_in && newCoin.des_in !== '-') {
-                    merged[existingIndex].des_in = newCoin.des_in;
-                    merged[existingIndex].decimals = newCoin.des_in;
-                }
-
-                console.log(`[Merge] Updated existing coin: ${newCoin.symbol_in} on chain ${newCoin.chain} for CEXes: ${Object.keys(newCoin.dataCexs).join(', ')}`);
-            } else {
-                // Add new coin
-                merged.push(newCoin);
-                console.log(`[Merge] Added new coin: ${newCoin.symbol_in} on chain ${newCoin.chain}`);
-            }
+            });
         });
 
         return merged;
@@ -199,7 +314,8 @@
 
             if (mode.type === 'single' && mode.chain) {
                 // Single chain mode - save to specific chain storage
-                const storageKey = `TOKEN_${String(mode.chain).toUpperCase()}`;
+                const chainKey = getCanonicalChainKey(mode.chain) || String(mode.chain).toLowerCase();
+                const storageKey = `TOKEN_${String(chainKey).toUpperCase()}`;
                 if (typeof saveToLocalStorage === 'function') {
                     saveToLocalStorage(storageKey, coins);
                 }
@@ -258,9 +374,10 @@
         let availableCexes = [];
 
         if (mode.type === 'single') {
-            const filterChain = (typeof getFilterChain === 'function') ? getFilterChain(mode.chain || '') : {};
+            const canonicalChain = getCanonicalChainKey(mode.chain) || String(mode.chain || '').toLowerCase();
+            const filterChain = (typeof getFilterChain === 'function') ? getFilterChain(canonicalChain || '') : {};
             availableCexes = (filterChain?.cex || []).map(x => String(x).toUpperCase());
-            activeChain = mode.chain;
+            activeChain = canonicalChain || mode.chain;
         } else {
             const filterMulti = (typeof getFilterMulti === 'function') ? getFilterMulti() : {};
             availableCexes = (filterMulti?.cex || []).map(x => String(x).toUpperCase());
@@ -274,8 +391,9 @@
 
         // Update chain label
         try {
+            const canonicalActive = getCanonicalChainKey(activeChain) || String(activeChain || '').toLowerCase();
             const chainName = (activeChain === 'MULTICHAIN') ? 'MULTICHAIN' :
-                              (CONFIG_CHAINS?.[String(activeChain).toLowerCase()]?.Nama_Chain || activeChain);
+                              (CONFIG_CHAINS?.[canonicalActive]?.Nama_Chain || activeChain);
             $('#wallet-chain-label').text(String(chainName).toUpperCase());
         } catch(_) {}
 
@@ -306,19 +424,26 @@
 
                 // For single chain mode, filter by chain
                 if (mode.type === 'single') {
-                    const coinChain = String(coin.chain || '').toLowerCase();
-                    const targetChain = String(activeChain || '').toLowerCase();
+                    const coinChain = getCanonicalChainKey(coin.chain) || String(coin.chain || '').toLowerCase();
+                    const targetChain = getCanonicalChainKey(activeChain) || String(activeChain || '').toLowerCase();
                     if (coinChain !== targetChain) {
                         return false;
                     }
                 }
 
-                // FILTER: Hanya tampilkan yang bermasalah (WD atau Depo CLOSED)
+                // FILTER: Hanya tampilkan yang bermasalah (WD atau Depo CLOSED untuk TOKEN atau PAIR)
                 const dataCex = coin.dataCexs[cexName];
-                const wdClosed = dataCex.withdrawEnable === false || dataCex.withdrawToken === false;
-                const dpClosed = dataCex.depositEnable === false || dataCex.depositToken === false;
 
-                return wdClosed || dpClosed;
+                // Check TOKEN status
+                const wdTokenClosed = dataCex.withdrawToken === false;
+                const dpTokenClosed = dataCex.depositToken === false;
+
+                // Check PAIR status
+                const wdPairClosed = dataCex.withdrawPair === false;
+                const dpPairClosed = dataCex.depositPair === false;
+
+                // Tampilkan jika ada yang bermasalah (TOKEN atau PAIR)
+                return wdTokenClosed || dpTokenClosed || wdPairClosed || dpPairClosed;
             });
 
             console.log(`[${cexName}] Coins after filter (chain: ${activeChain}): ${cexCoins.length} dari total ${allCoinsData.length}`);
@@ -329,18 +454,20 @@
             const isSelected = selectedCexList.includes(cexName);
 
             const cardHtml = `
-                <div class="wallet-cex-card ${isSelected ? 'selected' : ''}" data-cex="${cexName}">
-                    <div class="wallet-cex-header" data-cex="${cexName}">
-                        <div class="wallet-cex-name" style="color: ${cexColor}">
-                            <input type="checkbox" class="wallet-cex-checkbox" data-cex="${cexName}" ${isSelected ? 'checked' : ''}>
-                            ${cexName}
+                <div class="wallet-cex-grid-item uk-width-1-1 uk-width-1-2@m">
+                    <div class="wallet-cex-card ${isSelected ? 'selected' : ''}" data-cex="${cexName}">
+                        <div class="wallet-cex-header" data-cex="${cexName}">
+                            <div class="wallet-cex-name" style="color: ${cexColor}">
+                                <input type="checkbox" class="wallet-cex-checkbox" data-cex="${cexName}" ${isSelected ? 'checked' : ''}>
+                                ${cexName}
+                            </div>
+                            <span class="uk-text-meta uk-text-small">
+                                ${problemCount} koin bermasalah
+                            </span>
                         </div>
-                        <span class="uk-text-meta uk-text-small">
-                            ${problemCount} koin bermasalah
-                        </span>
-                    </div>
-                    <div class="wallet-cex-table-wrapper">
-                        ${renderCexTable(cexName, cexCoins)}
+                        <div class="wallet-cex-table-wrapper">
+                            ${renderCexTable(cexName, cexCoins)}
+                        </div>
                     </div>
                 </div>
             `;
@@ -351,6 +478,13 @@
         // Bind events untuk checkbox
         bindCexCardEvents();
         updateCekButton();
+
+        try {
+            const uiKit = (root && root.UIkit) ? root.UIkit : (typeof window !== 'undefined' ? window.UIkit : null);
+            if (uiKit && typeof uiKit.update === 'function') {
+                uiKit.update($grid[0]);
+            }
+        } catch(_) {}
     }
 
     /**
@@ -371,13 +505,18 @@
             <table class="wallet-cex-table uk-table uk-table-divider uk-table-hover uk-table-small">
                 <thead>
                     <tr>
-                        <th style="width:30px">No</th>
-                        <th style="width:70px">Symbol</th>
-                        <th style="width:130px">SC</th>
-                        <th style="width:60px">Decimals</th>
-                        <th style="width:90px">Trade Status</th>
-                        <th style="width:80px">Status WD</th>
-                        <th style="width:80px">Status Depo</th>
+                        <th style="width:30px" rowspan="2">No</th>
+                        <th style="width:80px" rowspan="2">Symbol</th>
+                        <th style="width:130px" rowspan="2">SC</th>
+                        <th style="width:70px" rowspan="2" class="uk-text-center">Decimals</th>
+                        <th colspan="2" class="uk-text-center">TOKEN Status</th>
+                        <th colspan="2" class="uk-text-center">PAIR Status</th>
+                    </tr>
+                    <tr>
+                        <th style="width:70px" class="uk-text-center">WD</th>
+                        <th style="width:70px" class="uk-text-center">Depo</th>
+                        <th style="width:70px" class="uk-text-center">WD</th>
+                        <th style="width:70px" class="uk-text-center">Depo</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -388,53 +527,54 @@
 
             // Symbol dan SC data
             const tokenSymbol = (coin.symbol_in || coin.tokenName || '?').toUpperCase();
+            const pairSymbol = (coin.symbol_out || 'USDT').toUpperCase();
             const tokenSc = coin.sc_in || coin.contractAddress || '-';
 
             // Decimals dari enrichment
             const decimals = coin.des_in || coin.decimals || '-';
 
-            // Status WD (Withdraw) - gunakan withdrawEnable sebagai prioritas
-            const wdToken = dataCex.withdrawEnable !== undefined
-                ? dataCex.withdrawEnable
-                : dataCex.withdrawToken;
+            // ========== STATUS TOKEN (symbol_in) ==========
+            const wdToken = dataCex.withdrawToken;
+            const dpToken = dataCex.depositToken;
 
-            let statusWd = '';
+            let statusWdToken = '';
             if (wdToken === true) {
-                statusWd = '<span class="wallet-status-badge wallet-status-on">OPEN</span>';
+                statusWdToken = '<span class="wallet-status-badge wallet-status-on">OPEN</span>';
             } else if (wdToken === false) {
-                statusWd = '<span class="wallet-status-badge wallet-status-off">CLOSED</span>';
+                statusWdToken = '<span class="wallet-status-badge wallet-status-off">CLOSED</span>';
             } else {
-                statusWd = '<span class="wallet-status-badge wallet-status-loading">UNKNOWN</span>';
+                statusWdToken = '<span class="wallet-status-badge wallet-status-loading">?</span>';
             }
 
-            // Status Depo (Deposit) - gunakan depositEnable sebagai prioritas
-            const dpToken = dataCex.depositEnable !== undefined
-                ? dataCex.depositEnable
-                : dataCex.depositToken;
-
-            let statusDepo = '';
+            let statusDpToken = '';
             if (dpToken === true) {
-                statusDepo = '<span class="wallet-status-badge wallet-status-on">OPEN</span>';
+                statusDpToken = '<span class="wallet-status-badge wallet-status-on">OPEN</span>';
             } else if (dpToken === false) {
-                statusDepo = '<span class="wallet-status-badge wallet-status-off">CLOSED</span>';
+                statusDpToken = '<span class="wallet-status-badge wallet-status-off">CLOSED</span>';
             } else {
-                statusDepo = '<span class="wallet-status-badge wallet-status-loading">UNKNOWN</span>';
+                statusDpToken = '<span class="wallet-status-badge wallet-status-loading">?</span>';
             }
 
-            // Trade Status - status trading pair (misal BTC/USDT aktif atau tidak)
-            const tradingActive = dataCex.tradingActive || dataCex.isSpotTradingAllowed;
-            let tradeStatus = '';
-            if (tradingActive === true) {
-                tradeStatus = '<span class="wallet-status-badge wallet-status-on">ACTIVE</span>';
-            } else if (tradingActive === false) {
-                tradeStatus = '<span class="wallet-status-badge wallet-status-off">INACTIVE</span>';
+            // ========== STATUS PAIR (symbol_out) ==========
+            const wdPair = dataCex.withdrawPair;
+            const dpPair = dataCex.depositPair;
+
+            let statusWdPair = '';
+            if (wdPair === true) {
+                statusWdPair = '<span class="wallet-status-badge wallet-status-on">OPEN</span>';
+            } else if (wdPair === false) {
+                statusWdPair = '<span class="wallet-status-badge wallet-status-off">CLOSED</span>';
             } else {
-                // Fallback: jika WD dan Depo keduanya aktif, anggap trading aktif
-                if (wdToken === true && dpToken === true) {
-                    tradeStatus = '<span class="wallet-status-badge wallet-status-on">ACTIVE</span>';
-                } else {
-                    tradeStatus = '<span class="wallet-status-badge wallet-status-loading">UNKNOWN</span>';
-                }
+                statusWdPair = '<span class="wallet-status-badge wallet-status-loading">?</span>';
+            }
+
+            let statusDpPair = '';
+            if (dpPair === true) {
+                statusDpPair = '<span class="wallet-status-badge wallet-status-on">OPEN</span>';
+            } else if (dpPair === false) {
+                statusDpPair = '<span class="wallet-status-badge wallet-status-off">CLOSED</span>';
+            } else {
+                statusDpPair = '<span class="wallet-status-badge wallet-status-loading">?</span>';
             }
 
             // Shorten smart contract addresses
@@ -447,7 +587,8 @@
                 <tr>
                     <td>${idx + 1}</td>
                     <td>
-                        <span class="uk-text-bold uk-text-emphasis">${tokenSymbol}</span>
+                        <span class="uk-text-bold uk-text-primary">${tokenSymbol}</span>
+                        <span class="uk-text-meta uk-text-small"> / ${pairSymbol}</span>
                     </td>
                     <td class="uk-text-truncate" title="${tokenSc}" style="max-width: 130px;">
                         <code class="uk-text-small">${shortenSc(tokenSc)}</code>
@@ -456,13 +597,16 @@
                         <span class="uk-text-small">${decimals}</span>
                     </td>
                     <td class="uk-text-center">
-                        ${tradeStatus}
+                        ${statusWdToken}
                     </td>
                     <td class="uk-text-center">
-                        ${statusWd}
+                        ${statusDpToken}
                     </td>
                     <td class="uk-text-center">
-                        ${statusDepo}
+                        ${statusWdPair}
+                    </td>
+                    <td class="uk-text-center">
+                        ${statusDpPair}
                     </td>
                 </tr>
             `;
@@ -676,52 +820,11 @@
 
         // Proses dan tampilkan hasil
         try {
-            // Transform data ke format yang sesuai untuk renderCexTable
-            const transformedCoins = {};
-
-            Object.keys(cexWalletData).forEach(cexName => {
-                const walletItems = cexWalletData[cexName] || [];
-
-                walletItems.forEach(item => {
-                    // Normalize chain - gunakan activeChain untuk single mode
-                    const normalizedChain = mode.type === 'single' && mode.chain
-                        ? mode.chain.toLowerCase()
-                        : (item.chain || 'unknown').toLowerCase();
-
-                    const key = `${item.tokenName}_${normalizedChain}`;
-
-                    if (!transformedCoins[key]) {
-                        transformedCoins[key] = {
-                            symbol_in: item.tokenName,
-                            tokenName: item.tokenName,
-                            sc_in: item.contractAddress || '-',
-                            contractAddress: item.contractAddress,
-                            chain: normalizedChain, // Simpan normalized chain
-                            decimals: item.decimals || '-',
-                            des_in: item.decimals || '-',
-                            dataCexs: {}
-                        };
-                    }
-
-                    // Add CEX-specific data
-                    transformedCoins[key].dataCexs[cexName] = {
-                        withdrawEnable: item.withdrawEnable,
-                        depositEnable: item.depositEnable,
-                        withdrawToken: item.withdrawEnable,
-                        depositToken: item.depositEnable,
-                        feeWDs: item.feeWDs,
-                        tradingActive: item.tradingActive !== false // default true if not specified
-                    };
-                });
-            });
-
-            console.log('[Wallet Exchanger] Transformed coins:', Object.keys(transformedCoins).length);
-
-            // Merge dengan data existing di storage
-            const existingCoins = loadCoinsFromStorage();
+            // Load existing coins dari storage
+            const existingCoins = loadCoinsFromStorage({ applyFilter: false, mode });
             console.log('[Wallet Exchanger] Existing coins in storage:', existingCoins.length);
 
-            const mergedCoins = mergeWalletData(existingCoins, transformedCoins, selectedCexList);
+            const mergedCoins = mergeWalletData(existingCoins, cexWalletData, mode);
             console.log('[Wallet Exchanger] Merged coins:', mergedCoins.length);
 
             // Debug: tampilkan sample data
@@ -739,7 +842,15 @@
             if (failedCexes.length === 0) {
                 showUpdateResult(true, []);
                 if (typeof toast !== 'undefined' && toast.success) {
-                    const totalCoins = Object.keys(transformedCoins).length;
+                    const uniqueKeys = new Set();
+                    Object.keys(cexWalletData).forEach(name => {
+                        (cexWalletData[name] || []).forEach(item => {
+                            const chainKey = normalizeChainKey(item.chain, mode);
+                            const symbol = String(item.tokenName || '').toUpperCase();
+                            if (symbol) uniqueKeys.add(`${chainKey}:${symbol}`);
+                        });
+                    });
+                    const totalCoins = uniqueKeys.size;
                     toast.success(`✅ Berhasil fetch ${totalCoins} koin dari ${selectedCexList.length} CEX`);
                 }
             } else {
@@ -762,23 +873,19 @@
      * Show wallet exchanger section
      */
     function show() {
-        // Hide other sections
-        try {
-            $('#tabel-monitoring, #scanner-config, #filter-card, #sinyal-container').hide();
-            $('#token-management, #form-setting-app, #iframe-container').hide();
-            if (window.SnapshotModule && typeof window.SnapshotModule.hide === 'function') {
-                window.SnapshotModule.hide();
-            }
-        } catch(_) {}
+        // Gunakan section manager terpusat untuk mencegah tumpang tindih
+        if (typeof showMainSection === 'function') {
+            showMainSection('#update-wallet-section');
+        } else {
+            // Fallback jika showMainSection tidak tersedia
+            $('#update-wallet-section').show();
+        }
 
         // Reset selection
         selectedCexList = [];
 
         // Render CEX cards dengan data dari storage
         renderCexCards();
-
-        // Show section
-        $('#update-wallet-section').fadeIn(300);
     }
 
     /**
@@ -786,11 +893,10 @@
      */
     function hide() {
         $('#update-wallet-section').fadeOut(300);
-
-        // Show scanner elements
-        try {
-            $('#tabel-monitoring, #scanner-config, #filter-card, #sinyal-container').fadeIn(300);
-        } catch(_) {}
+        // Gunakan section manager terpusat untuk kembali ke tampilan utama
+        if (typeof showMainSection === 'function') {
+            showMainSection('scanner');
+        }
     }
 
     /**

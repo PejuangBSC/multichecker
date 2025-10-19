@@ -1085,8 +1085,16 @@ body.dark-mode .signal-card {
     cursor: pointer;
 }
 
+.wallet-cex-grid-item {
+    display: flex;
+}
+
+.wallet-cex-grid-item > .wallet-cex-card {
+    width: 100%;
+}
+
 .wallet-cex-table-wrapper {
-    max-height: 180px;
+    max-height: 420px;
     overflow-y: auto;
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 6px;
