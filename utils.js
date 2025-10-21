@@ -608,8 +608,8 @@ function applyThemeForMode() {
         const css = `
           :root { --theme-accent: ${accent}; }
           /* Use accent header only in light mode */
-          body.theme-single:not(.dark-mode) .uk-table thead th,
-          body.theme-multi:not(.dark-mode) .uk-table thead th { background: var(--theme-accent) !important; }
+          body.theme-single:not(.dark-mode) .uk-table:not(.wallet-cex-table) thead th,
+          body.theme-multi:not(.dark-mode) .uk-table:not(.wallet-cex-table) thead th { background: var(--theme-accent) !important; }
           /* Dark-mode: force dark header for monitoring tables */
           body.dark-mode .uk-table thead th { background: #1c1c1e !important; color: #e8e8e8 !important; border-bottom: 1px solid #444 !important; }
           body.dark-mode #tabel-monitoring thead { background: #1c1c1e !important; }

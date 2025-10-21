@@ -633,8 +633,8 @@ function updateTableVolCEX(finalResult, cex, tableBodyId = 'dataTableBody') {
     const volumesBuyPairAll   = Array.isArray(finalResult.volumes_buyPair) ? finalResult.volumes_buyPair.slice().sort((a, b) => b.price - a.price) : [];
     const volumesSellTokenAll = Array.isArray(finalResult.volumes_sellToken) ? finalResult.volumes_sellToken.slice().sort((a, b) => b.price - a.price) : [];
 
-    const volumesSellToken = volumesSellTokenAll.slice(0, 2);
-    const volumesSellPair  = volumesSellPairAll.slice(0, 4);
+    const volumesSellToken = volumesSellTokenAll.slice(0, 4); // Kiri atas: 4
+    const volumesSellPair  = volumesSellPairAll.slice(0, 2);  // Kiri bawah: 2
     const volumesBuyPair   = volumesBuyPairAll.slice(0, 2);
     const volumesBuyToken  = volumesBuyTokenAll.slice(0, 4);
 

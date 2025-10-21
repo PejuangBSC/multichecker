@@ -134,21 +134,17 @@ a:hover, .uk-link:hover {
 }
 
 .uk-table thead th {
+    background: rgba(178, 205, 144, 0.95) !important;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid rgba(221, 223, 226, 0.5);
-    color: inherit;
+    color: #050506 !important;
     font-weight: bold;
     position: sticky;
     top: 0;
     z-index: 10;
     padding: 8px 10px;
     font-size: 12.5px;
-}
-
-.uk-table:not(.wallet-cex-table) thead th {
-    background: rgba(178, 205, 144, 0.95) !important;
-    color: #050506 !important;
 }
 
 .uk-table tbody td {
@@ -993,180 +989,6 @@ body.dark-mode {
 }
 
 /* ==========================================================================
-   Compact Filter Styles - Checkbox Inline Version
-   ========================================================================== */
-.filter-compact-container {
-    padding: 6px 10px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.filter-groups-inline {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    flex: 1;
-}
-
-/* Filter Group Sections */
-.filter-groups-inline > div {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
-/* Filter Section Label (CHAIN, CEX, DEX, PAIR) */
-.filter-groups-inline > div > span:first-child,
-.filter-groups-inline > div > b:first-child {
-    font-size: 11px;
-    font-weight: bold;
-    margin-right: 2px;
-    white-space: nowrap;
-}
-
-/* Separator */
-.filter-groups-inline .uk-text-muted {
-    color: #999;
-    font-size: 14px;
-    margin: 0 4px;
-}
-
-/* Checkbox Label - More Compact */
-.filter-groups-inline label {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    margin: 0;
-    padding: 3px 8px;
-    background: rgba(255, 255, 255, 0.6);
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 6px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
-}
-
-.filter-groups-inline label:hover {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: var(--bs-primary);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-    transform: translateY(-1px);
-}
-
-/* Checkbox input */
-.filter-groups-inline label input[type="checkbox"] {
-    margin: 0;
-    width: 14px;
-    height: 14px;
-    cursor: pointer;
-}
-
-/* Label text and count */
-.filter-groups-inline label span {
-    font-weight: 600;
-    line-height: 1;
-}
-
-/* Checked state - Colors are now applied dynamically via JavaScript (Opsi 4) */
-.filter-groups-inline label:has(input:checked) {
-    /* Background and border colors are set by JS from config */
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-    font-weight: 700;
-}
-
-.filter-groups-inline label:has(input:checked):hover {
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
-    transform: translateY(-1px);
-}
-
-/* Summary Section - Applied to JavaScript-injected elements */
-#filter-right-group {
-    padding: 4px 12px;
-    background: rgba(13, 110, 253, 0.1);
-    border-radius: 6px;
-    border: 1px solid rgba(13, 110, 253, 0.2);
-    white-space: nowrap;
-}
-
-#filter-summary {
-    color: var(--bs-primary) !important;
-    font-size: 12px !important;
-    font-weight: bold !important;
-}
-
-/* Dark mode adjustments */
-body.dark-mode .filter-groups-inline label {
-    background: rgba(55, 55, 56, 0.6);
-    border-color: rgba(255, 255, 255, 0.15);
-    color: #e5e7eb;
-}
-
-body.dark-mode .filter-groups-inline label:hover {
-    background: rgba(72, 72, 74, 0.8);
-    border-color: #60a5fa;
-}
-
-body.dark-mode .filter-groups-inline label:has(input:checked) {
-    /* Colors are set by JS from config - just enhance shadow in dark mode */
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-}
-
-body.dark-mode #filter-right-group {
-    background: rgba(59, 130, 246, 0.15);
-    border-color: rgba(59, 130, 246, 0.3);
-}
-
-body.dark-mode #filter-summary {
-    color: #60a5fa !important;
-}
-
-/* Responsive adjustments */
-@media (max-width: 960px) {
-    .filter-compact-container {
-        gap: 8px;
-        padding: 5px 8px;
-    }
-
-    .filter-groups-inline {
-        gap: 6px;
-    }
-
-    .filter-groups-inline label {
-        padding: 2px 6px;
-        font-size: 10px;
-    }
-
-    .filter-groups-inline label input[type="checkbox"] {
-        width: 12px;
-        height: 12px;
-    }
-
-    .filter-groups-inline > div > span:first-child,
-    .filter-groups-inline > div > b:first-child {
-        font-size: 10px;
-    }
-}
-
-@media (max-width: 640px) {
-    .filter-summary-inline {
-        flex: 1 1 100%;
-        margin-left: 0;
-        margin-top: 6px;
-        text-align: center;
-    }
-
-    .filter-groups-inline label {
-        font-size: 9px;
-        padding: 2px 5px;
-    }
-}
-
-/* ==========================================================================
    Additional Refinements
    ========================================================================== */
 #infoAPP {
@@ -1290,13 +1112,7 @@ body.dark-mode .signal-card {
     position: sticky;
     top: 0;
     z-index: 5;
-    /* Background color akan diset oleh inline style dari JavaScript menggunakan warna chain */
-}
-
-.wallet-cex-table thead th {
-    background: inherit !important;
-    color: inherit !important;
-    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(178, 205, 144, 0.95);
 }
 
 .wallet-cex-table th {
@@ -1363,8 +1179,7 @@ body.dark-mode .wallet-cex-table-wrapper {
 }
 
 body.dark-mode .wallet-cex-table thead {
-    /* Background color akan diset oleh inline style dari JavaScript menggunakan warna chain */
-    /* Tidak ada override untuk dark mode agar warna chain tetap terlihat */
+    background: rgba(100, 120, 80, 0.95);
 }
 
 body.dark-mode .wallet-cex-table th,

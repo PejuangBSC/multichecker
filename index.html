@@ -50,18 +50,18 @@
                         <span id="chain-links-container"></span>
                          
                          <a href="#" target="_blank" id="ManajemenKoin" data-feature="manage">
-                            <img title="MANAJEMEN KOIN" class="icon"  src="https://cdn-icons-png.flaticon.com/512/998/998712.png" width="24px" />
+                            <img title="MANAJEMEN KOIN" class="icon"  src="https://cdn-icons-png.flaticon.com/256/7782/7782334.png" width="24px" />
                         </a>   
                          <img class="icon" id="UpdateWalletCEX" data-feature="wallet" title="CHECK EXCHANGER" width="24px"  src="https://cdn-icons-png.flaticon.com/512/1969/1969111.png"  />
 
                         <img class="icon" id="SettingConfig" data-feature="settings" title="CONFIG SCANNER" width="24px" src="https://cdn-icons-png.flaticon.com/512/771/771203.png" />
                         <!-- <img class="icon" id="reload" data-feature="reload" title="RESET PROSES" width="24px" src="https://cdn-icons-png.flaticon.com/256/10264/10264169.png" /> -->
 
-                         <a href="extra/modal.html" target="_blank" data-feature="assets"><img class="icon" title="MANAJEMEN ASSET" width="24px" src="https://cdn-icons-png.flaticon.com/512/4626/4626344.png" /></a>
-                         <a href="#" id="openDatabaseViewer" title="Database Viewer"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/2906/2906274.png" /></a>
-                         <a href="#" id="openHistoryModal" title="Riwayat Aksi"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/169/169244.png" /></a>
+                         <a href="extra/modal.html" target="_blank" data-feature="assets"><img class="icon" title="PORTOFOLIO ASSET" width="24px" src="https://cdn-icons-png.flaticon.com/512/893/893097.png" /></a>
+                         <a href="#" id="openDatabaseViewer" title="MANAJEMEN DATABASE"><img class="icon" width="24" src="https://cdn-icons-png.flaticon.com/512/2906/2906274.png" /></a>
+                         <a href="#" id="openHistoryModal" title="RIWAYAT AKSI"><img class="icon" width="24" src="https://images.icon-icons.com/2596/PNG/512/history_icon_155273.png" /></a>
                        
-                         <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank" rel="noopener noreferrer" data-feature="proxy"><img class="icon" title="BUKA AKSES" width="24px"  src="https://cdn-icons-png.flaticon.com/512/890/890162.png" /></a>
+                         <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank" rel="noopener noreferrer" data-feature="proxy"><img class="icon" title="BUKA KUNCI / AKSES" width="24px"  src="https://cdn-icons-png.flaticon.com/512/890/890162.png" /></a>
 
                         <!-- Memory management removed (no localStorage) -->
                         <img class="icon" id="darkModeToggle" title="Ganti Mode Gelap/Terang" width="24px" src="https://cdn-icons-png.flaticon.com/512/3751/3751403.png" /> 
@@ -165,15 +165,18 @@
     </div>
 
 
-    <!-- Unified Filter Card -->
+    <!-- Unified Filter Card - Compact Checkbox Version -->
     <div id="filter-card" class="uk-card uk-card-default uk-margin-small header-card uk-card-hover">
-        <div id="filter-head" class="uk-flex uk-flex-middle uk-flex-wrap" style="gap:8px;">
-            <!-- Placeholder so renderer detects labels container -->
-            <span id="filter-head-labels" class="uk-text-small uk-text-muted" style="display:none;"></span>
+        <div class="filter-compact-container">
+            <!-- Filter Groups Row - JavaScript will populate this with checkboxes AND summary -->
+            <div id="filter-groups" class="filter-groups-inline">
+                <!-- Dynamic checkboxes and summary will be injected here by renderFilterCard() -->
+            </div>
         </div>
-        <div id="filter-groups" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-            <!-- Sync icon will be injected at the very left in per-chain mode -->
-            <span id="filter-summary" class="uk-text-small uk-text-muted" style="margin-left:auto;">TOTAL: 0</span>
+
+        <!-- Legacy containers (hidden, for compatibility) -->
+        <div id="filter-head" style="display:none;">
+            <span id="filter-head-labels"></span>
         </div>
     </div>
     
@@ -625,16 +628,14 @@
   <div class="uk-width-2-3@m">
     <div class="uk-card uk-card-default uk-card-body uk-padding-small">
       <div class="uk-flex uk-flex-between uk-flex-middle uk-margin-small">
-        <h6 class="uk-margin-remove">4. Pilih Koin</h6>
-        <span id="sync-selected-count" class="uk-text-small uk-text-muted">Dipilih: 0</span>
+        <h6 class="uk-margin-remove">4. Pilih Koin [ <span id="sync-selected-count" class="uk-text-small uk-badge">0</span> ]</h6>
+        
       </div>
       
-      <div id="sync-select-controls" class="uk-margin-small" uk-tooltip="title: Pilih minimal satu koin dari tabel di bawah untuk mengaktifkan mode pemilihan; pos: bottom-left">
+      <div id="sync-select-controls" class="uk-margin-small">
         <span>Memilih : &nbsp;
           <label class="uk-margin-small-right"><input type="radio" name="sync-pick-mode" value="all" class="uk-radio"> Semua</label>
-          <label><input type="radio" name="sync-pick-mode" value="picked" class="uk-radio"> Terpilih</label>
-          <label class="uk-margin-small-left"><input type="radio" name="sync-pick-mode" value="snapshot" class="uk-radio"> Snapshot</label>
-          <label class="uk-margin-small-left"><input type="radio" name="sync-pick-mode" value="clear" class="uk-radio"> Batal</label>
+          <label><input type="radio" name="sync-pick-mode" value="clear" class="uk-radio"> Hapus</label>
         </span>
         <input id="sync-search-input" class="uk-input uk-form-small uk-form-width-small uk-margin-small-left" type="text" placeholder="Cari koin...">
       </div>
@@ -668,8 +669,8 @@
 
     <!-- FOOTER -->
     <div class="uk-modal-footer uk-text-right uk-padding-small">
-      <button class="uk-button uk-button-default uk-button-small uk-modal-close" type="button">Cancel</button>
-      <button id="sync-save-btn" class="uk-button uk-button-primary uk-button-small" type="button">Save</button>
+      <button class="uk-button uk-button-danger uk-button-small uk-modal-close" type="button">Cancel</button>
+      <button id="sync-save-btn" class="uk-button uk-button-primary uk-button-small" type="button">SAVE KOIN</button>
     </div>
 
   </div>

@@ -569,12 +569,64 @@ async function deferredInit() {
     // Build unified filter card based on mode
     function getMode() { const m = getAppMode(); return { mode: m.type === 'single' ? 'single' : 'multi', chain: m.chain }; }
 
+    // Helper: Convert hex to rgba
+    function hexToRgba(hex, alpha = 1) {
+        if (!hex) return null;
+        hex = hex.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(c => c + c).join('');
+        }
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    // Helper: Darken color for gradient
+    function darkenColor(hex, percent = 30) {
+        if (!hex) return '#000';
+        hex = hex.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(c => c + c).join('');
+        }
+        let r = parseInt(hex.substring(0, 2), 16);
+        let g = parseInt(hex.substring(2, 4), 16);
+        let b = parseInt(hex.substring(4, 6), 16);
+
+        r = Math.max(0, Math.floor(r * (1 - percent / 100)));
+        g = Math.max(0, Math.floor(g * (1 - percent / 100)));
+        b = Math.max(0, Math.floor(b * (1 - percent / 100)));
+
+        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    }
+
+    // Helper: Calculate brightness and determine text color (white or black)
+    function getContrastTextColor(hex) {
+        if (!hex) return '#000';
+        hex = hex.replace('#', '');
+        if (hex.length === 3) {
+            hex = hex.split('').map(c => c + c).join('');
+        }
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+
+        // Calculate relative luminance (WCAG formula)
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+        // Return white for dark backgrounds, black for light backgrounds
+        return luminance > 0.5 ? '#000000' : '#ffffff';
+    }
+
     function chipHtml(cls, id, label, color, count, checked, dataVal, disabled=false) {
         const badge = typeof count==='number' ? ` <span style="font-weight:bolder;">[${count}]</span>` : '';
-        const borderColor = checked ? 'var(--theme-accent)' : '#ddd';
         const dval = (typeof dataVal !== 'undefined' && dataVal !== null) ? dataVal : label;
         const styleDis = disabled ? 'opacity:0.5; pointer-events:none;' : '';
-        return `<label class="uk-text-small ${cls}" data-val="${dval}" style="display:inline-flex;align-items:inherit;   cursor:pointer;${styleDis}">
+
+        // Create data attribute for color to be used by CSS
+        const colorData = color ? `data-color="${color}"` : '';
+
+        return `<label class="uk-text-small ${cls}" data-val="${dval}" ${colorData} style="display:inline-flex;align-items:inherit;cursor:pointer;${styleDis}">
             <input type="checkbox" class="uk-checkbox" id="${id}" ${checked && !disabled ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
             <span style="${color?`color:${color};`:''} padding-left:4px; font-weight:bolder;">${label}</span>&nbsp;${badge}
         </label>`;
@@ -597,9 +649,17 @@ async function deferredInit() {
             }
         }
         // Build right-side group (total) aligned to the right (sync button moved to token management)
-        const createRightGroup = () => $('<div id="filter-right-group" class="uk-flex uk-flex-middle" style="gap:6px; margin-left:auto;"></div>');
+        const createRightGroup = () => $('<div  class="uk-flex uk-flex-middle uk-text-muted" style="gap:6px; margin-left:auto;"></div>');
         let $right = createRightGroup();
-        let $sum = $('<span id="filter-summary" class="uk-text-small uk-text-muted" style="font-weight:bolder;">TOTAL KOIN: 0</span>');
+        
+        // Determine accent color based on mode
+        let accentColor = '#5c9514'; // Default for multi-chain
+        if (m.mode === 'single') {
+            const cfg = (CONFIG_CHAINS && CONFIG_CHAINS[m.chain]) ? CONFIG_CHAINS[m.chain] : null;
+            accentColor = cfg?.WARNA || '#333';
+        }
+        
+        let $sum = $(`<span  class="uk-text-small" style="font-weight:bolder; color: white; background-color: ${accentColor}; padding: 2px 8px; border-radius: 4px;">TOTAL KOIN: 0</span>`);
         if (m.mode === 'multi') {
             const fmNow = getFilterMulti();
             // FIX: Don't default to all chains, respect the user's saved empty selection.
@@ -812,6 +872,90 @@ async function deferredInit() {
                 $fc.find('label, .toggle-radio').css({ pointerEvents: 'none', opacity: 0.5 });
             }
         } catch(_) {}
+
+        // Apply dynamic colors from config to checked checkboxes (Opsi 4)
+        applyFilterColors();
+    }
+
+    // Apply background and text colors based on config (Opsi 5: Gradient + Smart Contrast)
+    function applyFilterColors() {
+        // Default pair color (green)
+        const defaultPairColor = '#4caf50';
+
+        // Process all filter labels with data-color attribute
+        $('#filter-groups label[data-color]').each(function() {
+            const $label = $(this);
+            const color = $label.attr('data-color');
+            const $checkbox = $label.find('input[type="checkbox"]');
+
+            if (!color) return;
+
+            // Apply colors when checked
+            if ($checkbox.is(':checked')) {
+                const darkerColor = darkenColor(color, 25); // Darken by 25% for gradient end
+                const gradient = `linear-gradient(135deg, ${color} 0%, ${darkerColor} 100%)`;
+                const textColor = getContrastTextColor(color); // Auto white/black
+
+                $label.css({
+                    'background': gradient,
+                    'border-color': color,
+                    'color': textColor
+                });
+                $label.find('span').css('color', textColor);
+            }
+        });
+
+        // Handle pair labels (no data-color, use default green)
+        $('#filter-groups label.sc-pair').each(function() {
+            const $label = $(this);
+            const $checkbox = $label.find('input[type="checkbox"]');
+
+            if ($checkbox.is(':checked')) {
+                const darkerGreen = darkenColor(defaultPairColor, 25);
+                const gradient = `linear-gradient(135deg, ${defaultPairColor} 0%, ${darkerGreen} 100%)`;
+                const textColor = getContrastTextColor(defaultPairColor);
+
+                $label.css({
+                    'background': gradient,
+                    'border-color': defaultPairColor,
+                    'color': textColor
+                });
+                $label.find('span').css('color', textColor);
+            }
+        });
+
+        // Add event listener for checkbox changes
+        $('#filter-groups label input[type="checkbox"]').off('change.colorize').on('change.colorize', function() {
+            const $checkbox = $(this);
+            const $label = $checkbox.closest('label');
+            const color = $label.attr('data-color');
+            const isPair = $label.hasClass('sc-pair');
+
+            const actualColor = color || (isPair ? defaultPairColor : null);
+
+            if (!actualColor) return;
+
+            if ($checkbox.is(':checked')) {
+                const darkerColor = darkenColor(actualColor, 25);
+                const gradient = `linear-gradient(135deg, ${actualColor} 0%, ${darkerColor} 100%)`;
+                const textColor = getContrastTextColor(actualColor);
+
+                $label.css({
+                    'background': gradient,
+                    'border-color': actualColor,
+                    'color': textColor
+                });
+                $label.find('span').css('color', textColor);
+            } else {
+                // Reset to default unchecked state - let CSS handle it
+                $label.css({
+                    'background': '',
+                    'border-color': '',
+                    'color': ''
+                });
+                $label.find('span').css('color', color || '');
+            }
+        });
     }
 
     renderFilterCard();
@@ -900,6 +1044,8 @@ async function deferredInit() {
         setAppState({ darkMode: isDark }); // saved into FILTER_*
         if (typeof applyThemeForMode === 'function') applyThemeForMode();
         try { if (typeof window.updateSignalTheme === 'function') window.updateSignalTheme(); } catch(_) {}
+        // Re-apply filter colors after dark mode toggle
+        try { if (typeof applyFilterColors === 'function') applyFilterColors(); } catch(_) {}
     });
 
     // Console Log Summary toggle (default OFF)
@@ -1951,20 +2097,29 @@ function updateAddTokenButtonState() {
         const $addBtn = $('#sync-save-btn, .sync-add-token-button, #btn-add-sync-tokens');
         if (!$addBtn.length) return;
 
+        // Cek apakah ada koin yang dipilih
+        const hasSelection = $('#sync-modal-tbody .sync-token-checkbox:checked').length > 0;
         const isNonSelected = $('#sync-filter-pair input[type="radio"]:checked').val() === 'NON';
 
-        if (isNonSelected) {
+        let canSave = hasSelection;
+        let tooltipMsg = '';
+
+        if (!hasSelection) {
+            canSave = false;
+            tooltipMsg = 'Pilih minimal 1 koin untuk disimpan';
+        } else if (isNonSelected) {
             // Check if NON inputs are valid
             const isValid = validateNonPairInputs();
-            $addBtn.prop('disabled', !isValid);
+            canSave = isValid;
             if (!isValid) {
-                $addBtn.attr('title', 'Lengkapi data Pair NON terlebih dahulu');
-            } else {
-                $addBtn.removeAttr('title');
+                tooltipMsg = 'Lengkapi data Pair NON terlebih dahulu';
             }
+        }
+
+        $addBtn.prop('disabled', !canSave);
+        if (tooltipMsg) {
+            $addBtn.attr('title', tooltipMsg);
         } else {
-            // Not NON, enable button (normal behavior)
-            $addBtn.prop('disabled', false);
             $addBtn.removeAttr('title');
         }
     } catch(_) {}
@@ -1990,6 +2145,29 @@ function updateSyncSelectedCount() {
             // PERUBAHAN: Input DEX juga mengikuti state dari ada/tidaknya koin yang dicentang.
             $dexInputs.prop('disabled', !hasSelection);
             $('#sync-dex-config').css({ opacity: hasSelection ? '' : '0.5', pointerEvents: hasSelection ? '' : 'none' });
+        }
+
+        // Update tombol SAVE: hanya aktif jika ada koin yang dipilih
+        const $saveBtn = $('#sync-save-btn');
+        if ($saveBtn.length) {
+            // Cek juga apakah pair NON dan perlu validasi
+            const isNonSelected = $('#sync-filter-pair input[type="radio"]:checked').val() === 'NON';
+            let canSave = hasSelection;
+
+            if (isNonSelected && hasSelection) {
+                // Jika pair NON dipilih, cek validasi NON inputs
+                canSave = typeof validateNonPairInputs === 'function' ? validateNonPairInputs() : true;
+            }
+
+            $saveBtn.prop('disabled', !canSave);
+
+            if (!hasSelection) {
+                $saveBtn.attr('title', 'Pilih minimal 1 koin untuk disimpan');
+            } else if (isNonSelected && !canSave) {
+                $saveBtn.attr('title', 'Lengkapi data Pair NON terlebih dahulu');
+            } else {
+                $saveBtn.removeAttr('title');
+            }
         }
     } catch(_) {}
 }
@@ -2528,6 +2706,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         // (checkbox state akan tetap preserved karena ada logik save/restore)
         renderSyncTable(activeSingleChainKey);
         updateSyncSelectedCount();
+        updateAddTokenButtonState();
     });
 
     // Handler untuk NON pair inputs - Real-time validation
@@ -2691,11 +2870,38 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
             if (typeof toast !== 'undefined' && toast.success) {
                 toast.success('Snapshot berhasil di-refresh!');
             }
+
+            // Log ke history: Update Koin berhasil
+            if (typeof addHistoryEntry === 'function') {
+                const totalTokens = incrementalMap.size;
+                addHistoryEntry(
+                    'Update Koin',
+                    'success',
+                    {
+                        chain: activeSingleChainKey.toUpperCase(),
+                        cex: selectedCexs.join(', '),
+                        totalTokens: totalTokens
+                    }
+                );
+            }
         } catch(error) {
             console.error('Refresh snapshot failed:', error);
             SnapshotOverlay.showError(error.message || 'Unknown error');
             if (typeof toast !== 'undefined' && toast.error) {
                 toast.error(`Gagal refresh: ${error.message || 'Unknown error'}`);
+            }
+
+            // Log ke history: Update Koin error
+            if (typeof addHistoryEntry === 'function') {
+                addHistoryEntry(
+                    'Update Koin',
+                    'error',
+                    {
+                        chain: activeSingleChainKey.toUpperCase(),
+                        cex: selectedCexs.join(', '),
+                        error: error.message || 'Unknown error'
+                    }
+                );
             }
         } finally {
             // Ensure button is re-enabled after a short delay
@@ -2919,7 +3125,18 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         renderSyncTable(activeSingleChainKey);
     }, 200));
 
-    // OLD checkbox handler removed - now using radio button handler defined earlier
+    // Event handler untuk checkbox di tabel koin - Update button save state
+    // Flag untuk mencegah trigger berulang saat bulk selection (Select All/Clear/dll)
+    let isBulkSelecting = false;
+    window.setSyncBulkSelecting = function(value) { isBulkSelecting = !!value; };
+
+    $(document).on('change', '#sync-modal-tbody .sync-token-checkbox', function() {
+        // Skip individual update jika sedang bulk selection
+        if (isBulkSelecting) return;
+
+        updateSyncSelectedCount();
+        updateAddTokenButtonState();
+    });
 
     $(document).on('change', '#sync-filter-cex input[type="checkbox"]', function(){
         renderSyncTable(activeSingleChainKey);
@@ -2942,27 +3159,31 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
     });
 
     // Sync modal select mode (exclusive via radio)
+    // Hanya ada 2 mode: "all" (Semua) dan "clear" (Hapus)
     $(document).on('change', 'input[name="sync-pick-mode"]', function(){
         const mode = $(this).val();
-        // REFACTOR: Target all checkboxes, not just visible ones, for 'all' and 'clear' modes.
-        // This ensures that "Select All" works even when a search filter is active.
         const $allBoxes = $('#sync-modal-tbody .sync-token-checkbox');
-        const $visibleBoxes = $('#sync-modal-tbody tr:visible .sync-token-checkbox');
 
-        console.log(`[Sync Pick Mode] Mode: ${mode}, Found ${$visibleBoxes.length} visible checkboxes, ${$allBoxes.length} total.`);
+        console.log(`[Sync Pick Mode] Mode: ${mode}, Found ${$allBoxes.length} checkboxes.`);
+
+        // 🚀 OPTIMASI: Set flag untuk mencegah individual change handler
+        if (typeof window.setSyncBulkSelecting === 'function') {
+            window.setSyncBulkSelecting(true);
+        }
 
         if (mode === 'all') {
             $allBoxes.prop('checked', true);
         } else if (mode === 'clear') {
             $allBoxes.prop('checked', false);
-        } else if (mode === 'picked') {
-            $allBoxes.prop('checked', false);
-            $('#sync-modal-tbody tr:visible .sync-token-checkbox[data-saved="1"]').prop('checked', true);
-        } else if (mode === 'snapshot') {
-            $allBoxes.prop('checked', false);
-            $('#sync-modal-tbody tr:visible .sync-token-checkbox[data-source="snapshot"]').not('[data-saved="1"]').prop('checked', true);
         }
+
+        // 🚀 OPTIMASI: Reset flag dan update UI sekali saja di akhir
+        if (typeof window.setSyncBulkSelecting === 'function') {
+            window.setSyncBulkSelecting(false);
+        }
+
         updateSyncSelectedCount();
+        updateAddTokenButtonState();
     });
 
     // Removed legacy single-chain start button handler (using unified #startSCAN now)
@@ -3377,9 +3598,14 @@ $(document).ready(function() {
                 if (!$indicator.length) return;
                 const isActive = (key === 'default' && state.column === 'default') || (state.column === key);
                 if (isActive && key !== 'default') {
-                    $indicator.text(state.direction === 'asc' ? '^' : 'v');
+                    // Gunakan icon UIkit atau unicode yang lebih bagus
+                    const icon = state.direction === 'asc'
+                        ? '<span uk-icon="icon: triangle-up; ratio: 0.6"></span>'
+                        : '<span uk-icon="icon: triangle-down; ratio: 0.6"></span>';
+                    $indicator.html(icon);
+                    $indicator.css({ 'margin-left': '4px', 'opacity': '0.7' });
                 } else {
-                    $indicator.text('');
+                    $indicator.html('');
                 }
             });
         } catch(_) {}

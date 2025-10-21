@@ -210,6 +210,7 @@ function RenderCardSignal() {
 
     const card = document.createElement('div');
     card.className = 'uk-card uk-card-default uk-card-hover uk-card-small signal-card uk-margin-small-top';
+    card.dataset.accentColor = chainColor;
     // border handled via CSS .signal-card; avoid inline styles
 
     const bodyId = `body-${dexLower}-${index}`;
@@ -217,8 +218,8 @@ function RenderCardSignal() {
     // HEADER lebih tipis
     const cardHeader = document.createElement('div');
     cardHeader.className = 'uk-card-header uk-padding-small uk-padding-remove-vertical uk-flex uk-flex-middle uk-flex-between';
-    // keep background dynamic; border-bottom unified via CSS
-    cardHeader.style.cssText = `background-color:${chainColor}; color:#fff;`;
+    cardHeader.style.backgroundColor = chainColor;
+    cardHeader.style.color = '#fff';
 
     const left = document.createElement('div');
     left.className = 'uk-flex uk-flex-middle';
@@ -271,7 +272,7 @@ function RenderCardSignal() {
       info.className = 'no-signal-placeholder uk-width-1-1 uk-margin-small-top';
       info.style.display = 'none';
       info.innerHTML = `
-        <div class=\"uk-card uk-card-default uk-card-hover uk-card-small signal-card\">
+        <div class=\"uk-card uk-card-default uk-card-hover uk-card-small signal-card\" data-accent-color=\"${chainColor}\">
           <div class=\"uk-card-header uk-padding-small uk-padding-remove-vertical\" style=\"background-color:${chainColor}; color:#fff;\">
             <div class="uk-flex uk-flex-middle uk-flex-between">
               <div class="uk-flex uk-flex-middle" style="gap:8px;">
@@ -320,25 +321,30 @@ window.updateSignalTheme = function() {
         }
         const container = document.getElementById('sinyal-container');
         if (!container) return;
+        const borderColor = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)';
+        const headerTextColor = isDark ? '#f3f4f6' : '#ffffff';
+        const signalTextColor = isDark ? '#e7e7ec' : '#000000';
+        const applyHeaderTheme = (header, accent) => {
+            if (!header) return;
+            const useAccent = accent || chainColor;
+            header.style.backgroundColor = useAccent;
+            header.style.color = headerTextColor;
+            header.style.borderBottomColor = borderColor;
+        };
+
         const cards = container.querySelectorAll('.signal-card');
         cards.forEach(card => {
-            // Pas-kan body card dengan palet dark mode aplikasi
-            card.style.backgroundColor = isDark ? '#2c2c2e' : '#ffffff';
-            card.style.color = isDark ? '#e7e7ec' : '#000000';
-            const body = card.querySelector('.uk-card-body');
-            if (body) {
-                body.style.backgroundColor = isDark ? '#2c2c2e' : '#ffffff';
-                body.style.color = isDark ? '#e7e7ec' : '#000000';
-            }
-            const header = card.querySelector('.uk-card-header');
-            if (header) {
-                header.style.backgroundColor = isDark ? '#1f2024' : chainColor;
-                header.style.color = isDark ? '#f3f4f6' : '#ffffff';
-                header.style.borderBottomColor = isDark ? '#383a40' : '#000000';
-            }
+            const accent = card.dataset.accentColor || chainColor;
+            applyHeaderTheme(card.querySelector('.uk-card-header'), accent);
             const span = card.querySelector('[id^="sinyal"]');
-            if (span) span.style.color = isDark ? '#e7e7ec' : '#000000';
+            if (span) span.style.color = signalTextColor;
         });
+
+        const placeholderCard = container.querySelector('#no-signal-placeholder .signal-card');
+        if (placeholderCard) {
+            const accent = placeholderCard.dataset.accentColor || chainColor;
+            applyHeaderTheme(placeholderCard.querySelector('.uk-card-header'), accent);
+        }
     } catch(_) {}
 };
 
