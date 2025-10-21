@@ -314,7 +314,8 @@
                       chain: net.network,
                       feeWDs: parseFloat(net.withdrawFee || 0),
                       depositEnable: !!net.depositEnable,
-                      withdrawEnable: !!net.withdrawEnable
+                      withdrawEnable: !!net.withdrawEnable,
+                      contractAddress: net.contractAddress || ''
                   }))
               );
           }
@@ -332,7 +333,8 @@
                       chain: net.network || net.netWork || net.chain || net.name || '',
                       feeWDs: parseFloat(net.withdrawFee || 0),
                       depositEnable: !!net.depositEnable,
-                      withdrawEnable: !!net.withdrawEnable
+                      withdrawEnable: !!net.withdrawEnable,
+                      contractAddress: net.contract || ''
                   }))
               );
           }
@@ -367,6 +369,7 @@
                           feeWDs: parseFloat(chain.withdraw_fee || feeOnChain || 0),
                           depositEnable: !Boolean(chain.deposit_disabled),
                           withdrawEnable: !Boolean(chain.withdraw_disabled),
+                          contractAddress: chain.addr || ''
                       };
                   })
               );
@@ -395,7 +398,15 @@
                       const dep = (net?.isDepositEnabled === true) || (net?.canDeposit === true) || (String(net?.depositEnable).toLowerCase() === 'true');
                       const wd  = (net?.isWithdrawEnabled === true) || (net?.canWithdraw === true) || (String(net?.withdrawEnable).toLowerCase() === 'true');
                       if (!coin || !chainName) return;
-                      arr.push({ cex: 'KUCOIN', tokenName: String(coin).toUpperCase(), chain: String(chainName), feeWDs: isFinite(fee)?fee:0, depositEnable: !!dep, withdrawEnable: !!wd });
+                      arr.push({
+                          cex: 'KUCOIN',
+                          tokenName: String(coin).toUpperCase(),
+                          chain: String(chainName),
+                          feeWDs: isFinite(fee)?fee:0,
+                          depositEnable: !!dep,
+                          withdrawEnable: !!wd,
+                          contractAddress: net?.contractAddress || ''
+                      });
                   });
               });
               return arr;
@@ -416,7 +427,15 @@
                       const dep = (String(net?.rechargeable).toLowerCase() === 'true') || (net?.rechargeable === true);
                       const wd  = (String(net?.withdrawable).toLowerCase() === 'true') || (net?.withdrawable === true);
                       if (!coin || !chain) return;
-                      arr.push({ cex: 'BITGET', tokenName: String(coin).toUpperCase(), chain: String(chain), feeWDs: isFinite(fee)?fee:0, depositEnable: !!dep, withdrawEnable: !!wd });
+                      arr.push({
+                          cex: 'BITGET',
+                          tokenName: String(coin).toUpperCase(),
+                          chain: String(chain),
+                          feeWDs: isFinite(fee)?fee:0,
+                          depositEnable: !!dep,
+                          withdrawEnable: !!wd,
+                          contractAddress: net?.contractAddress || ''
+                      });
                   });
               });
               return arr;
@@ -460,7 +479,15 @@
                       const dep = (net?.canDeposit === true) || (net?.depositable === true) || truthy(net?.rechargeable) || truthy(net?.chainDeposit);
                       const wd  = (net?.canWithdraw === true) || (net?.withdrawable === true) || truthy(net?.chainWithdraw);
                       if (!coin || !chain) return;
-                      arr.push({ cex: 'BYBIT', tokenName: String(coin).toUpperCase(), chain: String(chain), feeWDs: isFinite(fee)?fee:0, depositEnable: !!dep, withdrawEnable: !!wd });
+                      arr.push({
+                          cex: 'BYBIT',
+                          tokenName: String(coin).toUpperCase(),
+                          chain: String(chain),
+                          feeWDs: isFinite(fee)?fee:0,
+                          depositEnable: !!dep,
+                          withdrawEnable: !!wd,
+                          contractAddress: net?.contractAddress || ''
+                      });
                   });
               });
               return arr;
