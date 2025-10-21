@@ -3248,7 +3248,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
     });
 
     // Sync modal select mode (exclusive via radio)
-    // Hanya ada 2 mode: "all" (Semua) dan "clear" (Hapus)
+    // Mode: "all" (Semua), "clear" (Hapus), "snapshot" (Snapshot), "selected" (Dipilih)
     $(document).on('change', 'input[name="sync-pick-mode"]', function(){
         const mode = $(this).val();
         const $allBoxes = $('#sync-modal-tbody .sync-token-checkbox');
@@ -3261,9 +3261,59 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         }
 
         if (mode === 'all') {
+            // Pilih semua
             $allBoxes.prop('checked', true);
         } else if (mode === 'clear') {
+            // Hapus semua
             $allBoxes.prop('checked', false);
+        } else if (mode === 'snapshot') {
+            // Pilih yang ada tag "snapshot" di row
+            $allBoxes.each(function() {
+                const $row = $(this).closest('tr');
+                const hasSnapshotTag = $row.attr('data-source') === 'snapshot' ||
+                                      $row.find('[data-source="snapshot"]').length > 0 ||
+                                      $row.hasClass('snapshot-row');
+                $(this).prop('checked', hasSnapshotTag);
+            });
+        } else if (mode === 'selected') {
+            // Pilih yang ada di localStorage/database TOKEN_<chain>
+            const chainKey = window.activeSingleChainKey || '';
+            if (chainKey) {
+                const tokenDbKey = `TOKEN_${String(chainKey).toUpperCase()}`;
+                let savedTokens = [];
+
+                try {
+                    // Load from localStorage
+                    if (typeof window.getFromLocalStorage === 'function') {
+                        savedTokens = window.getFromLocalStorage(tokenDbKey, []);
+                    } else if (typeof localStorage !== 'undefined') {
+                        const raw = localStorage.getItem(tokenDbKey);
+                        savedTokens = raw ? JSON.parse(raw) : [];
+                    }
+                } catch(err) {
+                    // console.error('Failed to load saved tokens:', err);
+                    savedTokens = [];
+                }
+
+                // Create lookup set by SC address
+                const savedScSet = new Set();
+                if (Array.isArray(savedTokens)) {
+                    savedTokens.forEach(token => {
+                        const sc = String(token.sc_in || token.sc || '').toLowerCase().trim();
+                        if (sc && sc !== '0x') {
+                            savedScSet.add(sc);
+                        }
+                    });
+                }
+
+                // Check each checkbox
+                $allBoxes.each(function() {
+                    const $row = $(this).closest('tr');
+                    const rowSc = String($row.attr('data-sc') || $row.find('.sc-cell').text() || '').toLowerCase().trim();
+                    const isSelected = rowSc && savedScSet.has(rowSc);
+                    $(this).prop('checked', isSelected);
+                });
+            }
         }
 
         // 🚀 OPTIMASI: Reset flag dan update UI sekali saja di akhir
@@ -4082,7 +4132,7 @@ $(document).ready(function() {
             }
 
             const row = `
-                <tr>
+                <tr data-sc="${scIn}" data-source="${source}" class="${showSourceBadge ? 'snapshot-row' : ''}">
                     <td class="uk-text-center">${checkboxHtml}</td>
                     <td class="uk-text-center">${index + 1}</td>
                     <td class="uk-text-bold uk-text-primary uk-text-small">${cexUp}${statusBadge}${sourceBadge}</td>
