@@ -822,7 +822,6 @@ body.dark-mode {
 .dark-mode .uk-badge {
     background: rgba(75, 85, 99, 0.8);
     backdrop-filter: blur(5px);
-    color: #e5e7eb;
 }
 
 .dark-mode .uk-label.uk-label-warning {

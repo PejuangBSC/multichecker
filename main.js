@@ -2053,7 +2053,6 @@ function sleep(ms) {
 
 function resetSyncModalSelections() {
     try {
-        $('#sync-search-input').val('');
         $('#sync-select-controls input[name="sync-pick-mode"]').prop('checked', false);
     } catch(_) {}
 }
@@ -3198,11 +3197,6 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         // debug logs removed
     });
 
-    // Sync modal search + filter handlers
-    $('#sync-search-input').on('input', debounce(function() {
-        renderSyncTable(activeSingleChainKey);
-    }, 200));
-
     // Event handler untuk checkbox di tabel koin - Update button save state
     // Flag untuk mencegah trigger berulang saat bulk selection (Select All/Clear/dll)
     let isBulkSelecting = false;
@@ -3838,12 +3832,11 @@ $(document).ready(function() {
         const currentCheckboxState = new Map();
         $('#sync-modal-tbody .sync-token-checkbox').each(function() {
             const $cb = $(this);
-            const idx = Number($cb.data('index'));
             const cex = String($cb.data('cex') || '').toUpperCase();
             const symbol = String($cb.data('symbol') || '').toUpperCase();
             const isChecked = $cb.is(':checked');
-            // Key: kombinasi index+cex+symbol (TANPA pair, karena pair bukan identitas koin)
-            const key = `${idx}__${cex}__${symbol}`;
+            // Key: HANYA cex+symbol (TANPA index, karena index berubah saat filter/sort)
+            const key = `${cex}__${symbol}`;
             currentCheckboxState.set(key, isChecked);
         });
         // console.log('[renderSyncTable] Saved checkbox state:', currentCheckboxState.size, 'items');
@@ -3869,8 +3862,6 @@ $(document).ready(function() {
             updateSyncSortIndicators();
             return;
         }
-
-        const search = ($('#sync-search-input').val() || '').toLowerCase();
 
         // Pair yang dipilih (dari radio button) - akan digunakan saat SAVE, bukan untuk filter tampilan
         const selectedPairForSave = selectedPair ? String(selectedPair).toUpperCase() : 'USDT';
@@ -3905,13 +3896,11 @@ $(document).ready(function() {
             }));
         });
 
-        // Filter HANYA berdasarkan CEX dan Search (BUKAN pair)
+        // Filter HANYA berdasarkan CEX (BUKAN pair atau search)
         const filtered = processed.filter(t => {
             const cexUp = String(t.cex || '').toUpperCase();
             if (selectedCexs.length && !selectedCexs.includes(cexUp)) return false;
-            const symIn = String(t.symbol_in || '').toUpperCase();
-            const text = `${symIn} ${cexUp}`.toLowerCase();
-            return !search || text.includes(search);
+            return true;
         });
 
         if (!filtered.length) {
@@ -3980,11 +3969,11 @@ $(document).ready(function() {
             const saved = token.__isSaved ? (token.__savedEntry || {}) : null;
 
             // ========== RESTORE STATE CHECKBOX DARI SEBELUM RE-RENDER ==========
-            // Key berdasarkan identitas koin: index+cex+symbol (TANPA pair)
-            const checkboxKey = `${baseIndex}__${cexUp}__${symIn}`;
+            // Key berdasarkan identitas koin: HANYA cex+symbol (TANPA index dan pair)
+            const checkboxKey = `${cexUp}__${symIn}`;
             let isChecked = !!saved; // Default: checked jika sudah tersimpan di DB
 
-            // Jika ada state checkbox sebelumnya, gunakan state tersebut
+            // Jika ada state checkbox sebelumnya, gunakan state tersebut (PRIORITAS UTAMA)
             if (currentCheckboxState.has(checkboxKey)) {
                 isChecked = currentCheckboxState.get(checkboxKey);
             }
@@ -4065,6 +4054,7 @@ $(document).ready(function() {
             }
         });
         updateSyncSelectedCount();
+        updateAddTokenButtonState();
         priceJobs.forEach(queueSyncPriceFetch);
         updateSyncSortIndicators();
     };
