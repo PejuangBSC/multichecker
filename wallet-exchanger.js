@@ -73,7 +73,12 @@
             const mode = modeOverride || ((typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' });
             let tokens = [];
 
-            if (mode.type === 'single' && mode.chain) {
+            // Gunakan getActiveTokens() untuk konsistensi dengan sistem storage
+            if (typeof getActiveTokens === 'function') {
+                tokens = getActiveTokens([]);
+                const storageKey = (typeof getActiveTokenKey === 'function') ? getActiveTokenKey() : 'TOKEN_MULTICHAIN';
+                console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins from ${storageKey}`);
+            } else if (mode.type === 'single' && mode.chain) {
                 const chainKey = getCanonicalChainKey(mode.chain) || mode.chain;
                 tokens = (typeof getTokensChain === 'function') ? getTokensChain(chainKey) : [];
                 console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins for chain ${chainKey}`);
@@ -204,10 +209,11 @@
 
     function ensureCexEntry(coin, cexName) {
         coin.dataCexs = coin.dataCexs || {};
-        if (!coin.dataCexs[cexName]) {
-            coin.dataCexs[cexName] = {};
+        const key = String(cexName || '').toUpperCase();
+        if (!coin.dataCexs[key]) {
+            coin.dataCexs[key] = {};
         }
-        return coin.dataCexs[cexName];
+        return coin.dataCexs[key];
     }
 
     function mergeWalletData(existingCoins, walletDataByCex, mode) {
@@ -215,14 +221,31 @@
             const clone = Object.assign({}, coin);
             if (coin.dataCexs) {
                 clone.dataCexs = cloneDataCexs(coin.dataCexs);
+                const selectedSet = new Set((coin.selectedCexs || []).map(cx => String(cx || '').toUpperCase()));
+                if (selectedSet.size > 0) {
+                    Object.keys(clone.dataCexs).forEach(key => {
+                        if (!selectedSet.has(String(key || '').toUpperCase())) {
+                            delete clone.dataCexs[key];
+                        }
+                    });
+                }
             }
             return clone;
         });
 
         const coinIndex = buildCoinIndex(merged);
+        const allowedCexByCoin = merged.map(coin => {
+            const allowed = new Set();
+            (coin.selectedCexs || []).forEach(cx => allowed.add(String(cx || '').toUpperCase()));
+            if (allowed.size === 0 && coin.dataCexs && typeof coin.dataCexs === 'object') {
+                Object.keys(coin.dataCexs).forEach(cx => allowed.add(String(cx || '').toUpperCase()));
+            }
+            return allowed;
+        });
 
         Object.keys(walletDataByCex || {}).forEach(cexName => {
-            const walletItems = walletDataByCex[cexName] || [];
+            const cexUpper = String(cexName || '').toUpperCase();
+            const walletItems = walletDataByCex[cexName] || walletDataByCex[cexUpper] || [];
             if (!Array.isArray(walletItems) || walletItems.length === 0) return;
 
             const normalizedEntries = new Map();
@@ -241,8 +264,12 @@
                 }
 
                 refs.forEach(({ idx, role }) => {
+                    if (!allowedCexByCoin[idx].has(cexUpper)) {
+                        return;
+                    }
+
                     const coin = merged[idx];
-                    const target = ensureCexEntry(coin, cexName);
+                    const target = ensureCexEntry(coin, cexUpper);
 
                     if (role === 'token') {
                         const depositToken = normalizeFlag(entry.depositEnable);
@@ -288,23 +315,30 @@
      */
     function saveCoinsToStorage(coins) {
         try {
-            const mode = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
-
-            if (mode.type === 'single' && mode.chain) {
-                // Single chain mode - save to specific chain storage
-                const chainKey = getCanonicalChainKey(mode.chain) || String(mode.chain).toLowerCase();
-                const storageKey = `TOKEN_${String(chainKey).toUpperCase()}`;
-                if (typeof saveToLocalStorage === 'function') {
-                    saveToLocalStorage(storageKey, coins);
-                }
+            // Gunakan saveActiveTokens() untuk konsistensi dengan sistem storage
+            if (typeof saveActiveTokens === 'function') {
+                saveActiveTokens(coins);
+                const storageKey = (typeof getActiveTokenKey === 'function') ? getActiveTokenKey() : 'TOKEN_MULTICHAIN';
+                console.log(`[Wallet Exchanger] Saved ${coins.length} coins to ${storageKey}`);
             } else {
-                // Multichain mode
-                if (typeof saveToLocalStorage === 'function') {
-                    saveToLocalStorage('TOKEN_MULTICHAIN', coins);
-                }
-            }
+                const mode = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
 
-            console.log(`[Wallet Exchanger] Saved ${coins.length} coins to storage`);
+                if (mode.type === 'single' && mode.chain) {
+                    // Single chain mode - save to specific chain storage
+                    const chainKey = getCanonicalChainKey(mode.chain) || String(mode.chain).toLowerCase();
+                    const storageKey = `TOKEN_${String(chainKey).toUpperCase()}`;
+                    if (typeof saveToLocalStorage === 'function') {
+                        saveToLocalStorage(storageKey, coins);
+                    }
+                } else {
+                    // Multichain mode
+                    if (typeof saveToLocalStorage === 'function') {
+                        saveToLocalStorage('TOKEN_MULTICHAIN', coins);
+                    }
+                }
+
+                console.log(`[Wallet Exchanger] Saved ${coins.length} coins to storage`);
+            }
         } catch(err) {
             console.error('[Wallet Exchanger] Error saving coins to storage:', err);
         }
@@ -767,8 +801,8 @@
         // Show overlay dengan AppOverlay
         const overlayId = AppOverlay.showItems({
             id: 'wallet-fetch-overlay',
-            title: 'Fetching Wallet Data...',
-            message: 'Mohon tunggu, aplikasi sedang melakukan fetch data wallet dari exchanger',
+            title: 'Memproses Wallet Exchanger...',
+            message: 'Mohon tunggu, aplikasi sedang melakukan Memuat data wallet dari exchanger',
             items: items
         });
 
@@ -938,7 +972,7 @@
                 if (typeof addHistoryEntry === 'function') {
                     const totalTokens = Object.keys(cexWalletData).reduce((sum, name) => sum + (cexWalletData[name] || []).length, 0);
                     addHistoryEntry(
-                        'Update Wallet Exchanger',
+                        'UPDATE WALLET EXCHANGER',
                         'success',
                         {
                             cex: selectedCexList.join(', '),
@@ -956,7 +990,7 @@
                 // Log ke history: Update Wallet sebagian berhasil
                 if (typeof addHistoryEntry === 'function') {
                     addHistoryEntry(
-                        'Update Wallet Exchanger',
+                        'UPDATE WALLET EXCHANGER',
                         'warning',
                         {
                             success: selectedCexList.filter(c => !failedCexes.includes(c)).join(', '),
@@ -976,7 +1010,7 @@
             // Log ke history: Update Wallet error
             if (typeof addHistoryEntry === 'function') {
                 addHistoryEntry(
-                    'Update Wallet Exchanger',
+                    'UPDATE WALLET EXCHANGER',
                     'error',
                     {
                         cex: selectedCexList.join(', '),

@@ -146,6 +146,20 @@
                     }
                 }
 
+                // Token Multichain (global list)
+                const multiTokens = getKv('TOKEN_MULTICHAIN');
+                if (Array.isArray(multiTokens) && multiTokens.length) {
+                    tables['TOKEN_MULTICHAIN'] = {
+                        name: 'TOKEN_MULTICHAIN',
+                        displayName: 'Koin Multichain',
+                        type: 'koin',
+                        chain: 'multichain',
+                        rawKey: (kvIndex.get('TOKEN_MULTICHAIN') || {}).rawKey || 'TOKEN_MULTICHAIN',
+                        data: multiTokens,
+                        count: multiTokens.length
+                    };
+                }
+
                 // Snapshot map via snapshot module
                 if (typeof window.snapshotDbGet === 'function') {
                     const snap = await window.snapshotDbGet('SNAPSHOT_DATA_KOIN');
@@ -176,7 +190,7 @@
                 }
 
                 // Filter Multichain
-                const fm = getKv('FILTER_MULTICHAIN');
+                const fm = getKv('FILTER_MULTICHAIN') ?? (typeof window.getFromLocalStorage === 'function' ? window.getFromLocalStorage('FILTER_MULTICHAIN', undefined) : undefined);
                 if (fm) {
                     tables['FILTER_MULTICHAIN'] = { name: 'FILTER_MULTICHAIN', displayName: 'Filter Multichain', type: 'filter', chain: 'multichain', rawKey: (kvIndex.get('FILTER_MULTICHAIN')||{}).rawKey || 'FILTER_MULTICHAIN', data: fm, count: typeof fm === 'object' ? Object.keys(fm).length : 1 };
                 }
@@ -240,6 +254,21 @@
                 }
             }
 
+            // Load TOKEN_MULTICHAIN
+            console.log('[Database Viewer] Loading TOKEN_MULTICHAIN...');
+            const multiTokens = await getFromDB(db, DB_CONFIG.store, 'TOKEN_MULTICHAIN');
+            console.log('[Database Viewer] TOKEN_MULTICHAIN result:', multiTokens ? `${multiTokens.length || 0} items` : 'null');
+            if (Array.isArray(multiTokens) && multiTokens.length > 0) {
+                tables['TOKEN_MULTICHAIN'] = {
+                    name: 'TOKEN_MULTICHAIN',
+                    displayName: 'Koin Multichain',
+                    type: 'koin',
+                    chain: 'multichain',
+                    data: multiTokens,
+                    count: multiTokens.length
+                };
+            }
+
             // 3. Load SNAPSHOT_DATA_KOIN (unified snapshot from SNAPSHOT_STORE)
             const snapshotData = await getFromDB(db, DB_CONFIG.snapshotStore, 'SNAPSHOT_DATA_KOIN');
             if (snapshotData && typeof snapshotData === 'object') {
@@ -287,7 +316,10 @@
 
             // 5. Load FILTER_MULTICHAIN
             console.log('[Database Viewer] Loading FILTER_MULTICHAIN...');
-            const filterMulti = await getFromDB(db, DB_CONFIG.store, 'FILTER_MULTICHAIN');
+            let filterMulti = await getFromDB(db, DB_CONFIG.store, 'FILTER_MULTICHAIN');
+            if (!filterMulti && typeof window.getFromLocalStorage === 'function') {
+                filterMulti = window.getFromLocalStorage('FILTER_MULTICHAIN', undefined);
+            }
             console.log('[Database Viewer] FILTER_MULTICHAIN result:', filterMulti);
             if (filterMulti) {
                 tables['FILTER_MULTICHAIN'] = {
@@ -742,13 +774,16 @@
             const contentDisplay = isExpanded ? 'block' : 'none';
             const iconName = isExpanded ? 'chevron-down' : 'chevron-right';
             const chainColor = getChainColor(table.chain);
+            const displayName = String(table.displayName || table.name);
+            const isMultichainHighlight = table.chain === 'multichain' && (table.type === 'koin' || table.type === 'filter');
+            const titleClassAttr = isMultichainHighlight ? ' class="multichain-highlight"' : '';
 
             html += `
                 <div class="db-table-card uk-card uk-card-default uk-margin-small ${isExpanded ? 'expanded' : ''}" data-table="${table.name}" style="--card-accent-color: ${chainColor};">
                     <div class="db-table-header" data-table="${table.name}">
                         <div class="db-table-title">
                             <span uk-icon="icon: ${iconName}; ratio: 0.8" class="accordion-icon"></span>
-                            <strong>${table.displayName}</strong>
+                            <strong${titleClassAttr}>${displayName}</strong>
                             <span class="uk-badge uk-margin-small-left">${table.count}</span>
                         </div>
                         <div class="db-table-actions">
@@ -1116,20 +1151,6 @@
 
         // Bind close button
         $('#db-close-btn').off('click').on('click', hide);
-
-        // Bind expand all button
-        $('#db-expand-all-btn').off('click').on('click', function() {
-            Object.keys(filteredData).forEach(tableName => {
-                expandedTables.add(tableName);
-            });
-            renderDatabaseView();
-        });
-
-        // Bind collapse all button
-        $('#db-collapse-all-btn').off('click').on('click', function() {
-            expandedTables.clear();
-            renderDatabaseView();
-        });
 
         console.log('[Database Viewer] Module initialized');
     }

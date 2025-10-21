@@ -1187,6 +1187,9 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
         } else if (baseSym && outSym === baseSym && baseUsd > 0) {
             // token -> base → multiply by base USD
             displayRate = rateTokentoPair * baseUsd;
+        } else if (priceBuyPair_CEX > 0) {
+            // Output non-stable, non-base (BNT, 1INCH, dll) → multiply rate dengan CEX pair price
+            displayRate = rateTokentoPair * priceBuyPair_CEX;
         }
     } else {
         // pair -> token (we want USD per 1 token_out)
@@ -1209,8 +1212,9 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     // - PairtoToken: USD/token = langsung harga CEX token (hindari mengalikan hingga jadi USD per PAIR)
     if (!Number.isFinite(displayRate) || displayRate <= 0) {
         if (trx === 'TokentoPair') {
-            displayRate = priceSellPair_CEX > 0
-                ? priceSellPair_CEX
+            // FIX: Multiply rateTokentoPair dengan priceSellPair_CEX untuk konversi ke USDT
+            displayRate = (rateTokentoPair > 0 && priceSellPair_CEX > 0)
+                ? rateTokentoPair * priceSellPair_CEX
                 : (priceBuyToken_CEX > 0 ? priceBuyToken_CEX : rateTokentoPair || 0);
         } else {
             displayRate = priceSellToken_CEX > 0

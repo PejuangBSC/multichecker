@@ -2875,7 +2875,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
             if (typeof addHistoryEntry === 'function') {
                 const totalTokens = incrementalMap.size;
                 addHistoryEntry(
-                    'Update Koin',
+                    'UPDATE KOIN',
                     'success',
                     {
                         chain: activeSingleChainKey.toUpperCase(),
@@ -2894,7 +2894,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
             // Log ke history: Update Koin error
             if (typeof addHistoryEntry === 'function') {
                 addHistoryEntry(
-                    'Update Koin',
+                    'UPDATE KOIN',
                     'error',
                     {
                         chain: activeSingleChainKey.toUpperCase(),

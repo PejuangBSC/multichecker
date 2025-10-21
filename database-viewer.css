@@ -151,6 +151,26 @@
     font-size: 15px;
 }
 
+.db-table-title strong {
+    text-transform: uppercase;
+}
+
+.db-table-title strong.multichain-highlight {
+    color: #16a34a;
+}
+
+.db-table-card.expanded .db-table-title strong.multichain-highlight {
+    color: #22c55e;
+}
+
+body.dark-mode .db-table-title strong.multichain-highlight {
+    color: #4ade80;
+}
+
+body.dark-mode .db-table-card.expanded .db-table-title strong.multichain-highlight {
+    color: #86efac;
+}
+
 .db-table-title .accordion-icon {
     transition: transform 0.3s ease;
 }
