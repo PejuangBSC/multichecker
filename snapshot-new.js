@@ -83,7 +83,7 @@
                 } catch(_) { resolve(undefined); }
             });
         } catch(error) {
-            console.error('snapshotDbGet error:', error);
+            // console.error('snapshotDbGet error:', error);
             return undefined;
         }
     }
@@ -101,7 +101,7 @@
                 } catch(_) { resolve(false); }
             });
         } catch(error) {
-            console.error('snapshotDbSet error:', error);
+            // console.error('snapshotDbSet error:', error);
             return false;
         }
     }
@@ -340,7 +340,7 @@
             PRICE_CACHE.set(upper, { map, ts: now });
             return map;
         } catch(error) {
-            console.error(`Failed to fetch price map for ${upper}:`, error);
+            // console.error(`Failed to fetch price map for ${upper}:`, error);
             PRICE_CACHE.set(upper, { map: new Map(), ts: now });
             return new Map();
         }
@@ -348,13 +348,13 @@
 
     async function saveToSnapshot(chainKey, tokens) {
         try {
-            console.log('saveToSnapshot called:', { chainKey, tokensLength: tokens?.length });
+            // console.log('saveToSnapshot called:', { chainKey, tokensLength: tokens?.length });
 
             const snapshotMap = await snapshotDbGet(SNAPSHOT_DB_CONFIG.snapshotKey) || {};
-            console.log('saveToSnapshot - Existing map keys:', Object.keys(snapshotMap));
+            // console.log('saveToSnapshot - Existing map keys:', Object.keys(snapshotMap));
 
             const keyLower = String(chainKey || '').toLowerCase();
-            console.log('saveToSnapshot - Will save to key:', keyLower);
+            // console.log('saveToSnapshot - Will save to key:', keyLower);
 
             // Convert tokens to snapshot format
             const snapshotTokens = tokens.map(token => ({
@@ -374,17 +374,17 @@
                 price_timestamp: token.price_timestamp || null
             }));
 
-            console.log('saveToSnapshot - Converted tokens:', snapshotTokens.length);
+            // console.log('saveToSnapshot - Converted tokens:', snapshotTokens.length);
 
             snapshotMap[keyLower] = snapshotTokens;
-            console.log('saveToSnapshot - Map now has keys:', Object.keys(snapshotMap));
+            // console.log('saveToSnapshot - Map now has keys:', Object.keys(snapshotMap));
 
             const saved = await snapshotDbSet(SNAPSHOT_DB_CONFIG.snapshotKey, snapshotMap);
-            console.log('saveToSnapshot - Save result:', saved);
+            // console.log('saveToSnapshot - Save result:', saved);
 
             return saved;
         } catch(error) {
-            console.error('saveToSnapshot failed:', error);
+            // console.error('saveToSnapshot failed:', error);
             return false;
         }
     }
@@ -403,14 +403,14 @@
             const cexUpper = cex.toUpperCase();
             const chainLower = String(chainKey || '').toLowerCase();
 
-            console.log(`fetchCexData for ${cex} on chain ${chainLower} - Using services/cex.js`);
+            // console.log(`fetchCexData for ${cex} on chain ${chainLower} - Using services/cex.js`);
 
             let coins = [];
 
             // Use the unified fetchWalletStatus from services/cex.js
             if (window.App?.Services?.CEX?.fetchWalletStatus) {
                 try {
-                    console.log(`Fetching wallet status for ${cexUpper} using services/cex.js...`);
+                    // console.log(`Fetching wallet status for ${cexUpper} using services/cex.js...`);
                     const walletData = await window.App.Services.CEX.fetchWalletStatus(cexUpper);
 
                     if (walletData && Array.isArray(walletData)) {
@@ -455,21 +455,21 @@
                                 };
                             });
 
-                        console.log(`Converted ${coins.length} coins from ${cexUpper} wallet API data`);
+                        // console.log(`Converted ${coins.length} coins from ${cexUpper} wallet API data`);
                     } else {
-                        console.warn(`${cexUpper}: No wallet data returned from services/cex.js`);
+                        // console.warn(`${cexUpper}: No wallet data returned from services/cex.js`);
                     }
                 } catch(serviceError) {
-                    console.error(`${cexUpper} wallet service failed:`, serviceError);
+                    // console.error(`${cexUpper} wallet service failed:`, serviceError);
                     // Will fallback to cached data below
                 }
             } else {
-                console.warn('window.App.Services.CEX.fetchWalletStatus not available, falling back to cached data');
+                // console.warn('window.App.Services.CEX.fetchWalletStatus not available, falling back to cached data');
             }
 
             // Fallback: Use cached data if service failed or no data returned
             if (coins.length === 0) {
-                console.log(`${cexUpper}: Using cached snapshot data as fallback`);
+                // console.log(`${cexUpper}: Using cached snapshot data as fallback`);
                 const snapshotMap = await snapshotDbGet(SNAPSHOT_DB_CONFIG.snapshotKey) || {};
                 const keyLower = String(chainKey || '').toLowerCase();
                 const allTokens = Array.isArray(snapshotMap[keyLower]) ? snapshotMap[keyLower] : [];
@@ -478,17 +478,17 @@
                     return String(token.cex || '').toUpperCase() === cexUpper;
                 });
 
-                console.log(`Using cached data for ${cexUpper}: ${coins.length} coins`);
+                // console.log(`Using cached data for ${cexUpper}: ${coins.length} coins`);
 
                 if (coins.length === 0) {
-                    console.warn(`${cexUpper}: No service data and no cached data available`);
+                    // console.warn(`${cexUpper}: No service data and no cached data available`);
                 }
             }
 
-            console.log(`fetchCexData for ${cex}: fetched ${coins.length} coins total`);
+            // console.log(`fetchCexData for ${cex}: fetched ${coins.length} coins total`);
             return coins;
         } catch(error) {
-            console.error(`fetchCexData failed for ${cex}:`, error);
+            // console.error(`fetchCexData failed for ${cex}:`, error);
             return [];
         }
     }
@@ -532,13 +532,13 @@
                 if (matchedSc && matchedSc !== '0x') {
                     token.sc_in = matchedSc;
                     sc = matchedSc.toLowerCase();
-                    console.log(`✅ ${symbol}: SC resolved from database lookup (${token.sc_in})`);
+                    // console.log(`✅ ${symbol}: SC resolved from database lookup (${token.sc_in})`);
 
                     const matchedDecimals = matched.des_in ?? matched.decimals ?? matched.des ?? matched.dec_in;
                     if (Number.isFinite(matchedDecimals) && matchedDecimals > 0) {
                         token.des_in = matchedDecimals;
                         token.decimals = matchedDecimals;
-                        console.log(`✅ ${symbol}: Decimals resolved from database lookup (${token.des_in})`);
+                        // console.log(`✅ ${symbol}: Decimals resolved from database lookup (${token.des_in})`);
                     }
 
                     if (!token.token_name && matched.token_name) {
@@ -554,7 +554,7 @@
             }
 
             if (!sc || sc === '0x') {
-                console.log(`ℹ️ ${symbol}: No contract address provided and no match found in database. Skipping Web3 validation.`);
+                // console.log(`ℹ️ ${symbol}: No contract address provided and no match found in database. Skipping Web3 validation.`);
                 return token;
             }
         }
@@ -576,7 +576,7 @@
                 if (existing.symbol_in && existing.symbol_in !== symbol) {
                     token.symbol_in = existing.symbol_in;
                 }
-                console.log(`✅ ${symbol}: DES found in database (${token.des_in})`);
+                // console.log(`✅ ${symbol}: DES found in database (${token.des_in})`);
                 return token;
             }
 
@@ -586,7 +586,7 @@
             }
 
             try {
-                console.log(`🔍 ${symbol}: Fetching decimals from Web3 for ${sc}`);
+                // console.log(`🔍 ${symbol}: Fetching decimals from Web3 for ${sc}`);
                 const web3Data = await fetchWeb3TokenData(sc, chainKey);
 
                 if (web3Data && web3Data.decimals && web3Data.decimals > 0) {
@@ -601,7 +601,7 @@
                         token.symbol_in = web3Data.symbol.toUpperCase();
                     }
 
-                    console.log(`✅ ${symbol}: DES fetched from Web3 (${token.des_in})`);
+                    // console.log(`✅ ${symbol}: DES fetched from Web3 (${token.des_in})`);
 
                     // Update snapshotMap for future lookups in the same session
                     snapshotMap[sc] = {
@@ -612,16 +612,16 @@
                     // Set default decimals 18 jika web3 tidak berhasil
                     token.des_in = 18;
                     token.decimals = 18;
-                    console.warn(`⚠️ ${symbol}: Using default decimals (18) - Web3 returned no data`);
+                    // console.warn(`⚠️ ${symbol}: Using default decimals (18) - Web3 returned no data`);
                 }
             } catch(e) {
                 // Set default decimals 18 jika error
                 token.des_in = 18;
                 token.decimals = 18;
-                console.warn(`❌ ${symbol}: Web3 fetch failed for ${sc}, using default decimals (18):`, e.message);
+                // console.warn(`❌ ${symbol}: Web3 fetch failed for ${sc}, using default decimals (18):`, e.message);
             }
         } else {
-            console.log(`✅ ${symbol}: DES already available (${token.des_in})`);
+            // console.log(`✅ ${symbol}: DES already available (${token.des_in})`);
         }
 
         if (symbolLookupMap instanceof Map) {
@@ -654,7 +654,7 @@
                 return null;
             }
 
-            console.log(`Fetching Web3 data for ${contract} on ${chainKey} via ${rpc}`);
+            // console.log(`Fetching Web3 data for ${contract} on ${chainKey} via ${rpc}`);
 
             // ABI method signatures for ERC20
             const decimalsData = '0x313ce567'; // decimals()
@@ -690,7 +690,7 @@
             if (decimalsResult && decimalsResult !== '0x' && !results.find(r => r.id === 1)?.error) {
                 decimals = parseInt(decimalsResult, 16);
             } else {
-                console.warn(`Failed to fetch decimals for ${contract}`);
+                // console.warn(`Failed to fetch decimals for ${contract}`);
             }
 
             // Fetch symbol
@@ -698,7 +698,7 @@
             if (symbolResult && symbolResult !== '0x' && !results.find(r => r.id === 2)?.error) {
                 symbol = decodeAbiString(symbolResult);
             } else {
-                console.warn(`Failed to fetch symbol for ${contract}`);
+                // console.warn(`Failed to fetch symbol for ${contract}`);
             }
 
             // Fetch name
@@ -706,10 +706,10 @@
             if (nameResult && nameResult !== '0x' && !results.find(r => r.id === 3)?.error) {
                 name = decodeAbiString(nameResult);
             } else {
-                console.warn(`Failed to fetch name for ${contract}`);
+                // console.warn(`Failed to fetch name for ${contract}`);
             }
 
-            console.log(`Web3 data fetched for ${contract}:`, { decimals, symbol, name });
+            // console.log(`Web3 data fetched for ${contract}:`, { decimals, symbol, name });
 
             return {
                 decimals,
@@ -717,7 +717,7 @@
                 name
             };
         } catch(error) {
-            console.error('fetchWeb3TokenData failed:', error);
+            // console.error('fetchWeb3TokenData failed:', error);
             return null;
         }
     }
@@ -747,7 +747,7 @@
 
             return str;
         } catch(e) {
-            console.warn('Failed to decode ABI string:', e);
+            // console.warn('Failed to decode ABI string:', e);
             return '';
         }
     }
@@ -883,7 +883,7 @@
                         }
                     }
                 } catch(error) {
-                    console.error(`Validation failed for token ${token.symbol_in}:`, error);
+                    // console.error(`Validation failed for token ${token.symbol_in}:`, error);
                     errorCount++;
                     // Still add token with default values
                     enrichedTokens.push({
@@ -899,10 +899,10 @@
             }
 
             // Show validation summary
-            console.log(`📊 Validation Summary: ${enrichedTokens.length} tokens processed`);
-            console.log(`   💾 From cache: ${cachedCount}`);
-            console.log(`   🌐 From Web3: ${web3FetchCount}`);
-            console.log(`   ❌ Errors: ${errorCount}`);
+            // console.log(`📊 Validation Summary: ${enrichedTokens.length} tokens processed`);
+            // console.log(`   💾 From cache: ${cachedCount}`);
+            // console.log(`   🌐 From Web3: ${web3FetchCount}`);
+            // console.log(`   ❌ Errors: ${errorCount}`);
 
             // PHASE: Fetch real-time prices
         const priceEligibleTokens = enrichedTokens.filter(token => {
@@ -963,7 +963,7 @@
                             token.__notified = true;
                             perTokenCallback({ ...token });
                         } catch(cbErr) {
-                            console.error('perTokenCallback failed:', cbErr);
+                            // console.error('perTokenCallback failed:', cbErr);
                         }
                     }
                 });
@@ -976,7 +976,7 @@
                         token.__notified = true;
                         perTokenCallback({ ...token });
                     } catch(cbErr) {
-                        console.error('perTokenCallback failed:', cbErr);
+                        // console.error('perTokenCallback failed:', cbErr);
                     }
                 });
             }
@@ -1026,7 +1026,7 @@
                 await saveToSnapshot(chainKey, mergedTokens);
 
                 const summaryMsg = `Snapshot updated: ${enrichedTokens.length} tokens refreshed (Cache: ${cachedCount}, Web3: ${web3FetchCount}, Errors: ${errorCount}), total ${mergedTokens.length} tokens in database`;
-                console.log(summaryMsg);
+                // console.log(summaryMsg);
 
                 // Show success message
                 if (window.SnapshotOverlay) {
@@ -1063,7 +1063,7 @@
             };
 
         } catch(error) {
-            console.error('Snapshot process failed:', error);
+            // console.error('Snapshot process failed:', error);
 
             // Show error in overlay
             if (window.SnapshotOverlay) {
@@ -1172,8 +1172,8 @@
 
                         if (walletData && Array.isArray(walletData)) {
                             // Log chain filtering info
-                            console.log(`[${cexUpper}] Total tokens from API: ${walletData.length}`);
-                            console.log(`[${cexUpper}] Filtering for chain: ${chainKey}`);
+                            // console.log(`[${cexUpper}] Total tokens from API: ${walletData.length}`);
+                            // console.log(`[${cexUpper}] Filtering for chain: ${chainKey}`);
 
                             // Filter by chain and convert to unified format
                             const cexTokens = walletData
@@ -1181,7 +1181,7 @@
                                     const matches = matchesCex(chainKey, item.chain);
                                     if (!matches && walletData.length < 20) {
                                         // Log mismatches for debugging (only if small dataset)
-                                        console.log(`[${cexUpper}] Skipping ${item.tokenName}: chain "${item.chain}" doesn't match "${chainKey}"`);
+                                        // console.log(`[${cexUpper}] Skipping ${item.tokenName}: chain "${item.chain}" doesn't match "${chainKey}"`);
                                     }
                                     return matches;
                                 })
@@ -1216,7 +1216,7 @@
                                 });
 
                             allTokens = allTokens.concat(cexTokens);
-                            console.log(`✅ ${cexUpper}: Fetched ${cexTokens.length} tokens for chain ${chainKey}`);
+                            // console.log(`✅ ${cexUpper}: Fetched ${cexTokens.length} tokens for chain ${chainKey}`);
 
                             // Update progress with success count
                             if (window.SnapshotOverlay) {
@@ -1226,7 +1226,7 @@
                                 );
                             }
                         } else {
-                            console.warn(`${cexUpper}: No wallet data returned`);
+                            // console.warn(`${cexUpper}: No wallet data returned`);
                             failedCexes.push(cexUpper);
 
                             // Show warning in overlay
@@ -1241,7 +1241,7 @@
                         throw new Error('fetchWalletStatus service not available');
                     }
                 } catch(error) {
-                    console.error(`${cexUpper} wallet check failed:`, error);
+                    // console.error(`${cexUpper} wallet check failed:`, error);
                     failedCexes.push(cexUpper);
 
                     // Show error in overlay
@@ -1276,7 +1276,7 @@
             };
 
         } catch(error) {
-            console.error('[checkWalletStatusOnly] Failed:', error);
+            // console.error('[checkWalletStatusOnly] Failed:', error);
 
             // Show error in overlay
             if (window.SnapshotOverlay) {
@@ -1301,6 +1301,6 @@
         saveToSnapshot
     };
 
-    console.log('✅ Snapshot Module Loaded v2.0 (Refactored - Single Unified System)');
+    // console.log('✅ Snapshot Module Loaded v2.0 (Refactored - Single Unified System)');
 
 })();

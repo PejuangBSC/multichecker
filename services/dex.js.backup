@@ -94,7 +94,7 @@
 
       return Number.isFinite(feeUSD) && feeUSD > 0 ? feeUSD : 0;
     } catch(e) {
-      // console.error('[DEX] Error calculating gas fee:', e);
+      console.error('[DEX] Error calculating gas fee:', e);
       return 0;
     }
   }

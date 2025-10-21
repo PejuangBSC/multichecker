@@ -77,14 +77,14 @@
             if (typeof getActiveTokens === 'function') {
                 tokens = getActiveTokens([]);
                 const storageKey = (typeof getActiveTokenKey === 'function') ? getActiveTokenKey() : 'TOKEN_MULTICHAIN';
-                console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins from ${storageKey}`);
+                // console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins from ${storageKey}`);
             } else if (mode.type === 'single' && mode.chain) {
                 const chainKey = getCanonicalChainKey(mode.chain) || mode.chain;
                 tokens = (typeof getTokensChain === 'function') ? getTokensChain(chainKey) : [];
-                console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins for chain ${chainKey}`);
+                // console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins for chain ${chainKey}`);
             } else {
                 tokens = (typeof getFromLocalStorage === 'function') ? getFromLocalStorage('TOKEN_MULTICHAIN', []) : [];
-                console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins (multichain mode)`);
+                // console.log(`[Wallet Exchanger] Loaded ${tokens.length} coins (multichain mode)`);
             }
 
             if (!applyFilter) {
@@ -92,21 +92,21 @@
             }
 
             const filteredTokens = filterTokensForWallet(tokens, mode);
-            console.log(`[Wallet Exchanger] Tokens after filter: ${filteredTokens.length}`);
+            // console.log(`[Wallet Exchanger] Tokens after filter: ${filteredTokens.length}`);
 
             if (filteredTokens.length > 0) {
                 const sampleCoin = filteredTokens[0];
-                console.log('[Wallet Exchanger] Sample filtered coin:', {
-                    symbol: sampleCoin.symbol_in,
-                    chain: sampleCoin.chain,
-                    hasCexData: !!sampleCoin.dataCexs,
-                    cexCount: sampleCoin.dataCexs ? Object.keys(sampleCoin.dataCexs).length : 0
-                });
+                // console.log('[Wallet Exchanger] Sample filtered coin:', {
+                    // symbol: sampleCoin.symbol_in,
+                    // chain: sampleCoin.chain,
+                    // hasCexData: !!sampleCoin.dataCexs,
+                    // cexCount: sampleCoin.dataCexs ? Object.keys(sampleCoin.dataCexs).length : 0
+                // });
             }
 
             return filteredTokens;
         } catch(err) {
-            console.error('[Wallet Exchanger] Error loading coins from storage:', err);
+            // console.error('[Wallet Exchanger] Error loading coins from storage:', err);
             return [];
         }
     }
@@ -319,7 +319,7 @@
             if (typeof saveActiveTokens === 'function') {
                 saveActiveTokens(coins);
                 const storageKey = (typeof getActiveTokenKey === 'function') ? getActiveTokenKey() : 'TOKEN_MULTICHAIN';
-                console.log(`[Wallet Exchanger] Saved ${coins.length} coins to ${storageKey}`);
+                // console.log(`[Wallet Exchanger] Saved ${coins.length} coins to ${storageKey}`);
             } else {
                 const mode = (typeof getAppMode === 'function') ? getAppMode() : { type: 'multi' };
 
@@ -337,10 +337,10 @@
                     }
                 }
 
-                console.log(`[Wallet Exchanger] Saved ${coins.length} coins to storage`);
+                // console.log(`[Wallet Exchanger] Saved ${coins.length} coins to storage`);
             }
         } catch(err) {
-            console.error('[Wallet Exchanger] Error saving coins to storage:', err);
+            // console.error('[Wallet Exchanger] Error saving coins to storage:', err);
         }
     }
 
@@ -439,7 +439,7 @@
             return count > 0; // Sama seperti filter scanner: if (cnt===0) return;
         });
 
-        console.log(`[Update Wallet] CEX dengan koin:`, Object.keys(cexCoinCount).filter(cx => cexCoinCount[cx] > 0));
+        // console.log(`[Update Wallet] CEX dengan koin:`, Object.keys(cexCoinCount).filter(cx => cexCoinCount[cx] > 0));
 
         // Jika tidak ada CEX yang punya koin
         if (!availableCexes.length) {
@@ -496,9 +496,9 @@
                     .map(([chain, count]) => `${chain.toUpperCase()}:${count}`)
                     .join(', ');
 
-                console.log(`[${cexName}] Koin bermasalah (multichain): ${problemCount} dari ${totalCount} | Breakdown: ${breakdown}`);
+                // console.log(`[${cexName}] Koin bermasalah (multichain): ${problemCount} dari ${totalCount} | Breakdown: ${breakdown}`);
             } else {
-                console.log(`[${cexName}] Koin bermasalah di chain ${activeChain}: ${problemCount} dari total ${totalCount}`);
+                // console.log(`[${cexName}] Koin bermasalah di chain ${activeChain}: ${problemCount} dari total ${totalCount}`);
             }
 
             const isSelected = selectedCexList.includes(cexName);
@@ -580,7 +580,7 @@
         } else {
             // Single mode: tidak perlu grouping
             const chainKey = getCanonicalChainKey(coins[0]?.chain) || 'unknown';
-            console.log(`[Wallet Table SINGLE MODE] Original chain: ${coins[0]?.chain} | Canonical chainKey: ${chainKey}`);
+            // console.log(`[Wallet Table SINGLE MODE] Original chain: ${coins[0]?.chain} | Canonical chainKey: ${chainKey}`);
             coinsByChain[chainKey] = coins;
         }
 
@@ -600,9 +600,9 @@
             const headerPlainStyle = `style="${headerStyle}"`;
 
             // Debug logging
-            console.log(`[Wallet Table] Chain: ${chainKey} | Config found: ${!!chainConfig.Nama_Chain} | Color: ${chainColor}`);
+            // console.log(`[Wallet Table] Chain: ${chainKey} | Config found: ${!!chainConfig.Nama_Chain} | Color: ${chainColor}`);
             if (!chainConfig.Nama_Chain) {
-                console.warn(`[Wallet Table] No config found for chainKey: ${chainKey}. Available keys:`, Object.keys(CONFIG_CHAINS));
+                // console.warn(`[Wallet Table] No config found for chainKey: ${chainKey}. Available keys:`, Object.keys(CONFIG_CHAINS));
             }
 
             // Header chain untuk mode multi
@@ -906,7 +906,7 @@
                             return itemChain.toLowerCase() === targetChain;
                         });
 
-                        console.log(`[${cexName}] Chain filter: ${targetChain} | Synonyms: [${chainSynonyms.join(', ')}] | Total: ${walletData.length} → Filtered: ${filteredData.length}`);
+                        // console.log(`[${cexName}] Chain filter: ${targetChain} | Synonyms: [${chainSynonyms.join(', ')}] | Total: ${walletData.length} → Filtered: ${filteredData.length}`);
                     }
 
                     // Simpan data
@@ -920,7 +920,7 @@
                 }
 
             } catch(err) {
-                console.error(`[Wallet Exchanger] Error fetching ${cexName}:`, err);
+                // console.error(`[Wallet Exchanger] Error fetching ${cexName}:`, err);
                 failedCexes.push(cexName);
                 updateFetchProgress(cexName, 'error', err.message || 'Gagal fetch data');
             }
@@ -936,14 +936,14 @@
         try {
             // Load existing coins dari storage
             const existingCoins = loadCoinsFromStorage({ applyFilter: false, mode });
-            console.log('[Wallet Exchanger] Existing coins in storage:', existingCoins.length);
+            // console.log('[Wallet Exchanger] Existing coins in storage:', existingCoins.length);
 
             const mergedCoins = mergeWalletData(existingCoins, cexWalletData, mode);
-            console.log('[Wallet Exchanger] Merged coins:', mergedCoins.length);
+            // console.log('[Wallet Exchanger] Merged coins:', mergedCoins.length);
 
             // Debug: tampilkan sample data
             if (mergedCoins.length > 0) {
-                console.log('[Wallet Exchanger] Sample merged coin:', mergedCoins[0]);
+                // console.log('[Wallet Exchanger] Sample merged coin:', mergedCoins[0]);
             }
 
             // Save merged data ke storage
@@ -1001,7 +1001,7 @@
             }
 
         } catch(err) {
-            console.error('[Wallet Exchanger] Error processing results:', err);
+            // console.error('[Wallet Exchanger] Error processing results:', err);
             showUpdateResult(false, selectedCexList);
             if (typeof toast !== 'undefined' && toast.error) {
                 toast.error('Gagal memproses hasil: ' + err.message);
@@ -1061,7 +1061,7 @@
         // Bind close button
         $('#btn-close-wallet-section').off('click').on('click', hide);
 
-        console.log('[Wallet Exchanger UI] Module initialized');
+        // console.log('[Wallet Exchanger UI] Module initialized');
     }
 
     // Register to App namespace

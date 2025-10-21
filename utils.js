@@ -1,4 +1,58 @@
 // =================================================================================
+// CENTRALIZED LOGGING UTILITY
+// =================================================================================
+
+/**
+ * Centralized logger yang hanya menampilkan console.log jika checkbox log aktif.
+ * console.error dan console.warn SELALU ditampilkan untuk debugging.
+ */
+const AppLogger = {
+    isEnabled: function() {
+        return typeof window !== 'undefined' && window.SCAN_LOG_ENABLED === true;
+    },
+
+    log: function(module, message, data) {
+        if (!this.isEnabled()) return;
+        const prefix = module ? `[${module}]` : '';
+        if (data !== undefined) {
+            console.log(prefix, message, data);
+        } else {
+            console.log(prefix, message);
+        }
+    },
+
+    warn: function(module, message, data) {
+        // Warning SELALU ditampilkan
+        const prefix = module ? `[${module}]` : '';
+        if (data !== undefined) {
+            console.warn(prefix, message, data);
+        } else {
+            console.warn(prefix, message);
+        }
+    },
+
+    error: function(module, message, data) {
+        // Error SELALU ditampilkan
+        const prefix = module ? `[${module}]` : '';
+        if (data !== undefined) {
+            console.error(prefix, message, data);
+        } else {
+            console.error(prefix, message);
+        }
+    },
+
+    // Untuk backward compatibility dengan kode yang ada
+    info: function(module, message, data) {
+        this.log(module, message, data);
+    }
+};
+
+// Expose globally
+if (typeof window !== 'undefined') {
+    window.AppLogger = AppLogger;
+}
+
+// =================================================================================
 // APP MODE & DATA ACCESS HELPERS (shared by UI/API/Main)
 // =================================================================================
 
@@ -84,7 +138,7 @@ function getGlobalScanLock() {
 
         return null;
     } catch(e) {
-        console.error('[SCAN LOCK] Error getting global lock:', e);
+        // console.error('[SCAN LOCK] Error getting global lock:', e);
         return null;
     }
 }
@@ -105,7 +159,7 @@ function setGlobalScanLock(filterKey, meta = {}) {
 
         // If scan limit is disabled, skip lock checking (allow multiple scans)
         if (!scanLimitEnabled) {
-            console.log('[SCAN LOCK] Scan limit disabled - skipping lock enforcement');
+            // console.log('[SCAN LOCK] Scan limit disabled - skipping lock enforcement');
             // Still set the lock data for tracking purposes, but don't enforce uniqueness
             const filter = getFromLocalStorage(filterKey, {}) || {};
             filter.run = 'YES';
@@ -126,7 +180,7 @@ function setGlobalScanLock(filterKey, meta = {}) {
         if (existingLock) {
             const isSameTab = existingLock.tabId === (meta.tabId || getTabId());
             if (!isSameTab) {
-                console.warn('[SCAN LOCK] Cannot acquire lock - scan already running:', existingLock);
+                // console.warn('[SCAN LOCK] Cannot acquire lock - scan already running:', existingLock);
                 return false;
             }
         }
@@ -142,14 +196,14 @@ function setGlobalScanLock(filterKey, meta = {}) {
         };
 
         saveToLocalStorage(filterKey, filter);
-        console.log('[SCAN LOCK] Lock acquired:', filterKey, filter.runMeta);
+        // console.log('[SCAN LOCK] Lock acquired:', filterKey, filter.runMeta);
 
         // Start heartbeat
         startScanLockHeartbeat(filterKey);
 
         return true;
     } catch(e) {
-        console.error('[SCAN LOCK] Error setting lock:', e);
+        // console.error('[SCAN LOCK] Error setting lock:', e);
         return false;
     }
 }
@@ -164,12 +218,12 @@ function clearGlobalScanLock(filterKey) {
         filter.run = 'NO';
         delete filter.runMeta;
         saveToLocalStorage(filterKey, filter);
-        console.log('[SCAN LOCK] Lock cleared:', filterKey);
+        // console.log('[SCAN LOCK] Lock cleared:', filterKey);
 
         // Stop heartbeat
         stopScanLockHeartbeat();
     } catch(e) {
-        console.error('[SCAN LOCK] Error clearing lock:', e);
+        // console.error('[SCAN LOCK] Error clearing lock:', e);
     }
 }
 
@@ -187,7 +241,7 @@ function checkCanStartScan() {
 
         // If scan limit is disabled, always allow scanning
         if (!scanLimitEnabled) {
-            console.log('[SCAN LOCK] Scan limit disabled - allowing multiple scans');
+            // console.log('[SCAN LOCK] Scan limit disabled - allowing multiple scans');
             return { canScan: true, reason: 'Scan limit disabled', lockInfo: null };
         }
 
@@ -210,7 +264,7 @@ function checkCanStartScan() {
 
         return { canScan: false, reason, lockInfo: lock };
     } catch(e) {
-        console.error('[SCAN LOCK] Error checking can scan:', e);
+        // console.error('[SCAN LOCK] Error checking can scan:', e);
         return { canScan: true, reason: 'Error checking - allowing scan', lockInfo: null };
     }
 }
@@ -230,13 +284,13 @@ function startScanLockHeartbeat(filterKey) {
                 // Update timestamp to keep lock alive
                 filter.runMeta.timestamp = Date.now();
                 saveToLocalStorage(filterKey, filter);
-                console.log('[SCAN LOCK] Heartbeat updated:', filterKey);
+                // console.log('[SCAN LOCK] Heartbeat updated:', filterKey);
             } else {
                 // Lock was cleared elsewhere - stop heartbeat
                 stopScanLockHeartbeat();
             }
         } catch(e) {
-            console.error('[SCAN LOCK] Heartbeat error:', e);
+            // console.error('[SCAN LOCK] Heartbeat error:', e);
         }
     }, 30000); // Update every 30 seconds
 }
@@ -246,7 +300,7 @@ function stopScanLockHeartbeat() {
         clearInterval(_scanLockHeartbeatInterval);
         _scanLockHeartbeatInterval = null;
         _scanLockHeartbeatKey = null;
-        console.log('[SCAN LOCK] Heartbeat stopped');
+        // console.log('[SCAN LOCK] Heartbeat stopped');
     }
 }
 
@@ -947,14 +1001,14 @@ function getFeeSwap(chainName) {
     // cari data gas untuk chain yang sesuai
     const gasInfo = allGasData.find(g => g.chain.toLowerCase() === chainName.toLowerCase());
     if (!gasInfo) {
-        console.error(`❌ Gas data not found for chain: ${chainName}`);
+        // console.error(`❌ Gas data not found for chain: ${chainName}`);
         return 0;
     }
 
     // ambil GASLIMIT dari CONFIG_CHAINS
     const chainConfig = CONFIG_CHAINS[chainName.toLowerCase()];
     if (!chainConfig) {
-        console.error(`❌ Chain config not found for: ${chainName}`);
+        // console.error(`❌ Chain config not found for: ${chainName}`);
         return 0;
     }
 
@@ -1042,7 +1096,7 @@ function getWarnaCEX(cex) {
         }
         return 'black'; // Warna default
     } catch (error) {
-        console.error('Error dalam getWarnaCEX:', error);
+        // console.error('Error dalam getWarnaCEX:', error);
         return 'black';
     }
 }
@@ -1114,6 +1168,50 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(() => func.apply(context, args), wait);
     };
+}
+
+// =============================================================
+// RPC HELPER - Get RPC with custom override support
+// =============================================================
+
+/**
+ * Get RPC URL untuk chain tertentu dengan support custom RPC dari SETTING_SCANNER
+ * @param {string} chainKey - Chain key (bsc, polygon, ethereum, dll)
+ * @returns {string} RPC URL
+ */
+function getRPC(chainKey) {
+    try {
+        const chainLower = String(chainKey || '').toLowerCase();
+
+        // 1. Check custom RPC dari SETTING_SCANNER
+        const settings = (typeof getFromLocalStorage === 'function')
+            ? getFromLocalStorage('SETTING_SCANNER', {})
+            : {};
+
+        if (settings.customRPCs && settings.customRPCs[chainLower]) {
+            return settings.customRPCs[chainLower];
+        }
+
+        // 2. Fallback ke CONFIG_CHAINS
+        const chainConfig = (typeof CONFIG_CHAINS !== 'undefined' && CONFIG_CHAINS[chainLower])
+            ? CONFIG_CHAINS[chainLower]
+            : null;
+
+        if (chainConfig && chainConfig.RPC) {
+            return chainConfig.RPC;
+        }
+
+        // 3. Fallback terakhir: empty string
+        return '';
+    } catch(err) {
+        // console.error('[getRPC] Error:', err);
+        return '';
+    }
+}
+
+// Expose globally
+if (typeof window !== 'undefined') {
+    window.getRPC = getRPC;
 }
 
 // =============================================================
@@ -1219,6 +1317,7 @@ try {
             generateDexLink,
             convertIDRtoUSDT,
             debounce,
+            getRPC,  // RPC helper with custom override
             setScanUIGating,
             // Global Scan Lock
             getGlobalScanLock,

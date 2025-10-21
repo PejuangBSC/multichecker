@@ -270,7 +270,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         const lockCheck = typeof checkCanStartScan === 'function' ? checkCanStartScan() : { canScan: true };
 
         if (!lockCheck.canScan) {
-            console.warn('[SCANNER] Cannot start scan - locked by another tab:', lockCheck.lockInfo);
+            // console.warn('[SCANNER] Cannot start scan - locked by another tab:', lockCheck.lockInfo);
 
             // Show user-friendly notification
             if (typeof toast !== 'undefined' && toast.warning) {
@@ -294,7 +294,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             return; // Exit early - don't start scan
         }
     } catch(e) {
-        console.error('[SCANNER] Error checking global scan lock:', e);
+        // console.error('[SCANNER] Error checking global scan lock:', e);
         // On error checking lock, allow scan to proceed
     }
 
@@ -313,7 +313,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             : true;
 
         if (!lockAcquired) {
-            console.error('[SCANNER] Failed to acquire global scan lock');
+            // console.error('[SCANNER] Failed to acquire global scan lock');
             if (typeof toast !== 'undefined' && toast.error) {
                 toast.error('Gagal memulai scan - ada scan lain yang berjalan');
             }
@@ -321,7 +321,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             return; // Exit early
         }
 
-        console.log('[SCANNER] Global scan lock acquired:', filterKey);
+        // console.log('[SCANNER] Global scan lock acquired:', filterKey);
 
         // Set per-tab scanning state (sessionStorage - per-tab isolation)
         if (typeof sessionStorage !== 'undefined') {
@@ -333,10 +333,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
         // Notify TabManager untuk broadcast ke tab lain
         if (window.TabManager && typeof window.TabManager.notifyScanStart === 'function') {
             window.TabManager.notifyScanStart(chainLabel);
-            console.log(`[SCANNER] Tab ${window.getTabId()} started scanning: ${chainLabel}`);
+            // console.log(`[SCANNER] Tab ${window.getTabId()} started scanning: ${chainLabel}`);
         }
     } catch(e) {
-        console.error('[SCANNER] Error setting scan start state:', e);
+        // console.error('[SCANNER] Error setting scan start state:', e);
     }
 
     // Set state aplikasi menjadi 'berjalan' (run: 'YES').
@@ -1266,7 +1266,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             // Beri jeda antar token dalam satu grup.
             await delay(jedaKoin);
         } catch (error) {
-            console.error(`Kesalahan saat memproses ${token.symbol_in}_${token.symbol_out}:`, error);
+            // console.error(`Kesalahan saat memproses ${token.symbol_in}_${token.symbol_out}:`, error);
         }
     }
 
@@ -1365,7 +1365,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
        //('[FINAL] Waiting for pending DEX requests to settle...');
         await waitForPendingDexRequests(8000);
         if (activeDexRequests > 0) {
-            console.warn(`[FINAL] Continuing with ${activeDexRequests} pending DEX request(s) after timeout window.`);
+            // console.warn(`[FINAL] Continuing with ${activeDexRequests} pending DEX request(s) after timeout window.`);
         }
 
         // Trigger final processUiUpdates untuk memastikan semua item di queue diproses
@@ -1407,7 +1407,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
                 try {
                     DisplayPNL(updateData);
                 } catch(e) {
-                    console.error('[FINAL PROCESS ERROR]', e);
+                    // console.error('[FINAL PROCESS ERROR]', e);
                 }
             }
            // console.log('[FINAL] All items processed.');
@@ -1426,7 +1426,7 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             const filterKey = typeof getActiveFilterKey === 'function' ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
             if (typeof clearGlobalScanLock === 'function') {
                 clearGlobalScanLock(filterKey);
-                console.log('[SCANNER] Global scan lock released:', filterKey);
+                // console.log('[SCANNER] Global scan lock released:', filterKey);
             }
 
             // Clear per-tab scanning state
@@ -1439,10 +1439,10 @@ async function startScanner(tokensToScan, settings, tableBodyId) {
             // Notify TabManager untuk broadcast ke tab lain
             if (window.TabManager && typeof window.TabManager.notifyScanStop === 'function') {
                 window.TabManager.notifyScanStop();
-                console.log(`[SCANNER] Tab ${window.getTabId()} stopped scanning`);
+                // console.log(`[SCANNER] Tab ${window.getTabId()} stopped scanning`);
             }
         } catch(e) {
-            console.error('[SCANNER] Error releasing scan state:', e);
+            // console.error('[SCANNER] Error releasing scan state:', e);
         }
 
         // Aktifkan kembali UI.
@@ -1513,7 +1513,7 @@ async function stopScanner() {
         const filterKey = typeof getActiveFilterKey === 'function' ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
         if (typeof clearGlobalScanLock === 'function') {
             clearGlobalScanLock(filterKey);
-            console.log('[SCANNER] Global scan lock released (manual stop):', filterKey);
+            // console.log('[SCANNER] Global scan lock released (manual stop):', filterKey);
         }
 
         // Clear per-tab scanning state
@@ -1527,10 +1527,10 @@ async function stopScanner() {
         // Notify TabManager untuk broadcast ke tab lain
         if (window.TabManager && typeof window.TabManager.notifyScanStop === 'function') {
             window.TabManager.notifyScanStop();
-            console.log(`[SCANNER] Tab ${window.getTabId()} stopped scanning (manual stop)`);
+            // console.log(`[SCANNER] Tab ${window.getTabId()} stopped scanning (manual stop)`);
         }
     } catch(e) {
-        console.error('[SCANNER] Error releasing scan state on manual stop:', e);
+        // console.error('[SCANNER] Error releasing scan state on manual stop:', e);
     }
 
     // Simpan state 'run:NO' dan update indikator UI sebelum reload.
@@ -1552,7 +1552,7 @@ function stopScannerSoft() {
         const filterKey = typeof getActiveFilterKey === 'function' ? getActiveFilterKey() : 'FILTER_MULTICHAIN';
         if (typeof clearGlobalScanLock === 'function') {
             clearGlobalScanLock(filterKey);
-            console.log('[SCANNER] Global scan lock released (soft stop):', filterKey);
+            // console.log('[SCANNER] Global scan lock released (soft stop):', filterKey);
         }
 
         // Clear per-tab scanning state
@@ -1565,10 +1565,10 @@ function stopScannerSoft() {
         // Notify TabManager untuk broadcast ke tab lain
         if (window.TabManager && typeof window.TabManager.notifyScanStop === 'function') {
             window.TabManager.notifyScanStop();
-            console.log(`[SCANNER] Tab ${window.getTabId()} soft stopped scanning`);
+            // console.log(`[SCANNER] Tab ${window.getTabId()} soft stopped scanning`);
         }
     } catch(e) {
-        console.error('[SCANNER] Error releasing scan state on soft stop:', e);
+        // console.error('[SCANNER] Error releasing scan state on soft stop:', e);
     }
 
     // Simpan state 'run:NO' tanpa me-reload halaman.

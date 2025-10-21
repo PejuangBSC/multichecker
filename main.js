@@ -50,12 +50,12 @@ let activeSingleChainKey = null; // Active chain key (single mode)
             && window.CONFIG_APP.APP.SCAN_LIMIT === true;
 
         if (scanLimitEnabled) {
-            console.log('%c[SCAN LIMIT] ⚠️ ENABLED - Only ONE scan allowed at a time', 'color: #FF9800; font-weight: bold; background: #FFF3E0; padding: 4px 8px; border-left: 4px solid #FF9800;');
+            // console.log('%c[SCAN LIMIT] ⚠️ ENABLED - Only ONE scan allowed at a time', 'color: #FF9800; font-weight: bold; background: #FFF3E0; padding: 4px 8px; border-left: 4px solid #FF9800;');
         } else {
-            console.log('%c[SCAN LIMIT] ✓ DISABLED - Multiple scans allowed (parallel scanning enabled)', 'color: #4CAF50; font-weight: bold; background: #E8F5E9; padding: 4px 8px; border-left: 4px solid #4CAF50;');
+            // console.log('%c[SCAN LIMIT] ✓ DISABLED - Multiple scans allowed (parallel scanning enabled)', 'color: #4CAF50; font-weight: bold; background: #E8F5E9; padding: 4px 8px; border-left: 4px solid #4CAF50;');
         }
     } catch(e) {
-        console.warn('[SCAN LIMIT] Could not determine scan limit status:', e);
+        // console.warn('[SCAN LIMIT] Could not determine scan limit status:', e);
     }
 })();
 
@@ -298,7 +298,7 @@ $(document).off('click.globalEdit').on('click.globalEdit', '.edit-token-button',
         if (typeof openEditModalById === 'function') openEditModalById(id);
         else if (typeof toast !== 'undefined' && toast.error) toast.error('Fungsi edit tidak tersedia');
     } catch (e) {
-        console.error('Gagal membuka modal edit:', e);
+        // console.error('Gagal membuka modal edit:', e);
         if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal membuka form edit');
     }
 });
@@ -427,11 +427,33 @@ function hasValidTokens() {
  * and preloads saved values from storage.
  */
 function renderSettingsForm() {
-    // Generate DEX delay inputs (CEX delay removed)
-    const dexList = Object.keys(CONFIG_DEXS || {});
-    let dexDelayHtml = '<h4>Jeda DEX</h4>';
+    // Generate DEX delay inputs with colors
+    const dexList = Object.keys(CONFIG_DEXS || {}).sort();
+    let dexDelayHtml = '';
     dexList.forEach(dex => {
-        dexDelayHtml += `<div class=\"uk-flex uk-flex-middle uk-margin-small-bottom\"><label style=\"min-width:70px;\">${dex.toUpperCase()}</label><input type=\"number\" class=\"uk-input uk-form-small dex-delay-input\" data-dex=\"${dex}\" value=\"100\" style=\"width:80px; margin-left:8px;\" min=\"0\"></div>`;
+        const dexConfig = CONFIG_DEXS[dex] || {};
+        const dexLabel = (dexConfig.label || dex).toUpperCase();  // ✅ UPPERCASE semua
+        const dexColor = dexConfig.warna || '#333';
+
+        dexDelayHtml += `
+            <div class="uk-card uk-card-small uk-card-default uk-margin-small-bottom" style="border-left: 4px solid ${dexColor};">
+                <div class="uk-card-body uk-padding-small">
+                    <div class="uk-flex uk-flex-between uk-flex-middle">
+                        <label class="uk-text-bold uk-margin-remove" style="color: ${dexColor}; font-size: 13px;">
+                            ${dexLabel}
+                        </label>
+                        <div class="uk-flex uk-flex-middle" style="gap: 4px;">
+                            <input type="number" class="uk-input uk-form-small dex-delay-input"
+                                   data-dex="${dex}"
+                                   value="100"
+                                   style="width:70px; text-align:center; border-color: ${dexColor}40;"
+                                   min="0">
+                            <span class="uk-text-meta uk-text-small">ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     });
     $('#dex-delay-group').html(dexDelayHtml);
 
@@ -449,6 +471,49 @@ function renderSettingsForm() {
     $('.dex-delay-input').each(function() {
         const dex = $(this).data('dex');
         if (modalDexs[dex] !== undefined) $(this).val(modalDexs[dex]);
+    });
+
+    // Generate RPC settings inputs with chain colors (compact horizontal layout)
+    const chainList = Object.keys(CONFIG_CHAINS || {}).sort();
+    let rpcHtml = '';
+    chainList.forEach(chain => {
+        const cfg = CONFIG_CHAINS[chain];
+        const defaultRpc = cfg.RPC || '';
+        const chainLabel = (cfg.Nama_Chain || chain).toUpperCase();
+        const chainColor = cfg.WARNA || '#333';
+        const chainIcon = cfg.ICON || '';
+
+        rpcHtml += `
+            <div class="uk-margin-small-bottom" style="border-left: 3px solid ${chainColor}; padding-left: 8px; padding-top: 4px; padding-bottom: 4px; background: ${chainColor}08;">
+                <div class="uk-grid-small uk-flex-middle" uk-grid>
+                    <div class="uk-width-auto">
+                        <div class="uk-flex uk-flex-middle">
+                            ${chainIcon ? `<img src="${chainIcon}" alt="${chainLabel}" style="width:16px; height:16px; margin-right:6px; border-radius:50%;">` : ''}
+                            <label class="uk-text-bold uk-margin-remove" style="color: ${chainColor}; font-size: 13px; min-width: 90px;">
+                                ${chainLabel}
+                            </label>
+                        </div>
+                    </div>
+                    <div class="uk-width-expand">
+                        <input type="text" class="uk-input uk-form-small rpc-input"
+                               data-chain="${chain}"
+                               data-default="${defaultRpc}"
+                               value="${defaultRpc}"
+                               style="font-size:12px; font-family: monospace; border-color: ${chainColor}40; padding: 4px 8px; height: 28px;">
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    $('#rpc-settings-group').html(rpcHtml);
+
+    // Load custom RPC dari setting (jika ada) - override default
+    const customRPCs = appSettings.customRPCs || {};
+    $('.rpc-input').each(function() {
+        const chain = $(this).data('chain');
+        if (customRPCs[chain]) {
+            $(this).val(customRPCs[chain]);
+        }
     });
 
 }
@@ -1129,11 +1194,24 @@ async function deferredInit() {
             JedaDexs[$(this).data('dex')] = parseFloat($(this).val()) || 100;
         });
 
+        // Collect custom RPC settings
+        let customRPCs = {};
+        $('.rpc-input').each(function() {
+            const chain = $(this).data('chain');
+            const rpc = $(this).val().trim();
+            const defaultRpc = $(this).data('default') || '';  // ✅ Gunakan data-default dari input
+            // Hanya simpan jika berbeda dari default dan tidak kosong
+            if (rpc && rpc !== defaultRpc) {
+                customRPCs[chain] = rpc;
+            }
+        });
+
         const settingData = {
             nickname, jedaTimeGroup, jedaKoin, walletMeta,
             scanPerKoin: parseInt(scanPerKoin, 10),
             speedScan: parseFloat(speedScan),
             JedaDexs,
+            customRPCs,  // Tambah custom RPC
             AllChains: Object.keys(CONFIG_CHAINS)
         };
 
@@ -1323,7 +1401,7 @@ $("#reload").click(function () {
                 return;
             }
         } catch(err) {
-            console.error('[UpdateWalletCEX] Error showing wallet exchanger section:', err);
+            // console.error('[UpdateWalletCEX] Error showing wallet exchanger section:', err);
         }
 
         // FALLBACK: Old behavior (direct execution) if new UI not available
@@ -1375,7 +1453,7 @@ $("#startSCAN").click(function () {
             const lockCheck = typeof checkCanStartScan === 'function' ? checkCanStartScan() : { canScan: true };
 
             if (!lockCheck.canScan) {
-                console.warn('[START BUTTON] Cannot start scan - locked by another tab:', lockCheck.lockInfo);
+                // console.warn('[START BUTTON] Cannot start scan - locked by another tab:', lockCheck.lockInfo);
 
                 // Show user-friendly notification
                 if (typeof toast !== 'undefined' && toast.warning) {
@@ -1397,7 +1475,7 @@ $("#startSCAN").click(function () {
                 return; // Exit early - don't start scan
             }
         } catch(e) {
-            console.error('[START BUTTON] Error checking global scan lock:', e);
+            // console.error('[START BUTTON] Error checking global scan lock:', e);
             // On error checking lock, allow scan to proceed
         }
 
@@ -1471,13 +1549,13 @@ $("#startSCAN").click(function () {
             // Re-render monitoring table to initial state for these tokens
             try {
                 loadKointoTable(flatTokens, 'dataTableBody');
-                console.log('[START] Table skeleton rendered, waiting for DOM to settle...');
+                // console.log('[START] Table skeleton rendered, waiting for DOM to settle...');
             } catch(e) {
-                console.error('[START] Failed to render table:', e);
+                // console.error('[START] Failed to render table:', e);
             }
             // Wait for DOM to settle before starting scanner (increased to 250ms for safety)
             setTimeout(() => {
-                console.log('[START] Starting scanner now...');
+                // console.log('[START] Starting scanner now...');
                 if (window.App?.Scanner?.startScanner) window.App.Scanner.startScanner(flatTokens, settings, 'dataTableBody');
             }, 250);
             return;
@@ -1498,13 +1576,13 @@ $("#startSCAN").click(function () {
         // Re-render monitoring table to initial state for these tokens
         try {
             loadKointoTable(toScan, 'dataTableBody');
-            console.log('[START] Table skeleton rendered, waiting for DOM to settle...');
+            // console.log('[START] Table skeleton rendered, waiting for DOM to settle...');
         } catch(e) {
-            console.error('[START] Failed to render table:', e);
+            // console.error('[START] Failed to render table:', e);
         }
         // Wait for DOM to settle before starting scanner (increased to 250ms for safety)
         setTimeout(() => {
-            console.log('[START] Starting scanner now...');
+            // console.log('[START] Starting scanner now...');
             if (window.App?.Scanner?.startScanner) window.App.Scanner.startScanner(toScan, settings, 'dataTableBody');
         }, 250);
     });
@@ -1670,7 +1748,7 @@ $("#startSCAN").click(function () {
             $('#FormEditKoinModal').hide();
             try { if (typeof renderFilterCard === 'function') renderFilterCard(); } catch(_){}
         } catch(e) {
-            console.error('Copy to Multichain failed:', e);
+            // console.error('Copy to Multichain failed:', e);
             if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal menyalin ke Multichain');
         }
     });
@@ -1684,7 +1762,7 @@ $("#startSCAN").click(function () {
                 if (typeof toast !== 'undefined' && toast.error) toast.error('ID token tidak ditemukan pada tombol edit.');
             }
         } catch (e) {
-            console.error('Gagal membuka modal edit dari manajemen list:', e);
+            // console.error('Gagal membuka modal edit dari manajemen list:', e);
             if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal membuka form edit.');
         }
     });
@@ -1776,9 +1854,9 @@ const SnapshotOverlay = (function() {
                     canClose: false
                 });
 
-                console.log(`[SnapshotOverlay] Shown: ${title}`);
+                // console.log(`[SnapshotOverlay] Shown: ${title}`);
             } catch(error) {
-                console.error('[SnapshotOverlay.show] Error:', error);
+                // console.error('[SnapshotOverlay.show] Error:', error);
             }
         },
 
@@ -1792,7 +1870,7 @@ const SnapshotOverlay = (function() {
                     if (overlayId) {
                         AppOverlay.hide(overlayId);
                         overlayId = null;
-                        console.log('[SnapshotOverlay] Hidden');
+                        // console.log('[SnapshotOverlay] Hidden');
                     }
                 };
 
@@ -1802,7 +1880,7 @@ const SnapshotOverlay = (function() {
                     doHide();
                 }
             } catch(error) {
-                console.error('[SnapshotOverlay.hide] Error:', error);
+                // console.error('[SnapshotOverlay.hide] Error:', error);
             }
         },
 
@@ -1818,7 +1896,7 @@ const SnapshotOverlay = (function() {
 
                 AppOverlay.updateProgress(overlayId, current, total, message);
             } catch(error) {
-                console.error('[SnapshotOverlay.updateProgress] Error:', error);
+                // console.error('[SnapshotOverlay.updateProgress] Error:', error);
             }
         },
 
@@ -1852,7 +1930,7 @@ const SnapshotOverlay = (function() {
                     }
                 }
             } catch(error) {
-                console.error('[SnapshotOverlay.updateMessage] Error:', error);
+                // console.error('[SnapshotOverlay.updateMessage] Error:', error);
             }
         },
 
@@ -1867,7 +1945,7 @@ const SnapshotOverlay = (function() {
                 this.updateProgress(100, 100, '');
                 this.hide(autoHideDelay);
             } catch(error) {
-                console.error('[SnapshotOverlay.showSuccess] Error:', error);
+                // console.error('[SnapshotOverlay.showSuccess] Error:', error);
             }
         },
 
@@ -1881,7 +1959,7 @@ const SnapshotOverlay = (function() {
                 this.updateMessage('❌ Gagal!', message);
                 this.hide(autoHideDelay);
             } catch(error) {
-                console.error('[SnapshotOverlay.showError] Error:', error);
+                // console.error('[SnapshotOverlay.showError] Error:', error);
             }
         },
 
@@ -1982,12 +2060,12 @@ function resetSyncModalSelections() {
 
 function setSyncModalData(chainKey, rawTokens, savedTokens, sourceLabel) {
     try {
-        console.log('setSyncModalData called:', {
-            chainKey,
-            rawTokensLength: rawTokens?.length,
-            savedTokensLength: savedTokens?.length,
-            sourceLabel
-        });
+        // console.log('setSyncModalData called:', {
+            // chainKey,
+            // rawTokensLength: rawTokens?.length,
+            // savedTokensLength: savedTokens?.length,
+            // sourceLabel
+        // });
 
         const chainLower = String(chainKey || '').toLowerCase();
         const normalizedSource = (String(sourceLabel || 'server').toLowerCase().includes('snapshot')) ? 'snapshot' : 'server';
@@ -1998,7 +2076,7 @@ function setSyncModalData(chainKey, rawTokens, savedTokens, sourceLabel) {
             return clone;
         }) : [];
 
-        console.log('Processed list:', list.length, 'items');
+        // console.log('Processed list:', list.length, 'items');
 
         const $modal = $('#sync-modal');
         $modal.data('remote-raw', list);
@@ -2010,10 +2088,10 @@ function setSyncModalData(chainKey, rawTokens, savedTokens, sourceLabel) {
         setSyncSourceIndicator(labelText);
         buildSyncFilters(chainLower);
 
-        console.log('About to render table for chain:', chainLower);
+        // console.log('About to render table for chain:', chainLower);
         renderSyncTable(chainLower);
     } catch(error) {
-        console.error('setSyncModalData failed:', error);
+        // console.error('setSyncModalData failed:', error);
     }
 }
 
@@ -2085,7 +2163,7 @@ function validateNonPairInputs() {
 
         return isValid;
     } catch(e) {
-        console.error('validateNonPairInputs error:', e);
+        // console.error('validateNonPairInputs error:', e);
         return false;
     }
 }
@@ -2457,7 +2535,7 @@ function normalizeSnapshotRecord(rec, chainKey) {
 
     // Require at least CEX and symbol (SC bisa kosong)
     if (!cex || !symbol) {
-        console.warn('normalizeSnapshotRecord - Missing required fields:', { cex, symbol });
+        // console.warn('normalizeSnapshotRecord - Missing required fields:', { cex, symbol });
         return null;
     }
 
@@ -2485,27 +2563,27 @@ function normalizeSnapshotRecord(rec, chainKey) {
 async function loadSnapshotRecords(chainKey) {
     try {
         const snapshotMap = await (window.snapshotDbGet ? window.snapshotDbGet(SNAPSHOT_DB_CONFIG.snapshotKey) : Promise.resolve(null));
-        console.log('loadSnapshotRecords - snapshotMap:', snapshotMap);
+        // console.log('loadSnapshotRecords - snapshotMap:', snapshotMap);
 
         if (!snapshotMap || typeof snapshotMap !== 'object') {
-            console.warn('loadSnapshotRecords - No snapshot map found');
+            // console.warn('loadSnapshotRecords - No snapshot map found');
             return [];
         }
 
         const keyLower = String(chainKey || '').toLowerCase();
         const fallbackKey = String(chainKey || '').toUpperCase();
 
-        console.log('loadSnapshotRecords - Looking for keys:', { keyLower, fallbackKey });
-        console.log('loadSnapshotRecords - Available keys:', Object.keys(snapshotMap));
+        // console.log('loadSnapshotRecords - Looking for keys:', { keyLower, fallbackKey });
+        // console.log('loadSnapshotRecords - Available keys:', Object.keys(snapshotMap));
 
         const arr = Array.isArray(snapshotMap[keyLower]) ? snapshotMap[keyLower]
                   : Array.isArray(snapshotMap[fallbackKey]) ? snapshotMap[fallbackKey]
                   : [];
 
-        console.log('loadSnapshotRecords - Found array length:', arr.length);
+        // console.log('loadSnapshotRecords - Found array length:', arr.length);
 
         if (!Array.isArray(arr) || !arr.length) {
-            console.warn('loadSnapshotRecords - Empty array');
+            // console.warn('loadSnapshotRecords - Empty array');
             return [];
         }
 
@@ -2521,10 +2599,10 @@ async function loadSnapshotRecords(chainKey) {
             out.push(norm);
         });
 
-        console.log('loadSnapshotRecords - Returning:', out.length, 'tokens');
+        // console.log('loadSnapshotRecords - Returning:', out.length, 'tokens');
         return out;
     } catch(error) {
-        console.error('loadSnapshotRecords failed:', error);
+        // console.error('loadSnapshotRecords failed:', error);
         return [];
     }
 }
@@ -2629,24 +2707,24 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         let hasSnapshot = false;
         try {
             hasSnapshot = await loadSyncTokensFromSnapshot(activeSingleChainKey, true);
-            console.log('Check snapshot result:', hasSnapshot);
+            // console.log('Check snapshot result:', hasSnapshot);
             if (hasSnapshot) {
                 $('#sync-snapshot-status').text('Data dimuat dari snapshot');
-                console.log('Snapshot data loaded successfully');
+                // console.log('Snapshot data loaded successfully');
                 return; // Data sudah ada, tidak perlu fetch
             }
         } catch(e) {
-            console.log('No snapshot, will fetch from JSON. Error:', e);
+            // console.log('No snapshot, will fetch from JSON. Error:', e);
         }
 
         // Data belum ada → Fetch dari DATAJSON
-        console.log('hasSnapshot:', hasSnapshot, '- proceeding to fetch from server');
+        // console.log('hasSnapshot:', hasSnapshot, '- proceeding to fetch from server');
         $('#sync-snapshot-status').text('Mengambil data dari server...');
-        console.log('Fetching data from server for chain:', activeSingleChainKey);
+        // console.log('Fetching data from server for chain:', activeSingleChainKey);
 
         try {
             const rawTokens = await fetchTokensFromServer(activeSingleChainKey);
-            console.log('Fetched tokens:', rawTokens.length);
+            // console.log('Fetched tokens:', rawTokens.length);
 
             if (!rawTokens || !rawTokens.length) {
                 $('#sync-modal-tbody').html('<tr><td colspan="8">Tidak ada data token dari server</td></tr>');
@@ -2655,13 +2733,13 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
             }
 
             // Save to IndexedDB
-            console.log('Saving to snapshot...');
+            // console.log('Saving to snapshot...');
             await window.SnapshotModule.saveToSnapshot(activeSingleChainKey, rawTokens);
-            console.log('Saved to snapshot successfully');
+            // console.log('Saved to snapshot successfully');
 
             // Load to modal
             const loaded = await loadSyncTokensFromSnapshot(activeSingleChainKey, true);
-            console.log('Load result:', loaded);
+            // console.log('Load result:', loaded);
 
             if (loaded) {
                 $('#sync-snapshot-status').text(`Data dimuat: ${rawTokens.length} koin`);
@@ -2669,11 +2747,11 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
                     toast.success(`Berhasil memuat ${rawTokens.length} koin dari server`);
                 }
             } else {
-                console.error('Failed to load after save');
+                // console.error('Failed to load after save');
                 $('#sync-modal-tbody').html('<tr><td colspan="8">Gagal memuat data setelah save</td></tr>');
             }
         } catch(error) {
-            console.error('Fetch JSON failed:', error);
+            // console.error('Fetch JSON failed:', error);
             $('#sync-modal-tbody').html(`<tr><td colspan="8">Gagal mengambil data dari server: ${error.message}</td></tr>`);
             $('#sync-snapshot-status').text('Gagal fetch');
             if (typeof toast !== 'undefined' && toast.error) {
@@ -2738,7 +2816,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
             return;
         }
 
-        console.log('Refresh snapshot for CEX:', selectedCexs);
+        // console.log('Refresh snapshot for CEX:', selectedCexs);
 
         // Disable button during process
         const $btn = $('#refresh-snapshot-btn');
@@ -2815,7 +2893,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
                         incrementalMap.set(rowKey, { ...token });
                         renderIncrementalRows();
                     } catch(rowErr) {
-                        console.error('Failed to render incremental token row:', rowErr);
+                        // console.error('Failed to render incremental token row:', rowErr);
                     }
                 }
             );
@@ -2860,11 +2938,11 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
                         }
                     }
 
-                    console.log(`Snapshot reloaded: ${chainData.length} tokens from IndexedDB`);
-                    console.log(`CEX selections restored: ${selectedCexsBefore.join(', ')}`);
+                    // console.log(`Snapshot reloaded: ${chainData.length} tokens from IndexedDB`);
+                    // console.log(`CEX selections restored: ${selectedCexsBefore.join(', ')}`);
                 }
             } catch(reloadErr) {
-                console.error('Failed to reload snapshot data after update:', reloadErr);
+                // console.error('Failed to reload snapshot data after update:', reloadErr);
             }
 
             if (typeof toast !== 'undefined' && toast.success) {
@@ -2885,7 +2963,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
                 );
             }
         } catch(error) {
-            console.error('Refresh snapshot failed:', error);
+            // console.error('Refresh snapshot failed:', error);
             SnapshotOverlay.showError(error.message || 'Unknown error');
             if (typeof toast !== 'undefined' && toast.error) {
                 toast.error(`Gagal refresh: ${error.message || 'Unknown error'}`);
@@ -2932,12 +3010,12 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         const pairDefs = chainCfg.PAIRDEXS || {};
         const dexList = (chainCfg.DEXS || []).map(d => String(d));
 
-        // Baca modal per DEX (format lama, semua DEX otomatis aktif)
+        // Baca modal per DEX - HANYA yang checkboxnya dicentang
         const selectedDexsGlobal = [];
         const dataDexsGlobal = {};
-        $('#sync-dex-config .sync-dex-left').each(function(){
+        $('#sync-dex-config .sync-dex-checkbox:checked').each(function(){
             const dx = String($(this).data('dex'));
-            const leftVal = parseFloat($(this).val());
+            const leftVal = parseFloat($(`#sync-dex-config .sync-dex-left[data-dex="${dx}"]`).val());
             const rightVal = parseFloat($(`#sync-dex-config .sync-dex-right[data-dex="${dx}"]`).val());
             const dxLower = dx.toLowerCase();
             selectedDexsGlobal.push(dxLower);
@@ -2947,7 +3025,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
             };
         });
         if (selectedDexsGlobal.length < 1) {
-            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Konfigurasi DEX kosong.');
+            if (typeof toast !== 'undefined' && toast.warning) toast.warning('Pilih minimal 1 DEX untuk digunakan.');
             return;
         }
 
@@ -2956,7 +3034,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         // ========== REFACTOR: Ambil pair yang dipilih dari RADIO BUTTON ==========
         const selectedPairFromRadio = $('#sync-filter-pair input[type="radio"]:checked').val();
         const pairForSave = selectedPairFromRadio ? String(selectedPairFromRadio).toUpperCase() : 'USDT';
-        console.log('[Save] Using pair from radio button:', pairForSave);
+        // console.log('[Save] Using pair from radio button:', pairForSave);
 
         const nonPairConfig = readNonPairConfig();
         const hasNonPairOverride = nonPairConfig && nonPairConfig.symbol;
@@ -3142,6 +3220,23 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         renderSyncTable(activeSingleChainKey);
     });
 
+    // Event handler untuk checkbox DEX - Toggle visual state dan disable/enable inputs
+    $(document).on('change', '#sync-dex-config .sync-dex-checkbox', function(){
+        const dex = $(this).data('dex');
+        const isChecked = $(this).is(':checked');
+        const $row = $(this).closest('.sync-dex-row');
+
+        // Toggle input fields (modal kiri/kanan)
+        $row.find('.sync-dex-left, .sync-dex-right').prop('disabled', !isChecked);
+
+        // Visual feedback: opacity dan pointer events
+        if (isChecked) {
+            $row.css({ opacity: '1', filter: 'none' });
+        } else {
+            $row.css({ opacity: '0.4', filter: 'grayscale(100%)' });
+        }
+    });
+
     $(document).on('click', '#sync-table thead th[data-sort-key]', function(e){
         e.preventDefault();
         const key = String($(this).data('sort-key') || '');
@@ -3164,7 +3259,7 @@ async function loadSyncTokensFromSnapshot(chainKey, silent = false) {
         const mode = $(this).val();
         const $allBoxes = $('#sync-modal-tbody .sync-token-checkbox');
 
-        console.log(`[Sync Pick Mode] Mode: ${mode}, Found ${$allBoxes.length} checkboxes.`);
+        // console.log(`[Sync Pick Mode] Mode: ${mode}, Found ${$allBoxes.length} checkboxes.`);
 
         // 🚀 OPTIMASI: Set flag untuk mencegah individual change handler
         if (typeof window.setSyncBulkSelecting === 'function') {
@@ -3280,7 +3375,7 @@ $(document).ready(function() {
             // ========== IGNORE MESSAGES SAAT BARU RELOAD ==========
             // Mencegah tab yang baru reload langsung reload lagi karena message dari tab lain
             if (Date.now() - pageLoadTime < IGNORE_MESSAGES_DURATION) {
-                console.log('[CROSS-TAB] Message ignored - page just loaded');
+                // console.log('[CROSS-TAB] Message ignored - page just loaded');
                 return;
             }
             const msg = ev?.data;
@@ -3328,10 +3423,10 @@ $(document).ready(function() {
                                         // Set flag untuk mencegah broadcast saat reload
                                         try { sessionStorage.setItem('APP_FORCE_RUN_NO', '1'); } catch(_) {}
 
-                                        console.log('[CROSS-TAB] Reloading due to run:NO from another tab');
+                                        // console.log('[CROSS-TAB] Reloading due to run:NO from another tab');
                                         location.reload();
                                     } else {
-                                        console.log('[CROSS-TAB] Reload skipped - cooldown active to prevent loop');
+                                        // console.log('[CROSS-TAB] Reload skipped - cooldown active to prevent loop');
                                     }
                                 }
                             }
@@ -3716,15 +3811,21 @@ $(document).ready(function() {
         });
         toggleNonPairInputs();
 
-        // Build DEX config legacy style (input per DEX tanpa checkbox global)
+        // Build DEX config dengan checkbox untuk memilih DEX mana yang aktif
         const $dex = $('#sync-dex-config').empty();
         const dexList = (chain.DEXS || []).map(String);
         dexList.forEach(dx => {
+            const dexConfig = CONFIG_DEXS?.[dx.toLowerCase()] || {};
+            const dexColor = dexConfig.warna || '#333';
+
             $dex.append(`
-                <div class="uk-flex uk-flex-middle" style="gap:6px;">
-                    <span class="uk-text-small uk-text-bold" style="width:90px;">${dx.toUpperCase()}</span>
-                    <input type="number" class="uk-input uk-form-small sync-dex-left" data-dex="${dx}" placeholder="Modal Kiri" value="100">
-                    <input type="number" class="uk-input uk-form-small sync-dex-right" data-dex="${dx}" placeholder="Modal Kanan" value="100">
+                <div class="uk-flex uk-flex-middle sync-dex-row" data-dex="${dx}" style="gap:6px; padding: 4px; border-left: 3px solid ${dexColor}; background: ${dexColor}08;">
+                    <label class="uk-margin-remove" style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" class="uk-checkbox sync-dex-checkbox" data-dex="${dx}" checked style="margin-right: 6px;">
+                    </label>
+                    <span class="uk-text-small uk-text-bold sync-dex-label" style="width:70px; color: ${dexColor};">${dx.toUpperCase()}</span>
+                    <input type="number" class="uk-input uk-form-small sync-dex-left" data-dex="${dx}" placeholder="Modal Kiri" value="100" style="flex: 1;">
+                    <input type="number" class="uk-input uk-form-small sync-dex-right" data-dex="${dx}" placeholder="Modal Kanan" value="100" style="flex: 1;">
                 </div>`);
         });
     };
@@ -3745,7 +3846,7 @@ $(document).ready(function() {
             const key = `${idx}__${cex}__${symbol}`;
             currentCheckboxState.set(key, isChecked);
         });
-        console.log('[renderSyncTable] Saved checkbox state:', currentCheckboxState.size, 'items');
+        // console.log('[renderSyncTable] Saved checkbox state:', currentCheckboxState.size, 'items');
         // ==============================================================
 
         const modalBody = $('#sync-modal-tbody').empty();
@@ -4182,7 +4283,7 @@ $(document).on('click', '#histClearAll', async function(){
                 if (typeof toast !== 'undefined' && toast.error) toast.error('Gagal mengunduh file backup.');
             }
         } catch(e) {
-            console.error('Backup error:', e);
+            // console.error('Backup error:', e);
             if (typeof toast !== 'undefined' && toast.error) toast.error('Terjadi kesalahan saat backup.');
             try { setLastAction('BACKUP DATABASE', 'error', { error: String(e && e.message || e) }); } catch(_) {}
         }
@@ -4219,7 +4320,7 @@ $(document).on('click', '#histClearAll', async function(){
                 try { alert(`✅ ${msg}\nHalaman akan di-reload untuk menerapkan perubahan.`); } catch(_) {}
                 try { location.reload(); } catch(_) {}
             } catch(err){
-                console.error('Restore parse error:', err);
+                // console.error('Restore parse error:', err);
                 if (typeof toast !== 'undefined' && toast.error) toast.error('File tidak valid. Pastikan format JSON benar.');
                 try { setLastAction('RESTORE DATABASE', 'error', { error: String(err && err.message || err) }); } catch(_) {}
             } finally {

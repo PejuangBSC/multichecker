@@ -114,16 +114,16 @@ function loadKointoTable(filteredData, tableBodyId = 'dataTableBody') {
                 const fullCellId = `${idPrefix}${baseId}`;
                 // Debug: log cell ID yang dibuat
                 if (window.DEBUG_CELL_IDS) {
-                    console.log(`[buildDexSlots] Created cell:`, {
-                        id: fullCellId,
-                        dex: dexName,
-                        direction: direction,
-                        modal: modal,
-                        symbolIn: data.symbol_in,
-                        symbolOut: data.symbol_out,
-                        cex: data.cex,
-                        chain: data.chain
-                    });
+                    // console.log(`[buildDexSlots] Created cell:`, {
+                        // id: fullCellId,
+                        // dex: dexName,
+                        // direction: direction,
+                        // modal: modal,
+                        // symbolIn: data.symbol_in,
+                        // symbolOut: data.symbol_out,
+                        // cex: data.cex,
+                        // chain: data.chain
+                    // });
                 }
                 html += `
                     <td class="td-dex" id="${fullCellId}"
@@ -699,23 +699,23 @@ function DisplayPNL(data) {
   const el = document.getElementById(elementId);
   if (!el) {
     // Debug: log missing cell ID dengan console.error agar lebih terlihat
-    console.error(`❌ [DisplayPNL] Cell NOT FOUND!`, {
-      elementId,
-      cex: cex,
-      dex: dextype,
-      direction: trx,
-      symbolIn: Name_in,
-      symbolOut: Name_out,
-      chain: nameChain,
-      baseId: baseId,
-      idPrefix: idPrefix
-    });
+    // console.error(`❌ [DisplayPNL] Cell NOT FOUND!`, {
+      // elementId,
+      // cex: cex,
+      // dex: dextype,
+      // direction: trx,
+      // symbolIn: Name_in,
+      // symbolOut: Name_out,
+      // chain: nameChain,
+      // baseId: baseId,
+      // idPrefix: idPrefix
+    // });
     // List all cells with similar pattern for debugging
     try {
       const allCells = Array.from(document.querySelectorAll('[id*="' + String(cex).toUpperCase() + '"]'));
       const relevantCells = allCells.filter(c => c.id.includes(String(Name_in || '').toUpperCase())).map(c => c.id);
       if (relevantCells.length) {
-        console.log(`💡 Similar cells found:`, relevantCells);
+        // console.log(`💡 Similar cells found:`, relevantCells);
       }
     } catch(_) {}
     return;
@@ -1165,7 +1165,15 @@ function calculateResult(baseId, tableBodyId, amount_out, FeeSwap, sc_input, sc_
     const profitLoss = totalValue - totalModal;
     const profitLossPercent = totalModal !== 0 ? (profitLoss / totalModal) * 100 : 0;
 
-    const linkDEX = generateDexLink(dextype,nameChain,codeChain,Name_in,sc_input, Name_out, sc_output) || '#';
+    const linkDEX = generateDexLink(
+        dextype,
+        nameChain,
+        codeChain,
+        Name_in,
+        sc_input,
+        Name_out,
+        sc_output
+    ) || '#';
 
     let displayRate, tooltipRate, tooltipText;
     tooltipRate = rateTokentoPair;

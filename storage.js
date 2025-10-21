@@ -441,11 +441,11 @@
         // Debug logging untuk sample token
         if (tokenData.length > 0) {
             const sampleToken = tokenData[0];
-            console.log('[EXPORT CSV] Sample token structure:', {
-                selectedDexs: sampleToken.selectedDexs,
-                dataDexs: sampleToken.dataDexs,
-                selectedCexs: sampleToken.selectedCexs
-            });
+            // console.log('[EXPORT CSV] Sample token structure:', {
+                // selectedDexs: sampleToken.selectedDexs,
+                // dataDexs: sampleToken.dataDexs,
+                // selectedCexs: sampleToken.selectedCexs
+            // });
         }
 
         // Buat file download
@@ -459,8 +459,8 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        console.log(`[EXPORT CSV] Exported ${tokenData.length} tokens with ${cexHeaders.length} CEX and ${dexHeaders.length} DEX columns`);
-        console.log(`[EXPORT CSV] DEX columns:`, dexHeaders);
+        // console.log(`[EXPORT CSV] Exported ${tokenData.length} tokens with ${cexHeaders.length} CEX and ${dexHeaders.length} DEX columns`);
+        // console.log(`[EXPORT CSV] DEX columns:`, dexHeaders);
         try { setLastAction(`EXPORT DATA KOIN`, 'success'); } catch(_) {}
     }
 
@@ -490,11 +490,11 @@
                     return clean;
                 });
 
-                console.log('[IMPORT CSV] Headers detected:', rawHeaders);
+                // console.log('[IMPORT CSV] Headers detected:', rawHeaders);
 
                 // Detect format: NEW (expanded CEX/DEX columns) or OLD (compact)
                 const hasExpandedFormat = rawHeaders.some(h => h.startsWith('CEX_') || h.startsWith('DEX_'));
-                console.log('[IMPORT CSV] Format detected:', hasExpandedFormat ? 'NEW (Expanded)' : 'OLD (Compact)');
+                // console.log('[IMPORT CSV] Format detected:', hasExpandedFormat ? 'NEW (Expanded)' : 'OLD (Compact)');
 
                 // Parse tiap baris → object
                 const tokenData = rows.slice(1).map((row, rowIndex) => {
@@ -624,7 +624,7 @@
                     // Ensure all selectedCexs have dataCexs entries
                     (obj.selectedCexs || []).forEach(cexName => {
                         if (!obj.dataCexs[cexName]) {
-                            console.log(`[IMPORT CSV] Auto-filling dataCexs for ${cexName} with defaults`);
+                            // console.log(`[IMPORT CSV] Auto-filling dataCexs for ${cexName} with defaults`);
                             obj.dataCexs[cexName] = {
                                 feeWDToken: 0,           // Default: no fee
                                 feeWDPair: 0,            // Default: no fee
@@ -652,7 +652,7 @@
                     const selectedSet = new Set((obj.selectedCexs || []).map(c => c.toUpperCase()));
                     Object.keys(obj.dataCexs || {}).forEach(cexName => {
                         if (!selectedSet.has(cexName.toUpperCase())) {
-                            console.log(`[IMPORT CSV] Removing unused dataCexs entry: ${cexName}`);
+                            // console.log(`[IMPORT CSV] Removing unused dataCexs entry: ${cexName}`);
                             delete obj.dataCexs[cexName];
                         }
                     });
@@ -660,8 +660,8 @@
                     return obj;
                 });
 
-                console.log('[IMPORT CSV] Parsed tokens:', tokenData.length);
-                console.log('[IMPORT CSV] Sample token:', tokenData[0]);
+                // console.log('[IMPORT CSV] Parsed tokens:', tokenData.length);
+                // console.log('[IMPORT CSV] Sample token:', tokenData[0]);
 
                 // Simpan ke storage (IndexedDB KV)
                 const chainLabel = getActiveChainLabel();
@@ -688,7 +688,7 @@
                 } catch(_) { try { location.reload(); } catch(_){} }
 
             } catch (error) {
-                console.error("Error parsing CSV:", error);
+                // console.error("Error parsing CSV:", error);
                 try { setLastAction('IMPORT DATA KOIN', 'error', { error: String(error && error.message || error) }); } catch(_) {}
                 if (typeof toast !== 'undefined' && toast.error) {
                     toast.error(`Format file CSV tidak valid: ${error.message}`);

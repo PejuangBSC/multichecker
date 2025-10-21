@@ -194,88 +194,154 @@
         ⬆
     </button>
     
-   <!-- SECTION: PENGATURAN SCANNING APLIKASI -->
-<!-- CARD 1: PENGATURAN SCANNING APLIKASI (per-column card) -->
+<!-- SECTION: PENGATURAN SCANNING APLIKASI -->
 <section id="form-setting-app" class="uk-card uk-card-default uk-card-body uk-padding-small uk-card-hover uk-margin-small" style="display:none;">
-  <!-- Header -->
-  <div class="uk-flex uk-flex-between uk-flex-middle uk-margin-small-bottom">
-   <h5 class=" uk-margin-small" style="text-align:center; color:#1317e1;">PENGATURAN JEDA</h5>    <div><!-- header kanan kosong --></div>
+  <!-- Header Section -->
+  <div class="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-small">
+    <div class="uk-flex uk-flex-between uk-flex-middle">
+      <h4 class="uk-heading-bullet uk-margin-remove">
+        <span uk-icon="icon: settings; ratio: 1.2"></span> PENGATURAN SCANNER
+      </h4>
+      <button type="button" id="btn-cancel-setting" class="uk-button uk-button-danger uk-button-small">
+        <span uk-icon="icon: close"></span> TUTUP
+      </button>
+    </div>
   </div>
 
-  <!-- Body: tiap kolom sekarang card sendiri -->
-  <div class="uk-grid-small" uk-grid>
-    <!-- Kiri: Card untuk JEDA DEX -->
-    <div class="uk-width-1-2@m">
-      <div class="uk-card uk-card-default uk-card-body uk-padding-small">
-        <h5 class="uk-heading-bullet uk-margin-small">JEDA DEX (ms)</h5>
-        <div id="dex-delay-group" class="uk-margin-small"></div>
+  <!-- 3 Column Layout with Cards -->
+ <form class="uk-form-stacked uk-margin">
+
+  <!-- GRID 3:4:5 (uk-grid-match agar card sama tinggi) -->
+  <div class="uk-grid-small uk-grid-match" uk-grid>
+
+    <!-- COLUMN 1 (3) - JEDA DEX -->
+    <div class="uk-width-1-4@m">
+      <div class="uk-card uk-card-default uk-card-body uk-card-hover">
+        <h5 class="uk-h5 uk-text-primary">
+          <span uk-icon="clock"></span> JEDA DEX
+        </h5>
+        <div id="dex-delay-group" class="uk-overflow-auto"  >
+          <!-- contoh item (JS akan populate) -->
+          <div class="uk-card uk-card-small uk-card-body uk-margin-small-bottom">
+            <div class="uk-flex uk-flex-between uk-flex-middle">
+              <div>
+                <div class="uk-text-small uk-text-bold">MATCHA</div>
+                <div class="uk-text-meta uk-text-truncate">Keterangan singkat</div>
+              </div>
+              <div class="uk-width-small">
+                <input class="uk-input uk-form-small" type="number" value="50" aria-label="matcha delay">
+              </div>
+            </div>
+          </div>
+          <!-- tambahkan item lainnya -->
+        </div>
+
       </div>
     </div>
 
-    <!-- Kanan: Card untuk PENGATURAN SCANNER -->
-    <div class="uk-width-1-2@m">
-      <div class="uk-card uk-card-default uk-card-body uk-padding-small">
-        <h5 class=" uk-margin-small" style="text-align:center; color:#1317e1;">PENGATURAN SCANNER</h5>
+    <!-- COLUMN 2 (4) - PENGATURAN SCANNER -->
+    <div class="uk-width-1-3@m">
+      <div class="uk-card uk-card-default uk-card-body uk-card-hover">
+        <h5 class="uk-h5 uk-text-primary">
+          <span uk-icon="cog"></span> PENGATURAN SCANNER
+        </h5>
 
-        <form class="uk-form-stacked">
-          <div class="uk-margin">
-            <label class="uk-form-label" for="user">NICK NAME</label>
+        <div class="uk-margin-small">
+          <label class="uk-form-label uk-text-small uk-text-bolder">NICK NAME</label>
+          <div class="uk-form-controls">
+            <input type="text" id="user" class="uk-input uk-form-small" placeholder="Masukkan nickname (cth: SDDRX)" required>
+          </div>
+        </div>
+
+        <div class="uk-margin-small">
+          <label class="uk-form-label uk-text-small uk-text-danger uk-text-bolder">WALLET ADDRESS</label>
+          <div class="uk-form-controls">
+            <input class="uk-input uk-form-small" type="text" id="walletMeta" name="walletMeta" placeholder="0x..." aria-label="wallet address">
+          </div>
+        </div>
+
+        <div class="uk-grid-small uk-margin-small-top" uk-grid>
+          <div class="uk-width-1-2">
+            <label class="uk-form-label uk-text-small uk-text-bolder">KOIN / GRUP</label>
+            <div>
+              <label><input class="uk-radio" type="radio" name="koin-group" value="6"> 6</label><br>
+              <label><input class="uk-radio" type="radio" name="koin-group" value="5" checked> 5</label><br>
+              <label><input class="uk-radio" type="radio" name="koin-group" value="4"> 4</label>
+            </div>
+          </div>
+
+          <div class="uk-width-1-2">
+            <label class="uk-form-label uk-text-small uk-text-bolder">TIME OUT</label>
+            <div>
+              <label><input class="uk-radio" type="radio" name="waktu-tunggu" value="5" checked> NORMAL</label><br>
+              <label><input class="uk-radio" type="radio" name="waktu-tunggu" value="4"> MEDIUM</label><br>
+              <label><input class="uk-radio" type="radio" name="waktu-tunggu" value="3"> FAST</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="uk-grid-small uk-margin-small-top" uk-grid>
+          <div class="uk-width-1-2">
+            <label class="uk-form-label uk-text-small uk-text-bolder">JEDA / GRUP (ms)</label>
             <div class="uk-form-controls">
-              <input type="text" id="user" class="uk-input uk-form-small" required>
+              <input class="uk-input uk-form-small" id="jeda-time-group" type="number" value="2000" min="100">
             </div>
+            <div class="uk-text-meta uk-text-small uk-text-muted">Waktu jeda antar grup</div>
           </div>
-
-          <div class="uk-grid-small uk-flex-middle" uk-grid>
-            <div class="uk-width-1-2">
-              <label class="uk-text-danger">KOIN / GRUP</label>
-              <div class="uk-margin-small-top">
-                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="6" name="koin-group"> 6</label>
-                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="5" checked name="koin-group"> 5</label>
-                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="4" name="koin-group"> 4</label>
-              </div>
+          <div class="uk-width-1-2">
+            <label class="uk-form-label uk-text-small uk-text-bolder">JEDA / KOIN (ms)</label>
+            <div class="uk-form-controls">
+              <input class="uk-input uk-form-small" id="jeda-koin" type="number" value="500" min="100">
             </div>
-
-            <div class="uk-width-1-2">
-              <label class="uk-text-danger">TIME OUT</label>
-              <div class="uk-margin-small-top">
-                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="5" name="waktu-tunggu" checked> NORMAL</label>
-                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="4" name="waktu-tunggu"> MEDIUM</label>
-                <label class="uk-form-label uk-text-success"><input class="uk-radio" type="radio" value="3" name="waktu-tunggu"> FAST</label>
-              </div>
-            </div>
+            <div class="uk-text-meta uk-text-small uk-text-muted">Waktu jeda antar koin di grup</div>
           </div>
+        </div>
 
-          <div class="uk-grid-small" uk-grid>
-            <div class="uk-width-1-2">
-              <div class="uk-margin">
-                <label class="uk-form-label">JEDA / GRUP (ms)</label>
-                <input class="uk-input uk-form-small" id="jeda-time-group" type="number" value="2000" name="jeda-time-group">
-              </div>
-            </div>
-            <div class="uk-width-1-2">
-              <div class="uk-margin">
-                <label class="uk-form-label">JEDA / KOIN (ms)</label>
-                <input class="uk-input uk-form-small" type="number" id="jeda-koin" value="500" name="jeda-koin">
-              </div>
-            </div>
-          </div>
+        
 
-          <div class="uk-margin">
-            <label class="uk-form-label uk-text-danger">WALLET ADDRESS</label>
-            <input class="uk-input uk-form-small" type="text" id="walletMeta" name="walletMeta">
-          </div>
-
-          <!-- tombol aksi di dalam card kanan -->
-          <div class="uk-text-right uk-margin-top">
-            <div class="uk-button-group">
-              <button type="button" id="btn-cancel-setting" class="uk-button uk-button-danger">CANCEL</button>
-              <button type="button" id="btn-save-setting" class="uk-button uk-button-primary">SIMPAN</button>
-            </div>
-          </div>
-        </form>
       </div>
     </div>
-  </div>
+
+    <!-- COLUMN 3 (5) - CUSTOM RPC -->
+    <div class="uk-width-expand@m">
+      <div class="uk-card uk-card-default uk-card-body uk-card-hover">
+        <h5 class="uk-h5 uk-text-primary">
+          <span uk-icon="cloud-download"></span> CUSTOM RPC
+        </h5>
+
+        <div id="rpc-settings-group" class="uk-overflow-auto"  >
+          <!-- contoh entry -->
+          <div class="uk-grid-small uk-flex-middle uk-margin-small-bottom" uk-grid>
+            <div class="uk-width-auto"><span class="uk-icon" uk-icon="server"></span></div>
+            <div class="uk-width-expand">
+              <div class="uk-text-small uk-text-muted">BSC</div>
+              <input class="uk-input uk-form-small" type="text" value="https://bsc-dataseed.binance.org" aria-label="bsc rpc">
+            </div>
+            <div class="uk-width-auto">
+              <button class="uk-icon-button" uk-tooltip="Hapus RPC" title="Hapus"><span uk-icon="trash"></span></button>
+            </div>
+          </div>
+          <!-- JS append real list -->
+        </div>
+
+        <!-- tambah rpc cepat -->
+        <div class="uk-margin-small-top uk-grid-small" uk-grid>
+          <div class="uk-width-expand">
+          </div>
+          <div class="uk-width-auto">
+           <button type="button" id="btn-save-setting" class="uk-button uk-button-primary uk-button-small uk-border-pill">
+        <span uk-icon="check"></span> SIMPAN PENGATURAN
+      </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div> <!-- end grid -->
+
+</form>
+
 </section>
 
 
@@ -546,7 +612,13 @@
         <!-- Tombol Action -->
         <div class="uk-flex uk-flex-right uk-margin-top uk-grid-small" uk-grid>
             <div><button class="uk-button uk-button-danger" type="button" id="HapusEditkoin">Hapus</button></div>
-            <div><button class="uk-button uk-button-secondary" type="button" id="CopyToMultiBtn" style="display:none;">Import</button></div>
+            <!-- <div><button class="uk-button uk-button-secondary" type="button" id="CopyToMultiBtn" style="display:none;">Import</button></div> -->
+            <div>
+              <button class="uk-button uk-button-secondary" type="button" id="CopyToMultiBtn" style="display:none;">
+                <span uk-icon="star"></span> Import
+              </button>
+            </div>
+
             <div><button class="uk-button uk-button-primary" type="submit" id="SaveEditkoin">Simpan</button></div>
             <div><button class="uk-button uk-button-default uk-modal-close" type="button" id="BatalEditkoin">Batal</button></div>
 
