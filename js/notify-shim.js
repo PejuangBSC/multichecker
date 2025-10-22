@@ -20,8 +20,8 @@
     if (hasToastr) {
       window.toastr.options = Object.assign({
         positionClass: 'toast-top-right',
-        timeOut: 3500,
-        extendedTimeOut: 1500,
+        timeOut: 2500,
+        extendedTimeOut: 1000,
         closeButton: true,
         progressBar: true,
         newestOnTop: true,

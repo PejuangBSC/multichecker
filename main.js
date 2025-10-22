@@ -1176,7 +1176,7 @@ async function deferredInit() {
         } catch(_) {}
     });
 
-    $('#btn-save-setting').on('click', function() {
+    $('#btn-save-setting').on('click', async function() {
         const nickname = $('#user').val().trim();
         const jedaTimeGroup = parseInt($('#jeda-time-group').val(), 10);
         const jedaKoin = parseInt($('#jeda-koin').val(), 10);
@@ -1216,6 +1216,12 @@ async function deferredInit() {
         };
 
         saveToLocalStorage('SETTING_SCANNER', settingData);
+
+        // Sync with RPC Manager extended config (if available)
+        if (typeof window.RPCManager !== 'undefined' && typeof window.RPCManager.syncRPCFromSettingsForm === 'function') {
+            await window.RPCManager.syncRPCFromSettingsForm();
+        }
+
         try { setLastAction("SIMPAN SETTING"); } catch(_) {}
         alert("✅ SETTING SCANNER BERHASIL DISIMPAN");
         location.reload();

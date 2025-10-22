@@ -604,10 +604,11 @@
     // ====================
 
     // Enhanced validate token data with database optimization
-    async function validateTokenData(token, snapshotMap, symbolLookupMap, chainKey, progressCallback) {
+    async function validateTokenData(token, snapshotMap, symbolLookupMap, chainKey, progressCallback, errorCount) {
         let sc = String(token.sc_in || '').toLowerCase().trim();
         const symbol = String(token.symbol_in || '').toUpperCase();
         const cexUp = String(token.cex || token.exchange || '').toUpperCase();
+        const chainUpper = String(chainKey || '').toUpperCase();
 
         // Update progress callback if provided
         if (progressCallback) {
@@ -724,6 +725,34 @@
                 // Set default decimals 18 jika error
                 token.des_in = 18;
                 token.decimals = 18;
+
+                // Show toast error for Web3 fetch failure (with more details)
+                // Only show every 5th error to avoid spam
+                if (typeof toast !== 'undefined' && toast.error) {
+                    const showToast = !errorCount || (errorCount.web3 % 5 === 0);
+
+                    if (showToast) {
+                        const scShort = sc.length > 12 ? `${sc.slice(0, 8)}...${sc.slice(-4)}` : sc;
+                        const errorMsg = e.message || 'RPC request failed';
+
+                        toast.error(
+                            `❌ Web3 Error [${chainUpper}]\n` +
+                            `Token: ${symbol}\n` +
+                            `SC: ${scShort}\n` +
+                            `Error: ${errorMsg}`,
+                            {
+                                duration: 4000,
+                                position: 'bottom-right'
+                            }
+                        );
+                    }
+                }
+
+                // Increment error count if provided
+                if (errorCount && errorCount.web3 !== undefined) {
+                    errorCount.web3++;
+                }
+
                 // console.warn(`❌ ${symbol}: Web3 fetch failed for ${sc}, using default decimals (18):`, e.message);
             }
         } else {
@@ -748,19 +777,32 @@
     // Fetch token data from web3 (decimals, symbol, name)
     async function fetchWeb3TokenData(contractAddress, chainKey) {
         const chainConfig = CONFIG_CHAINS[chainKey];
-        if (!chainConfig || !chainConfig.RPC) {
-            throw new Error('No RPC configured for chain');
+        if (!chainConfig) {
+            throw new Error(`No config for chain ${chainKey}`);
         }
 
         try {
-            const rpc = chainConfig.RPC;
+            // Use getRPC() for custom RPC support from SETTING_SCANNER
+            const rpc = (typeof getRPC === 'function')
+                ? getRPC(chainKey)
+                : (chainConfig.RPC || null);
+
+            if (!rpc) {
+                throw new Error(`No RPC configured for chain ${chainKey}`);
+            }
+
             const contract = String(contractAddress || '').toLowerCase().trim();
 
             if (!contract || contract === '0x') {
                 return null;
             }
 
-            // console.log(`Fetching Web3 data for ${contract} on ${chainKey} via ${rpc}`);
+            // Log RPC source for debugging
+            const rpcSource = (typeof getRPC === 'function' && getRPC(chainKey) !== chainConfig.RPC)
+                ? 'SETTING_SCANNER (Custom RPC)'
+                : 'CONFIG_CHAINS (Default RPC)';
+
+            // console.log(`[Web3] Fetching data for ${contract} on ${chainKey} via ${rpc} (${rpcSource})`);
 
             // ABI method signatures for ERC20
             const decimalsData = '0x313ce567'; // decimals()
@@ -823,6 +865,21 @@
                 name
             };
         } catch(error) {
+            // Show toast for critical RPC/network errors
+            const isNetworkError = error.message && (
+                error.message.includes('fetch') ||
+                error.message.includes('network') ||
+                error.message.includes('timeout') ||
+                error.message.includes('RPC')
+            );
+
+            if (isNetworkError && typeof toast !== 'undefined' && toast.error) {
+                toast.error(`🌐 RPC Error (${chainKey}): ${error.message}`, {
+                    duration: 4000,
+                    position: 'bottom-right'
+                });
+            }
+
             // console.error('fetchWeb3TokenData failed:', error);
             return null;
         }
@@ -986,7 +1043,7 @@
             await sleep(100); // Small delay between CEX
         }
 
-        // Validate & enrich data with enhanced progress tracking
+        // Validate & enrich data with PARALLEL batch processing
         if (window.SnapshotOverlay) {
             window.SnapshotOverlay.updateMessage(
                 `Validasi Data ${chainDisplay}`,
@@ -1001,55 +1058,141 @@
         let errorCount = 0;
         let mergedTokens = []; // Declare here for broader scope
 
-            for (let i = 0; i < allTokens.length; i++) {
-                const token = allTokens[i];
-                const progressPercent = Math.floor(((i + 1) / allTokens.length) * 100);
+        // Error tracking for toast throttling
+        const errorTracking = {
+            web3: 0,      // Web3 fetch errors
+            batch: 0,     // Batch validation errors
+            total: 0      // Total errors
+        };
 
-                // Enhanced progress callback
-                const progressCallback = (message) => {
-                    if (window.SnapshotOverlay) {
-                        const statusMsg = `${message} (${i + 1}/${allTokens.length} - ${progressPercent}%)`;
-                        window.SnapshotOverlay.updateProgress(i + 1, allTokens.length, statusMsg);
-                    }
-                };
+        // OPTIMIZED: Parallel batch processing configuration
+        const BATCH_SIZE = 5; // Process 5 tokens concurrently
+        const BATCH_DELAY = 250; // Delay between batches (ms)
 
-                try {
-                    // Track if this token needed web3 fetch
+        // Process tokens in parallel batches
+        for (let batchStart = 0; batchStart < allTokens.length; batchStart += BATCH_SIZE) {
+            const batchEnd = Math.min(batchStart + BATCH_SIZE, allTokens.length);
+            const batch = allTokens.slice(batchStart, batchEnd);
+            const batchNumber = Math.floor(batchStart / BATCH_SIZE) + 1;
+            const totalBatches = Math.ceil(allTokens.length / BATCH_SIZE);
+
+            // Update progress for batch
+            if (window.SnapshotOverlay) {
+                window.SnapshotOverlay.updateMessage(
+                    `Validasi Data ${chainDisplay}`,
+                    `Batch ${batchNumber}/${totalBatches} - Processing ${batch.length} tokens in parallel...`
+                );
+            }
+
+            // Process batch in parallel with Promise.all
+            const batchResults = await Promise.allSettled(
+                batch.map(async (token, batchIndex) => {
+                    const globalIndex = batchStart + batchIndex;
+                    const progressPercent = Math.floor(((globalIndex + 1) / allTokens.length) * 100);
+
+                    // Progress callback for individual token
+                    const progressCallback = (message) => {
+                        if (window.SnapshotOverlay && batchIndex === 0) {
+                            // Only update overlay for first token in batch to avoid spam
+                            const statusMsg = `${message} | Batch ${batchNumber}/${totalBatches} (${progressPercent}%)`;
+                            window.SnapshotOverlay.updateProgress(globalIndex + 1, allTokens.length, statusMsg);
+                        }
+                    };
+
+                    // Track pre-validation state
                     const hadDecimals = token.des_in && token.des_in > 0;
                     const hadCachedData = snapshotMap[String(token.sc_in || '').toLowerCase()];
 
-                    // Validate DES & SC with enhanced tracking
-                    const validated = await validateTokenData(token, snapshotMap, snapshotSymbolMap, chainKey, progressCallback);
+                    // Validate token (pass errorTracking for toast throttling)
+                    const validated = await validateTokenData(token, snapshotMap, snapshotSymbolMap, chainKey, progressCallback, errorTracking);
 
-                    if (validated) {
-                        enrichedTokens.push(validated);
+                    return {
+                        validated,
+                        hadDecimals,
+                        hadCachedData
+                    };
+                })
+            );
 
-                        // Count statistics for final report
-                        if (!hadDecimals && !hadCachedData && validated.des_in) {
-                            web3FetchCount++;
-                        } else if (!hadDecimals && hadCachedData) {
-                            cachedCount++;
-                        }
+            // Process batch results
+            let batchErrorCount = 0;
+            const batchErrorTokens = [];
+
+            batchResults.forEach((result, batchIndex) => {
+                const globalIndex = batchStart + batchIndex;
+                const token = batch[batchIndex];
+
+                if (result.status === 'fulfilled' && result.value?.validated) {
+                    const { validated, hadDecimals, hadCachedData } = result.value;
+                    enrichedTokens.push(validated);
+
+                    // Update statistics
+                    if (!hadDecimals && !hadCachedData && validated.des_in) {
+                        web3FetchCount++;
+                    } else if (!hadDecimals && hadCachedData) {
+                        cachedCount++;
                     }
-                } catch(error) {
-                    // console.error(`Validation failed for token ${token.symbol_in}:`, error);
+                } else {
+                    // Handle errors
                     errorCount++;
-                    // Still add token with default values
+                    batchErrorCount++;
+                    batchErrorTokens.push(token.symbol_in || 'Unknown');
+
+                    // console.error(`Validation failed for token ${token.symbol_in}:`, result.reason);
                     enrichedTokens.push({
                         ...token,
                         des_in: 18,
                         decimals: 18
                     });
                 }
+            });
 
-                // Dynamic delay based on operation type
-                const delay = (web3FetchCount > cachedCount) ? 100 : 25; // Slower if doing more web3 calls
-                await sleep(delay);
+            // Show toast for batch errors (if any)
+            if (batchErrorCount > 0 && typeof toast !== 'undefined' && toast.warning) {
+                const errorMsg = batchErrorCount === 1
+                    ? `⚠️ Batch ${batchNumber}: 1 token gagal validasi (${batchErrorTokens[0]})`
+                    : `⚠️ Batch ${batchNumber}: ${batchErrorCount} token gagal validasi (${batchErrorTokens.slice(0, 3).join(', ')}${batchErrorCount > 3 ? '...' : ''})`;
+
+                toast.warning(errorMsg, {
+                    duration: 4000,
+                    position: 'bottom-right'
+                });
             }
+
+            // Update progress after batch completion
+            if (window.SnapshotOverlay) {
+                const processed = Math.min(batchEnd, allTokens.length);
+                const percent = Math.floor((processed / allTokens.length) * 100);
+                window.SnapshotOverlay.updateProgress(
+                    processed,
+                    allTokens.length,
+                    `Batch ${batchNumber}/${totalBatches} selesai (${percent}%) | Web3: ${web3FetchCount}, Cache: ${cachedCount}, Error: ${errorCount}`
+                );
+            }
+
+            // Delay between batches (except for last batch)
+            if (batchEnd < allTokens.length) {
+                await sleep(BATCH_DELAY);
+            }
+        }
 
             // Show validation summary
             // console.log(`📊 Validation Summary: ${enrichedTokens.length} tokens processed`);
             // console.log(`   💾 From cache: ${cachedCount}`);
+
+            // Show final error summary toast if there were Web3 errors
+            if (errorTracking.web3 > 0 && typeof toast !== 'undefined' && toast.info) {
+                toast.info(
+                    `ℹ️ Web3 Validation Summary [${chainUpper}]\n` +
+                    `Total: ${enrichedTokens.length} tokens\n` +
+                    `✅ Cache: ${cachedCount} | 🌐 Web3: ${web3FetchCount}\n` +
+                    `❌ Errors: ${errorTracking.web3} (using default decimals 18)`,
+                    {
+                        duration: 5000,
+                        position: 'bottom-right'
+                    }
+                );
+            }
             // console.log(`   🌐 From Web3: ${web3FetchCount}`);
             // console.log(`   ❌ Errors: ${errorCount}`);
 
