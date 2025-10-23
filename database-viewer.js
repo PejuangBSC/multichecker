@@ -638,8 +638,26 @@
                         <tbody>
             `;
             Object.entries(data).forEach(([key, value]) => {
-                const valStr = (typeof value === 'object' && value !== null) ? JSON.stringify(value) : String(value);
-                html += `<tr><td><strong>${key}</strong></td><td class="uk-text-small uk-text-truncate" title="${valStr}">${valStr}</td></tr>`;
+                // Special rendering for userRPCs to show each chain's RPC clearly
+                if (key === 'userRPCs' && typeof value === 'object' && value !== null) {
+                    let rpcHtml = '<div class="uk-margin-remove">';
+                    Object.entries(value).forEach(([chain, rpcUrl]) => {
+                        const chainConfig = (typeof window !== 'undefined' && window.CONFIG_CHAINS) ? window.CONFIG_CHAINS[chain.toLowerCase()] : null;
+                        const chainColor = chainConfig?.WARNA || '#667eea';
+                        const chainLabel = chainConfig?.Nama_Chain?.toUpperCase() || chain.toUpperCase();
+                        rpcHtml += `
+                            <div class="uk-margin-small-bottom" style="padding: 4px 8px; border-left: 3px solid ${chainColor}; background: ${chainColor}10;">
+                                <div><strong style="color: ${chainColor};">${chainLabel}</strong></div>
+                                <div class="uk-text-small uk-text-truncate" style="font-family: monospace; color: #666;" title="${rpcUrl}">${rpcUrl}</div>
+                            </div>
+                        `;
+                    });
+                    rpcHtml += '</div>';
+                    html += `<tr><td><strong>${key}</strong></td><td>${rpcHtml}</td></tr>`;
+                } else {
+                    const valStr = (typeof value === 'object' && value !== null) ? JSON.stringify(value) : String(value);
+                    html += `<tr><td><strong>${key}</strong></td><td class="uk-text-small uk-text-truncate" title="${valStr}">${valStr}</td></tr>`;
+                }
             });
             html += '</tbody></table></div>';
             return html;

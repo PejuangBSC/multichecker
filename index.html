@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MULTIALL-PLUS</title>
+    <title>MULTICHECKER-PLUS</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.6.22/css/uikit.min.css" />
     <script src="https://code.jquery.com/jquery-3.7.1.js" integrity="sha256-eKhayi8LEQwp4NKxN+CfCh+3qOVUtJn3QNZ0TciWLP4=" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uikit/3.6.22/js/uikit.min.js"></script>
@@ -49,11 +49,7 @@
                          <a href="index.html?chain=all" id="multichain_scanner" ><img class="icon" title="SCANNER MUTLTICHAIN" width="24px" src="https://cdn-icons-png.flaticon.com/512/8897/8897593.png" /></a>
                         <span id="chain-links-container"></span>
                          
-                         <a href="#" target="_blank" id="ManajemenKoin" data-feature="manage">
-                            <img title="MANAJEMEN KOIN" class="icon"  src="https://cdn-icons-png.flaticon.com/256/7782/7782334.png" width="24px" />
-                        </a>   
-                         <img class="icon" id="UpdateWalletCEX" data-feature="wallet" title="CHECK EXCHANGER" width="24px"  src="https://cdn-icons-png.flaticon.com/512/1969/1969111.png"  />
-
+                       
                         <img class="icon" id="SettingConfig" data-feature="settings" title="CONFIG SCANNER" width="24px" src="https://cdn-icons-png.flaticon.com/512/771/771203.png" />
                         <!-- <img class="icon" id="reload" data-feature="reload" title="RESET PROSES" width="24px" src="https://cdn-icons-png.flaticon.com/256/10264/10264169.png" /> -->
 
@@ -82,7 +78,12 @@
 
                 <!-- KOLOM KIRI: semua kontrol kecuali Search -->
                 <div class="uk-width-expand uk-flex uk-flex-middle uk-flex-wrap">
-                <span class=" uk-text-bolder">SCANNER : </span>
+                  <a href="#" target="_blank" id="ManajemenKoin" data-feature="manage">
+                            <img title="MANAJEMEN KOIN" class="icon"  src="https://cdn-icons-png.flaticon.com/256/7782/7782334.png" width="24px" />
+                        </a> &nbsp;&nbsp;
+                         <img class="icon" id="UpdateWalletCEX" data-feature="wallet" title="CHECK EXCHANGER" width="24px"  src="https://cdn-icons-png.flaticon.com/512/1969/1969111.png"  />
+&nbsp;&nbsp;
+                  <span class=" uk-text-bolder">SCANNER : </span>
                 <label class="uk-margin-small-left">
                     <input class="uk-checkbox" type="checkbox" id="autoRunToggle">
                     <span class="uk-text-success">Auto Run</span>
@@ -352,6 +353,9 @@
     <h4 class="uk-heading-bullet uk-margin-remove">UPDATE WALLET EXCHANGER</h4>
     <div class="uk-flex uk-flex-middle" style="gap: 12px;">
       <span class="uk-text-meta">Chain Aktif: <strong id="wallet-chain-label">-</strong></span>
+      <button type="button" id="btn-cancel-setting" class="uk-button uk-button-danger uk-button-small">
+        <span uk-icon="icon:  arrow-left"></span> KEMBALI
+      </button>
       <!-- Tombol tutup dihapus sesuai permintaan -->
     </div>
   </div>
@@ -378,44 +382,6 @@
 
   <!-- CEX Cards Grid (2 kolom) -->
   <div id="wallet-cex-grid" class="uk-grid-small uk-child-width-1-2@m uk-padding-small" uk-grid>
-    <!-- CEX cards will be rendered here dynamically -->
-  </div>
-</section>
-
-
-<!-- SECTION: UPDATE WALLET EXCHANGER -->
-<section id="update-wallet-section" class="uk-card uk-card-default uk-card-body uk-padding-small uk-card-hover uk-margin-small" style="display:none;">
-  <div class="uk-flex uk-flex-between uk-flex-middle uk-margin-small-bottom">
-    <h4 class="uk-heading-bullet uk-margin-remove">UPDATE WALLET EXCHANGER</h4>
-    <div class="uk-flex uk-flex-middle" style="gap: 12px;">
-      <span class="uk-text-meta">Chain Aktif: <strong id="wallet-chain-label">-</strong></span>
-      <button id="btn-close-wallet-section" class="uk-button uk-button-default uk-button-small" type="button">
-        <span uk-icon="icon: close; ratio: 0.8"></span> KEMBALI
-      </button>
-    </div>
-  </div>
-
-  <div class="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-small-bottom">
-    <div class="uk-grid-small uk-flex-middle" uk-grid>
-      <div class="uk-width-expand">
-        <p class="uk-text-small uk-text-muted uk-margin-remove" id="wallet-info-text">
-          Pilih exchanger kemudian jalankan pengecekan untuk melihat status deposit & withdraw koin.
-        </p>
-      </div>
-      <div class="uk-width-auto">
-        <button id="btn-cek-wallet-exchanger" class="uk-button uk-button-primary uk-button-small" disabled>
-          UPDATE WALLET EXCHANGER
-        </button>
-      </div>
-    </div>
-
-    <div id="wallet-update-result" class="uk-alert uk-margin-small-top" style="display:none;">
-      <p class="uk-margin-remove"></p>
-    </div>
-  </div>
-
-  <!-- CEX Cards Grid (2 columns konsisten) -->
-  <div id="wallet-cex-grid" class="uk-grid-small uk-child-width-1-2@m uk-padding-small"  uk-grid>
     <!-- CEX cards will be rendered here dynamically -->
   </div>
 </section>
@@ -473,9 +439,13 @@
 
         <!-- Config Manajemen (terpisah seperti config-scanner) -->
         <div id="manager-config" class="uk-card uk-card-default uk-padding-small uk-card-hover uk-margin-small-bottom">
-            <div id="token-management-stats" class="uk-text-small">
+            <button type="button" id="btn-cancel-setting" class="uk-button uk-button-danger uk-button-small">
+        <span uk-icon="icon:  arrow-left"></span> KEMBALI
+      </button>  
+          <div id="token-management-stats" class="uk-text-small">
                 <!-- stats + controls will be injected dynamically -->
             </div>
+           
         </div>
 
         <!-- Tabel Manajemen (terpisah dari config) -->
@@ -652,7 +622,7 @@
         <div class="uk-flex uk-flex-middle" style="gap:8px;">
           <div id="sync-snapshot-status" class="uk-text-meta"></div>
           <button id="refresh-snapshot-btn" class="uk-button uk-button-primary uk-button-small" type="button">
-            <span uk-icon="icon: refresh; ratio: 0.8"></span> UPDATE KOIN
+            <span uk-icon="icon: play; ratio: 0.85"></span> SNAPSHOT [UPDATE KOIN]
           </button>
         </div>
       </div>
@@ -693,14 +663,14 @@
     <div class="uk-card uk-card-default uk-card-body uk-padding-small">
       <div class="uk-flex uk-flex-between uk-flex-middle uk-margin-small">
         <h6 class="uk-margin-remove">4. Pilih Koin [ <span id="sync-selected-count" class="uk-text-small uk-badge">0</span> ]</h6>
-        
-      
-        <span>Memilih : &nbsp;
-          <label class="uk-margin-small-right"><input type="radio" name="sync-pick-mode" value="all" class="uk-radio"> Semua</label>
-          <label class="uk-margin-small-right"><input type="radio" name="sync-pick-mode" value="clear" class="uk-radio"> Hapus</label>
-          <label class="uk-margin-small-right"><input type="radio" name="sync-pick-mode" value="snapshot" class="uk-radio"> Snapshot</label>
-          <label><input type="radio" name="sync-pick-mode" value="selected" class="uk-radio"> Dipilih</label>
-        </span>
+
+        <div class="uk-flex uk-flex-middle" style="gap:8px;">
+          <span class="uk-text-small uk-text-bold">Pilih:</span>
+          <label class="uk-margin-remove"><input type="radio" name="sync-pick-mode" value="all" class="uk-radio"> Semua</label>
+          <label class="uk-margin-remove"><input type="radio" name="sync-pick-mode" value="selected" class="uk-radio"> Dipilih</label>
+          <label class="uk-margin-remove"><input type="radio" name="sync-pick-mode" value="snapshot" class="uk-radio"> Snapshot</label>
+          <label class="uk-margin-remove"><input type="radio" name="sync-pick-mode" value="clear" class="uk-radio"> Hapus</label>
+        </div>
       </div>
 
       <div class="uk-overflow-auto uk-margin-small-top" style="max-height:65vh; border:1px solid #ddd; border-radius:4px;">
@@ -834,9 +804,13 @@
 <script src="overlay-manager.js"></script><!-- UNIFIED OVERLAY -->
 <script src="table-manager.js"></script><!-- STANDARDIZED TABLES -->
 
-<script src="storage.js"></script>
+<!-- RPC SYSTEM: Load in correct order -->
+<script src="storage.js"></script><!-- Must load BEFORE rpc-database-migrator -->
+<script src="rpc-database-migrator.js"></script><!-- RPC DATABASE MIGRATION & INITIALIZATION -->
+<script src="rpc-manager.js"></script><!-- RPC MANAGEMENT WITH AUTO FALLBACK -->
+
 <script src="services/cex/registry.js"></script>
-<script src="rpc-manager.js"></script><!-- RPC MANAGEMENT WITH FALLBACK SUPPORT -->
+
 <script src="utils.js"></script>
 <script src="services/cex.js"></script>
 <script src="services/dex.js"></script>

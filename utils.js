@@ -844,14 +844,24 @@ function getChainData(chainName) {
         Nama_Chain: chainData.Nama_Chain || '',
         DEXS: chainData.DEXS || {},
         PAIRDExS: chainData.PAIRDExS || {},
-        URL_Chain: chainData.URL_Chain || '', 
+        URL_Chain: chainData.URL_Chain || '',
         DATAJSON: chainData.DATAJSON || {},
         BaseFEEDEX: chainData.BaseFEEDEX || '',
         CEXCHAIN: chainData.WALLET_CEX || {},
         ICON_CHAIN: chainData.ICON || '',
         COLOR_CHAIN: chainData.WARNA || '#000',
         SHORT_NAME: chainData.Nama_Pendek || '',
-        RPC: chainData.RPC || '' // ⬅ penting
+        // RPC: Use RPCManager (auto fallback to default suggestions)
+        RPC: (function() {
+            try {
+                if (typeof window !== 'undefined' && window.RPCManager && typeof window.RPCManager.getRPC === 'function') {
+                    return window.RPCManager.getRPC(chainLower) || '';
+                }
+                return '';
+            } catch(e) {
+                return '';
+            }
+        })()
     };
 }
 

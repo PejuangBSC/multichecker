@@ -294,7 +294,11 @@
     function resolvePriceFromMap(cex, priceMap, baseSymbol, quoteSymbol) {
         if (!priceMap) return NaN;
         const base = String(baseSymbol || '').toUpperCase();
-        const quote = String(quoteSymbol || 'USDT').toUpperCase();
+        const cexUpper = String(cex || '').toUpperCase();
+
+        // Special handling for INDODAX - always use IDR pairs
+        const quote = (cexUpper === 'INDODAX') ? 'IDR' : String(quoteSymbol || 'USDT').toUpperCase();
+
         if (!base || !quote) return NaN;
 
         const candidates = [
@@ -357,22 +361,29 @@
             // console.log('saveToSnapshot - Will save to key:', keyLower);
 
             // Convert tokens to snapshot format
-            const snapshotTokens = tokens.map(token => ({
-                cex: String(token.cex || '').toUpperCase(),
-                symbol_in: String(token.symbol_in || '').toUpperCase(),
-                sc_in: String(token.sc_in || '').trim(),
-                des_in: Number(token.des_in || token.decimals || 0),
-                symbol_out: String(token.symbol_out || '').toUpperCase(),
-                sc_out: String(token.sc_out || '').trim(),
-                des_out: Number(token.des_out || 0),
-                token_name: token.token_name || token.name || token.symbol_in,
-                deposit: token.deposit,
-                withdraw: token.withdraw,
-                feeWD: token.feeWD,
-                tradeable: token.tradeable,
-                current_price: Number.isFinite(Number(token.current_price)) ? Number(token.current_price) : 0,
-                price_timestamp: token.price_timestamp || null
-            }));
+            const snapshotTokens = tokens.map(token => {
+                const cexUpper = String(token.cex || '').toUpperCase();
+                // Default currency: INDODAX uses IDR, others use USDT
+                const defaultCurrency = (cexUpper === 'INDODAX') ? 'IDR' : 'USDT';
+
+                return {
+                    cex: cexUpper,
+                    symbol_in: String(token.symbol_in || '').toUpperCase(),
+                    sc_in: String(token.sc_in || '').trim(),
+                    des_in: Number(token.des_in || token.decimals || 0),
+                    symbol_out: String(token.symbol_out || '').toUpperCase(),
+                    sc_out: String(token.sc_out || '').trim(),
+                    des_out: Number(token.des_out || 0),
+                    token_name: token.token_name || token.name || token.symbol_in,
+                    deposit: token.deposit,
+                    withdraw: token.withdraw,
+                    feeWD: token.feeWD,
+                    tradeable: token.tradeable,
+                    current_price: Number.isFinite(Number(token.current_price)) ? Number(token.current_price) : 0,
+                    price_currency: token.price_currency || defaultCurrency,
+                    price_timestamp: token.price_timestamp || null
+                };
+            });
 
             // console.log('saveToSnapshot - Converted tokens:', snapshotTokens.length);
 
@@ -782,10 +793,10 @@
         }
 
         try {
-            // Use getRPC() for custom RPC support from SETTING_SCANNER
-            const rpc = (typeof getRPC === 'function')
-                ? getRPC(chainKey)
-                : (chainConfig.RPC || null);
+            // Use RPCManager for RPC access (auto fallback to defaults)
+            const rpc = (typeof window !== 'undefined' && window.RPCManager && typeof window.RPCManager.getRPC === 'function')
+                ? window.RPCManager.getRPC(chainKey)
+                : null;
 
             if (!rpc) {
                 throw new Error(`No RPC configured for chain ${chainKey}`);
@@ -1136,7 +1147,7 @@
                     // Handle errors
                     errorCount++;
                     batchErrorCount++;
-                    batchErrorTokens.push(token.symbol_in || 'Unknown');
+                    batchErrorTokens.push(token.symbol_in || '???');
 
                     // console.error(`Validation failed for token ${token.symbol_in}:`, result.reason);
                     enrichedTokens.push({
@@ -1234,7 +1245,10 @@
 
                 tokenList.forEach(token => {
                     processedPriceCount += 1;
-                    const quoteSymbol = String(token.symbol_out || '').trim() || 'USDT';
+                    const cexUpper = String(cexName || '').toUpperCase();
+
+                    // Set quote symbol based on CEX - INDODAX always uses IDR
+                    const quoteSymbol = (cexUpper === 'INDODAX') ? 'IDR' : (String(token.symbol_out || '').trim() || 'USDT');
 
                     if (window.SnapshotOverlay) {
                         window.SnapshotOverlay.updateProgress(
@@ -1246,8 +1260,10 @@
                     const price = resolvePriceFromMap(cexName, priceMap, token.symbol_in, quoteSymbol);
                     if (Number.isFinite(price) && price > 0) {
                         token.current_price = Number(price);
+                        token.price_currency = quoteSymbol; // Save currency for display
                     } else {
                         token.current_price = 0;
+                        token.price_currency = quoteSymbol;
                     }
                     token.price_timestamp = priceTimestamp;
                     if (typeof perTokenCallback === 'function') {
