@@ -129,9 +129,26 @@ if (typeof CEX_SECRETS !== 'undefined') {
 }
 
 
+// =================================================================================
+// RPC CONFIGURATION - MOVED TO DATABASE
+// =================================================================================
+// NOTE: DEFAULT_RPC_SUGGESTIONS has been REMOVED and moved to rpc-database-migrator.js
+// All RPC endpoints are now stored centrally in database (SETTING_SCANNER.userRPCs)
+//
+// To get RPC for a chain, use:
+//   - RPCManager.getRPC(chainKey)           // From rpc-manager.js
+//   - RPCDatabaseMigrator.getRPCFromDatabase(chainKey)  // From rpc-database-migrator.js
+//
+// Initial RPC values are set automatically on first app load by rpc-database-migrator.js
+// Users can update RPC via Settings UI, and values are persisted in IndexedDB
+// =================================================================================
+
+// Legacy support: Expose empty object to prevent errors in old code
+const DEFAULT_RPC_SUGGESTIONS = {};
+
 const CONFIG_CHAINS = {
-     bsc: { 
-        Kode_Chain: 56, Nama_Chain: "bsc", Nama_Pendek: "bsc", URL_Chain: "https://bscscan.com", WARNA:"#f0af18", ICON:"https://images.seeklogo.com/logo-png/44/2/binance-smart-chain-bsc-logo-png_seeklogo-446621.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/BSC.json', BaseFEEDEX : "BNBUSDT", RPC: 'https://public-bsc-mainnet.fastnode.io', GASLIMIT: 80000,
+     bsc: {
+        Kode_Chain: 56, Nama_Chain: "bsc", Nama_Pendek: "bsc", URL_Chain: "https://bscscan.com", WARNA:"#f0af18", ICON:"https://images.seeklogo.com/logo-png/44/2/binance-smart-chain-bsc-logo-png_seeklogo-446621.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/BSC.json', BaseFEEDEX : "BNBUSDT", GASLIMIT: 80000,
         LINKS: {
             explorer: {
                 token: (address) => `https://bscscan.com/token/${address}`,
@@ -156,16 +173,15 @@ const CONFIG_CHAINS = {
             "NON": { symbolPair: "NON", scAddressPair: "0x", desPair: "18" }
         }        
     },   
-    polygon: { 
-        Kode_Chain: 137, 
-        Nama_Chain: "polygon", 
-        Nama_Pendek: "poly", 
-        URL_Chain: "https://polygonscan.com", 
+    polygon: {
+        Kode_Chain: 137,
+        Nama_Chain: "polygon",
+        Nama_Pendek: "poly",
+        URL_Chain: "https://polygonscan.com",
         ICON: "https://s2.coinmarketcap.com/static/img/coins/200x200/3890.png",
         WARNA:"#a05df6",
         DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/POLYGON.json',
         BaseFEEDEX : "MATICUSDT", // Corrected from POLUSDT
-        RPC: 'https://polygon-pokt.nodies.app',
         GASLIMIT: 80000,
         DEXS: [ "1inch", "paraswap", "odos", "kyber", "0x", "okx"],
         LINKS: {
@@ -191,8 +207,8 @@ const CONFIG_CHAINS = {
            "NON": { symbolPair: "NON", scAddressPair: "0x", desPair: "18" }
         }
     },
-    arbitrum: { 
-        Kode_Chain: 42161, Nama_Chain: "arbitrum", Nama_Pendek: "arb", URL_Chain: "https://arbiscan.io", WARNA:"#a6b0c3", ICON:"https://wiki.dextrac.com:3443/images/1/11/Arbitrum_Logo.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/ARBITRUM.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://arbitrum-one-rpc.publicnode.com', GASLIMIT: 100000,
+    arbitrum: {
+        Kode_Chain: 42161, Nama_Chain: "arbitrum", Nama_Pendek: "arb", URL_Chain: "https://arbiscan.io", WARNA:"#a6b0c3", ICON:"https://wiki.dextrac.com:3443/images/1/11/Arbitrum_Logo.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/ARBITRUM.json', BaseFEEDEX : "ETHUSDT", GASLIMIT: 100000,
         LINKS: {
             explorer: {
                 token: (address) => `https://arbiscan.io/token/${address}`,
@@ -215,8 +231,8 @@ const CONFIG_CHAINS = {
             "NON": { symbolPair: "NON", scAddressPair: "0x", desPair: "18" }
         },           
     }, 
-    ethereum: { 
-        Kode_Chain: 1, Nama_Chain: "ethereum", Nama_Pendek: "erc", URL_Chain: "https://etherscan.io", WARNA:"#8098ee", ICON:"https://icons.iconarchive.com/icons/cjdowner/cryptocurrency-flat/256/Ethereum-ETH-icon.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/ETHEREUM.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://eth-mainnet.public.blastapi.io', GASLIMIT: 250000,
+    ethereum: {
+        Kode_Chain: 1, Nama_Chain: "ethereum", Nama_Pendek: "erc", URL_Chain: "https://etherscan.io", WARNA:"#8098ee", ICON:"https://icons.iconarchive.com/icons/cjdowner/cryptocurrency-flat/256/Ethereum-ETH-icon.png", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/ETHEREUM.json', BaseFEEDEX : "ETHUSDT", GASLIMIT: 250000,
         LINKS: {
             explorer: {
                 token: (address) => `https://etherscan.io/token/${address}`,
@@ -242,8 +258,8 @@ const CONFIG_CHAINS = {
         } 
     }, 
    
-    base: { 
-        Kode_Chain: 8453, Nama_Chain: "base", Nama_Pendek: "base", URL_Chain: "https://basescan.org/", WARNA:"#1e46f9", ICON:"https://avatars.githubusercontent.com/u/108554348?v=4", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/BASE.json', BaseFEEDEX : "ETHUSDT", RPC: 'https://base.llamarpc.com', GASLIMIT: 100000,
+    base: {
+        Kode_Chain: 8453, Nama_Chain: "base", Nama_Pendek: "base", URL_Chain: "https://basescan.org/", WARNA:"#1e46f9", ICON:"https://avatars.githubusercontent.com/u/108554348?v=4", DATAJSON: 'https://multiplus-scanner.vercel.app/JSON_KOIN/BASE.json', BaseFEEDEX : "ETHUSDT", GASLIMIT: 100000,
         LINKS: {
             explorer: {
                 token: (address) => `https://basescan.org/token/${address}`,
@@ -319,7 +335,7 @@ function buildChainConfig(chainSource = {}, uiChains = []) {
             short: ui.short || (data?.Nama_Pendek || data?.Nama_Chain || key || '').toString().toUpperCase(),
             symbol,
             badgeClass: ui.badgeClass || 'bg-dark text-light',
-            rpc: data?.RPC || '',
+            // RPC removed - use RPCManager.getRPC(chainKey) instead
             explorer: data?.URL_Chain || '',
             code: data?.Kode_Chain,
             gasLimit: data?.GASLIMIT,
@@ -338,6 +354,7 @@ const CHAIN_CONFIG = buildChainConfig(CONFIG_CHAINS, CONFIG_UI.CHAINS);
 // CONFIG_DEXS moved to dex-config.js to avoid duplication and keep this file data-centric
      
 // Expose globals for runtime consumers (registry/services)
+window.DEFAULT_RPC_SUGGESTIONS = window.DEFAULT_RPC_SUGGESTIONS || DEFAULT_RPC_SUGGESTIONS;
 window.CONFIG_CEX = window.CONFIG_CEX || CONFIG_CEX;
 window.CONFIG_CHAINS = window.CONFIG_CHAINS || CONFIG_CHAINS;
 window.CONFIG_UI = window.CONFIG_UI || CONFIG_UI;
