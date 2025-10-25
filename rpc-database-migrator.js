@@ -15,7 +15,7 @@
 
     // Default RPC values (only used for initial setup, not as fallback)
     const INITIAL_RPC_VALUES = {
-        bsc: 'https://public-bsc-mainnet.fastnode.io',
+        bsc: 'https://binance.llamarpc.com',
         polygon: 'https://polygon-pokt.nodies.app',
         ethereum: 'https://eth.llamarpc.com',
         arbitrum: 'https://arbitrum-one-rpc.publicnode.com',
@@ -25,6 +25,7 @@
     /**
      * Initialize RPC in database if not exists
      * This runs once on app startup
+     * MODIFIED: No longer auto-saves to database, only provides initial values for UI
      */
     async function initializeRPCDatabase() {
         try {
@@ -40,42 +41,19 @@
                 const existingChains = Object.keys(settings.userRPCs);
                 console.log(`[RPC Migrator] ✅ RPC database already initialized with ${existingChains.length} chains:`, existingChains);
 
-                // Check if all chains have RPC
-                const allChains = Object.keys(INITIAL_RPC_VALUES);
-                const missingChains = allChains.filter(chain => !settings.userRPCs[chain]);
-
-                if (missingChains.length > 0) {
-                    console.log(`[RPC Migrator] ⚠️ Found ${missingChains.length} chains without RPC, adding defaults:`, missingChains);
-
-                    // Add missing chains
-                    missingChains.forEach(chain => {
-                        settings.userRPCs[chain] = INITIAL_RPC_VALUES[chain];
-                    });
-
-                    // Save to database
-                    if (typeof saveToLocalStorage === 'function') {
-                        saveToLocalStorage('SETTING_SCANNER', settings);
-                        console.log('[RPC Migrator] ✅ Missing chains added to database');
-                    }
-                }
+                // REMOVED: No longer auto-adds missing chains to prevent autosave
+                // User must explicitly click SIMPAN PENGATURAN to save RPC
 
                 return true;
             }
 
-            // No userRPCs exists, initialize with defaults
-            console.log('[RPC Migrator] 📦 Initializing RPC database with default values...');
+            // No userRPCs exists - DO NOT auto-save, just log
+            console.log('[RPC Migrator] ℹ️ No RPC found in database. Default values will be shown in UI.');
+            console.log('[RPC Migrator] ⚠️ User must click SIMPAN PENGATURAN to save RPC settings.');
 
-            settings.userRPCs = { ...INITIAL_RPC_VALUES };
-
-            // Save to database
-            if (typeof saveToLocalStorage === 'function') {
-                saveToLocalStorage('SETTING_SCANNER', settings);
-                console.log('[RPC Migrator] ✅ RPC database initialized successfully');
-                console.log('[RPC Migrator] 📊 Initialized chains:', Object.keys(settings.userRPCs));
-            } else {
-                console.error('[RPC Migrator] ❌ saveToLocalStorage not available');
-                return false;
-            }
+            // REMOVED: Auto-save functionality
+            // settings.userRPCs = { ...INITIAL_RPC_VALUES };
+            // saveToLocalStorage('SETTING_SCANNER', settings);
 
             return true;
 

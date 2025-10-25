@@ -78,17 +78,16 @@
 
                 <!-- KOLOM KIRI: semua kontrol kecuali Search -->
                 <div class="uk-width-expand uk-flex uk-flex-middle uk-flex-wrap">
-                  <a href="#" target="_blank" id="ManajemenKoin" data-feature="manage">
-                            <img title="MANAJEMEN KOIN" class="icon"  src="https://cdn-icons-png.flaticon.com/256/7782/7782334.png" width="24px" />
-                        </a> &nbsp;&nbsp;
-                         <img class="icon" id="UpdateWalletCEX" data-feature="wallet" title="CHECK EXCHANGER" width="24px"  src="https://cdn-icons-png.flaticon.com/512/1969/1969111.png"  />
-&nbsp;&nbsp;
-                  <span class=" uk-text-bolder">SCANNER : </span>
+                  <span class=" uk-text-bolder">SCANNER [ <input class="uk-checkbox" type="checkbox" id="toggleScanLog">
+                     Log ]: </span>
                 <label class="uk-margin-small-left">
                     <input class="uk-checkbox" type="checkbox" id="autoRunToggle">
                     <span class="uk-text-success">Auto Run</span>
-                </label>
+                </label>                 
                 <label class="uk-margin-small-left">
+                    <input class="uk-checkbox" type="checkbox" id="autoScrollCheckbox">
+                    <span class="uk-text-warning">Auto Scroll</span>
+                    
                     <input class="uk-checkbox vol-check" id="checkVOL" type="checkbox">
                     <span class="uk-text-danger">Vol Check</span>
                 </label>
@@ -129,17 +128,11 @@
                     <div class="uk-flex uk-flex-right@m uk-flex-middle uk-flex-wrap">
                         <span id="autoRunCountdown" class="uk-text-meta uk-margin-small-right" style="min-width:64px; display:inline-block;"></span>
 
-                        <label class="uk-margin-small-left uk-flex uk-flex-middle">
-                        <input class="uk-checkbox" type="checkbox" id="autoScrollCheckbox">
-                        <span class="uk-text-warning uk-margin-small-left">Auto Scroll</span>
-                        </label>&nbsp;&nbsp;
-                        <input class="uk-checkbox" type="checkbox" id="toggleScanLog">
-                        <span class="uk-margin-small-left">Log</span>
-                        <div class="uk-margin-small-left">
-                        <input type="text" id="searchInput"
-                                class="uk-input uk-form-small uk-form-primary uk-form-width-small"
-                                placeholder="Cari Koin...">
-                        </div>
+
+                        <a href="#" target="_blank" id="ManajemenKoin" data-feature="manage" style="margin-left: 12px;">
+                            <img title="MANAJEMEN KOIN" class="icon" src="https://cdn-icons-png.flaticon.com/256/7782/7782334.png" width="24px" />
+                        </a>
+                        <img class="icon" id="UpdateWalletCEX" data-feature="wallet" title="CHECK EXCHANGER" width="24px" src="https://cdn-icons-png.flaticon.com/512/1969/1969111.png" style="margin-left: 8px; cursor: pointer;" />
 
                     </div>
                 </div>
@@ -200,7 +193,7 @@
   <!-- Header Section -->
   <div class="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-small">
     <div class="uk-flex uk-flex-between uk-flex-middle">
-      <h4 class="uk-heading-bullet uk-margin-remove">
+      <h4 class="uk-heading-bullet uk-margin-remove ">
         <span uk-icon="icon: settings; ratio: 1.2"></span> PENGATURAN SCANNER
       </h4>
       <button type="button" id="btn-cancel-setting" class="uk-button uk-button-danger uk-button-small">
@@ -218,7 +211,7 @@
     <!-- COLUMN 1 (3) - JEDA DEX -->
     <div class="uk-width-1-4@m">
       <div class="uk-card uk-card-default uk-card-body uk-card-hover">
-        <h5 class="uk-h5 uk-text-primary">
+        <h5 class="uk-h5 uk-text-primary uk-text-bolder">
           <span uk-icon="clock"></span> JEDA DEX
         </h5>
         <div id="dex-delay-group" class="uk-overflow-auto"  >
@@ -243,14 +236,14 @@
     <!-- COLUMN 2 (4) - PENGATURAN SCANNER -->
     <div class="uk-width-1-3@m">
       <div class="uk-card uk-card-default uk-card-body uk-card-hover">
-        <h5 class="uk-h5 uk-text-primary">
+        <h5 class="uk-h5 uk-text-primary uk-text-bolder">
           <span uk-icon="cog"></span> PENGATURAN SCANNER
         </h5>
 
         <div class="uk-margin-small">
           <label class="uk-form-label uk-text-small uk-text-bolder">NICK NAME</label>
           <div class="uk-form-controls">
-            <input type="text" id="user" class="uk-input uk-form-small" placeholder="Masukkan nickname (cth: SDDRX)" required>
+            <input type="text" id="user" class="uk-input uk-form-small" placeholder="Masukkan nickname" required>
           </div>
         </div>
 
@@ -306,8 +299,8 @@
     <!-- COLUMN 3 (5) - CUSTOM RPC -->
     <div class="uk-width-expand@m">
       <div class="uk-card uk-card-default uk-card-body uk-card-hover">
-        <h5 class="uk-h5 uk-text-primary">
-          <span uk-icon="cloud-download"></span> CUSTOM RPC
+        <h5 class="uk-h5 uk-text-primary uk-text-bolder">
+          <span uk-icon="cloud-download"></span> PENGATURAN RPC
         </h5>
 
         <div id="rpc-settings-group" class="uk-overflow-auto"  >
@@ -323,11 +316,14 @@
             </div>
           </div>
           <!-- JS append real list -->
-        </div>
+  </div>
 
         <!-- tambah rpc cepat -->
         <div class="uk-margin-small-top uk-grid-small" uk-grid>
-          <div class="uk-width-expand">
+          <div class="uk-width-expand uk-text-meta uk-text-small uk-text-danger">
+            
+           Ganti RPC jika Lambat. ambil di <a href="https://chainlist.org/" target="_blank">chainlist.org</a>
+      
           </div>
           <div class="uk-width-auto">
            <button type="button" id="btn-save-setting" class="uk-button uk-button-primary uk-button-small uk-border-pill">
@@ -350,12 +346,10 @@
 <section id="update-wallet-section" class="uk-card uk-card-default uk-card-body uk-padding-small uk-card-hover uk-margin-small" style="display:none;">
   <!-- Header -->
   <div class="uk-flex uk-flex-between uk-flex-middle uk-margin-small-bottom">
-    <h4 class="uk-heading-bullet uk-margin-remove">UPDATE WALLET EXCHANGER</h4>
+    <h4 class="uk-heading-bullet uk-margin-remove uk-text-bolder">UPDATE WALLET EXCHANGER</h4>
     <div class="uk-flex uk-flex-middle" style="gap: 12px;">
       <span class="uk-text-meta">Chain Aktif: <strong id="wallet-chain-label">-</strong></span>
-      <button type="button" id="btn-cancel-setting" class="uk-button uk-button-danger uk-button-small">
-        <span uk-icon="icon:  arrow-left"></span> KEMBALI
-      </button>
+      
       <!-- Tombol tutup dihapus sesuai permintaan -->
     </div>
   </div>
@@ -372,6 +366,9 @@
         <button id="btn-cek-wallet-exchanger" class="uk-button uk-button-primary uk-button-small" disabled>
           UPDATE WALLET EXCHANGER
         </button>
+        <button type="button" id="btn-cancel-setting" class="uk-button uk-button-secondary uk-button-small">
+        <span uk-icon="icon:  arrow-left"></span> KEMBALI
+      </button>
       </div>
     </div>
 
@@ -439,9 +436,7 @@
 
         <!-- Config Manajemen (terpisah seperti config-scanner) -->
         <div id="manager-config" class="uk-card uk-card-default uk-padding-small uk-card-hover uk-margin-small-bottom">
-            <button type="button" id="btn-cancel-setting" class="uk-button uk-button-danger uk-button-small">
-        <span uk-icon="icon:  arrow-left"></span> KEMBALI
-      </button>  
+           
           <div id="token-management-stats" class="uk-text-small">
                 <!-- stats + controls will be injected dynamically -->
             </div>
@@ -681,9 +676,7 @@
               <th data-sort-key="default" class="sync-sortable">No <span class="sync-sort-indicator"></span></th>
               <th data-sort-key="cex" class="sync-sortable">CEX <span class="sync-sort-indicator"></span></th>
               <th data-sort-key="token" class="sync-sortable">Nama Koin <span class="sync-sort-indicator"></span></th>
-              <th data-sort-key="sc" class="sync-sortable">SC <span class="sync-sort-indicator"></span></th>
-              <th data-sort-key="decimals" class="sync-sortable">Decimals <span class="sync-sort-indicator"></span></th>
-              <th data-sort-key="trade" class="sync-sortable">Trade <span class="sync-sort-indicator"></span></th>
+              <th data-sort-key="sc" class="sync-sortable">Smart Contract <span class="sync-sort-indicator"></span></th>
               <th data-sort-key="price" class="sync-sortable">Price <span class="sync-sort-indicator"></span></th>
             </tr>
           </thead>

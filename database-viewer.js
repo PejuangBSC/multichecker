@@ -106,6 +106,16 @@
 
         console.log('[Database Viewer] Loading tables with config:', DB_CONFIG);
 
+        // ========== LOADING OVERLAY: START ==========
+        const overlayId = window.AppOverlay ? window.AppOverlay.show({
+            id: 'database-viewer-load',
+            title: 'Memuat Database',
+            message: 'Mohon menunggu, sedang membaca data dari IndexedDB...',
+            spinner: true,
+            freezeScreen: false
+        }) : null;
+        // ===========================================
+
         // Preferred path: use centralized storage API so DB responds to config changes
         try {
             if (typeof window.exportIDB === 'function') {
@@ -197,6 +207,13 @@
 
                 allTablesData = tables;
                 filteredData = { ...tables };
+
+                // ========== LOADING OVERLAY: END ==========
+                if (overlayId && window.AppOverlay) {
+                    window.AppOverlay.hide(overlayId);
+                }
+                // ==========================================
+
                 return tables;
             }
         } catch(e) {
@@ -337,10 +354,24 @@
 
             console.log('[Database Viewer] ✅ Total tables loaded:', Object.keys(tables).length);
             console.log('[Database Viewer] Table list:', Object.keys(tables));
+
+            // ========== LOADING OVERLAY: END ==========
+            if (overlayId && window.AppOverlay) {
+                window.AppOverlay.hide(overlayId);
+            }
+            // ==========================================
+
             return tables;
 
         } catch(err) {
             console.error('[Database Viewer] Error loading data:', err);
+
+            // ========== LOADING OVERLAY: END (ERROR CASE) ==========
+            if (overlayId && window.AppOverlay) {
+                window.AppOverlay.hide(overlayId);
+            }
+            // =======================================================
+
             return {};
         }
     }
@@ -587,14 +618,22 @@
                 <table class="uk-table uk-table-divider uk-table-hover uk-table-small db-data-table">
                     <thead>
                         <tr>
-                            <th style="width:40px">No</th>
-                            <th>Symbol In</th>
-                            <th>Symbol Out</th>
-                            <th>SC In</th>
-                            <th style="width:60px">DES</th>
-                            <th>CEX</th>
-                            <th>DEX</th>
-                            <th style="width:80px">Status</th>
+                            <th style="width:40px" rowspan="2">No</th>
+                            <th rowspan="2">Symbol In</th>
+                            <th rowspan="2">Symbol Out</th>
+                            <th rowspan="2">SC In</th>
+                            <th style="width:60px" rowspan="2">DES</th>
+                            <th rowspan="2">CEX</th>
+                            <th rowspan="2">DEX</th>
+                            <th colspan="2" class="uk-text-center">TOKEN Wallet</th>
+                            <th colspan="2" class="uk-text-center">PAIR Wallet</th>
+                            <th style="width:80px" rowspan="2">Status</th>
+                        </tr>
+                        <tr>
+                            <th style="width:50px" class="uk-text-center">WD</th>
+                            <th style="width:50px" class="uk-text-center">Depo</th>
+                            <th style="width:50px" class="uk-text-center">WD</th>
+                            <th style="width:50px" class="uk-text-center">Depo</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -614,6 +653,68 @@
 
                 const shortenSc = (sc) => (!sc || sc === '-' || sc.length < 12) ? sc : `${sc.substring(0, 6)}...${sc.substring(sc.length - 4)}`;
 
+                // Helper function untuk render wallet status dari dataCexs
+                const renderWalletStatus = (item) => {
+                    const dataCexs = item.dataCexs || {};
+                    const cexKeys = Object.keys(dataCexs);
+
+                    if (cexKeys.length === 0) {
+                        return {
+                            tokenWD: '<span class="uk-text-muted" style="font-size:10px">-</span>',
+                            tokenDepo: '<span class="uk-text-muted" style="font-size:10px">-</span>',
+                            pairWD: '<span class="uk-text-muted" style="font-size:10px">-</span>',
+                            pairDepo: '<span class="uk-text-muted" style="font-size:10px">-</span>'
+                        };
+                    }
+
+                    // Aggregate status dari semua CEX
+                    let tokenWDStatus = [];
+                    let tokenDepoStatus = [];
+                    let pairWDStatus = [];
+                    let pairDepoStatus = [];
+
+                    cexKeys.forEach(cexName => {
+                        const cexData = dataCexs[cexName];
+
+                        // Token WD
+                        if (cexData.withdrawToken === true) {
+                            tokenWDStatus.push(`<span style="color:#28a745;font-size:10px" title="${cexName}: OPEN">✓</span>`);
+                        } else if (cexData.withdrawToken === false) {
+                            tokenWDStatus.push(`<span style="color:#dc3545;font-size:10px" title="${cexName}: CLOSED">✗</span>`);
+                        }
+
+                        // Token Depo
+                        if (cexData.depositToken === true) {
+                            tokenDepoStatus.push(`<span style="color:#28a745;font-size:10px" title="${cexName}: OPEN">✓</span>`);
+                        } else if (cexData.depositToken === false) {
+                            tokenDepoStatus.push(`<span style="color:#dc3545;font-size:10px" title="${cexName}: CLOSED">✗</span>`);
+                        }
+
+                        // Pair WD
+                        if (cexData.withdrawPair === true) {
+                            pairWDStatus.push(`<span style="color:#28a745;font-size:10px" title="${cexName}: OPEN">✓</span>`);
+                        } else if (cexData.withdrawPair === false) {
+                            pairWDStatus.push(`<span style="color:#dc3545;font-size:10px" title="${cexName}: CLOSED">✗</span>`);
+                        }
+
+                        // Pair Depo
+                        if (cexData.depositPair === true) {
+                            pairDepoStatus.push(`<span style="color:#28a745;font-size:10px" title="${cexName}: OPEN">✓</span>`);
+                        } else if (cexData.depositPair === false) {
+                            pairDepoStatus.push(`<span style="color:#dc3545;font-size:10px" title="${cexName}: CLOSED">✗</span>`);
+                        }
+                    });
+
+                    return {
+                        tokenWD: tokenWDStatus.length > 0 ? tokenWDStatus.join(' ') : '<span class="uk-text-muted" style="font-size:10px">-</span>',
+                        tokenDepo: tokenDepoStatus.length > 0 ? tokenDepoStatus.join(' ') : '<span class="uk-text-muted" style="font-size:10px">-</span>',
+                        pairWD: pairWDStatus.length > 0 ? pairWDStatus.join(' ') : '<span class="uk-text-muted" style="font-size:10px">-</span>',
+                        pairDepo: pairDepoStatus.length > 0 ? pairDepoStatus.join(' ') : '<span class="uk-text-muted" style="font-size:10px">-</span>'
+                    };
+                };
+
+                const walletStatus = renderWalletStatus(item);
+
                 html += `
                     <tr>
                         <td>${idx + 1}</td>
@@ -625,6 +726,10 @@
                         <td class="uk-text-center">${des}</td>
                         <td class="uk-text-small">${cexList}</td>
                         <td class="uk-text-small">${dexList}</td>
+                        <td class="uk-text-center">${walletStatus.tokenWD}</td>
+                        <td class="uk-text-center">${walletStatus.tokenDepo}</td>
+                        <td class="uk-text-center">${walletStatus.pairWD}</td>
+                        <td class="uk-text-center">${walletStatus.pairDepo}</td>
                         <td><span class="uk-label ${statusClass}" style="font-size:10px">${status}</span></td>
                     </tr>
                 `;

@@ -315,7 +315,8 @@
                       feeWDs: parseFloat(net.withdrawFee || 0),
                       depositEnable: !!net.depositEnable,
                       withdrawEnable: !!net.withdrawEnable,
-                      contractAddress: net.contractAddress || ''
+                      contractAddress: net.contractAddress || '',
+                      trading: !!item.trading // Tambahkan field trading dari response Binance
                   }))
               );
           }
@@ -330,11 +331,12 @@
                   (item.networkList || []).map(net => ({
                       cex,
                       tokenName: item.coin,
-                      chain: net.network || net.netWork || net.chain || net.name || '',
+                      chain: net.netWork,
                       feeWDs: parseFloat(net.withdrawFee || 0),
                       depositEnable: !!net.depositEnable,
                       withdrawEnable: !!net.withdrawEnable,
-                      contractAddress: net.contract || ''
+                      contractAddress: net.contract || '',
+                      trading: true // MEXC tidak menyediakan field trading di API, default true
                   }))
               );
           }
@@ -369,7 +371,8 @@
                           feeWDs: parseFloat(chain.withdraw_fee || feeOnChain || 0),
                           depositEnable: !Boolean(chain.deposit_disabled),
                           withdrawEnable: !Boolean(chain.withdraw_disabled),
-                          contractAddress: chain.addr || ''
+                          contractAddress: chain.addr || '',
+                          trading: !item.delisted // GATE: trading = true jika tidak delisted
                       };
                   })
               );
@@ -379,7 +382,7 @@
               const url = `https://indodax.com/api/summaries`;
               const response = await $.ajax({ url });
               const list = response?.tickers || {};
-              const arr = Object.keys(list).map(k => ({ cex, tokenName: k.toUpperCase().replace('IDR',''), chain: 'INDODAX', feeWDs: 0, depositEnable: true, withdrawEnable: true }));
+              const arr = Object.keys(list).map(k => ({ cex, tokenName: k.toUpperCase().replace('IDR',''), chain: 'INDODAX', feeWDs: 0, depositEnable: true, withdrawEnable: true, trading: true }));
               return arr;
           }
 
@@ -405,7 +408,8 @@
                           feeWDs: isFinite(fee)?fee:0,
                           depositEnable: !!dep,
                           withdrawEnable: !!wd,
-                          contractAddress: net?.contractAddress || ''
+                          contractAddress: net?.contractAddress || '',
+                          trading: true // KUCOIN tidak menyediakan field trading di endpoint currencies
                       });
                   });
               });
@@ -434,7 +438,8 @@
                           feeWDs: isFinite(fee)?fee:0,
                           depositEnable: !!dep,
                           withdrawEnable: !!wd,
-                          contractAddress: net?.contractAddress || ''
+                          contractAddress: net?.contractAddress || '',
+                          trading: true // BITGET tidak menyediakan field trading di endpoint public coins
                       });
                   });
               });
@@ -486,7 +491,8 @@
                           feeWDs: isFinite(fee)?fee:0,
                           depositEnable: !!dep,
                           withdrawEnable: !!wd,
-                          contractAddress: net?.contractAddress || ''
+                          contractAddress: net?.contractAddress || '',
+                          trading: true // BYBIT tidak menyediakan field trading di endpoint coin/query-info
                       });
                   });
               });

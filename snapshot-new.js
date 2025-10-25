@@ -40,6 +40,63 @@
     let snapshotDbInstance = null;
 
     // ====================
+    // WEB3 CACHE SYSTEM
+    // ====================
+    // Persistent cache untuk web3 token data (decimals, symbol, name)
+    // Mengurangi RPC calls dengan menyimpan data ke IndexedDB
+
+    const WEB3_CACHE_KEY = 'WEB3_TOKEN_CACHE';
+    const WEB3_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+    const WEB3_PENDING_REQUESTS = new Map(); // Track pending requests untuk deduplication
+
+    // Load web3 cache from IndexedDB
+    async function loadWeb3Cache() {
+        try {
+            const data = await snapshotDbGet(WEB3_CACHE_KEY);
+            if (data && typeof data === 'object') {
+                return data;
+            }
+        } catch(e) {
+            console.warn('[Web3 Cache] Failed to load cache:', e);
+        }
+        return {};
+    }
+
+    // Save web3 cache to IndexedDB
+    async function saveWeb3Cache(cache) {
+        try {
+            await snapshotDbSet(WEB3_CACHE_KEY, cache);
+        } catch(e) {
+            console.warn('[Web3 Cache] Failed to save cache:', e);
+        }
+    }
+
+    // Get cached web3 data for a contract
+    function getWeb3CacheEntry(cache, contractAddress, chainKey) {
+        const key = `${chainKey}:${contractAddress.toLowerCase()}`;
+        const entry = cache[key];
+        if (!entry) return null;
+
+        const now = Date.now();
+        if (now - entry.timestamp > WEB3_CACHE_TTL) {
+            // Cache expired
+            delete cache[key];
+            return null;
+        }
+
+        return entry.data;
+    }
+
+    // Set cache entry for web3 data
+    function setWeb3CacheEntry(cache, contractAddress, chainKey, data) {
+        const key = `${chainKey}:${contractAddress.toLowerCase()}`;
+        cache[key] = {
+            data,
+            timestamp: Date.now()
+        };
+    }
+
+    // ====================
     // INDEXEDDB FUNCTIONS
     // ====================
 
@@ -320,6 +377,24 @@
         return NaN;
     }
 
+    // Helper: Fetch with timeout
+    async function fetchWithTimeout(url, timeoutMs = 30000) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            return response;
+        } catch(error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error(`Request timeout after ${timeoutMs}ms`);
+            }
+            throw error;
+        }
+    }
+
     async function fetchPriceMapForCex(cexName) {
         const upper = String(cexName || '').toUpperCase();
         if (!upper || !PRICE_ENDPOINTS[upper]) return new Map();
@@ -336,18 +411,114 @@
             url = proxPrice(url);
         }
 
-        try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const data = await response.json();
-            const map = endpoint.parser(data) || new Map();
-            PRICE_CACHE.set(upper, { map, ts: now });
-            return map;
-        } catch(error) {
-            // console.error(`Failed to fetch price map for ${upper}:`, error);
-            PRICE_CACHE.set(upper, { map: new Map(), ts: now });
-            return new Map();
+        // ========== RETRY MECHANISM ==========
+        const MAX_RETRIES = 3;
+        const FETCH_TIMEOUT = 30000; // 30 seconds for fetch
+        const JSON_TIMEOUT = 10000;  // 10 seconds for JSON parsing
+        const TOTAL_TIMEOUT = 45000; // 45 seconds total per attempt
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                console.log(`[fetchPriceMapForCex] ${upper} - Attempt ${attempt}/${MAX_RETRIES}`);
+
+                // Wrap entire attempt in timeout to prevent hanging
+                const attemptPromise = (async () => {
+                    const response = await fetchWithTimeout(url, FETCH_TIMEOUT);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                    }
+
+                    // ========== TIMEOUT FOR JSON PARSING ==========
+                    // Add timeout for response.json() to prevent hanging
+                    const jsonTimeout = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('JSON parsing timeout after 10s')), JSON_TIMEOUT);
+                    });
+
+                    const jsonPromise = response.json();
+                    const data = await Promise.race([jsonPromise, jsonTimeout]);
+
+                    // Validate response data
+                    if (!data) {
+                        throw new Error('Empty response data from API');
+                    }
+
+                    // Check if data is valid (array or object with data)
+                    const isEmpty = (Array.isArray(data) && data.length === 0) ||
+                                   (typeof data === 'object' && Object.keys(data).length === 0);
+
+                    if (isEmpty) {
+                        throw new Error('API returned empty data');
+                    }
+                    // =============================================
+
+                    const map = endpoint.parser(data) || new Map();
+
+                    // Validate parsed map has data
+                    if (map.size === 0) {
+                        console.warn(`[fetchPriceMapForCex] ${upper} - Parser returned empty map, data:`, data);
+                        throw new Error('Parser returned empty price map');
+                    }
+
+                    return map;
+                })();
+
+                // Race against total timeout
+                const totalTimeout = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error(`Total timeout after ${TOTAL_TIMEOUT}ms`)), TOTAL_TIMEOUT);
+                });
+
+                const map = await Promise.race([attemptPromise, totalTimeout]);
+
+                PRICE_CACHE.set(upper, { map, ts: now });
+
+                console.log(`[fetchPriceMapForCex] ${upper} - Success (${map.size} pairs)`);
+
+                // Clear error notification if previous attempt failed
+                if (attempt > 1 && typeof toast !== 'undefined' && toast.success) {
+                    toast.success(`✅ Berhasil fetch harga ${upper} (attempt ${attempt})`);
+                }
+
+                return map;
+
+            } catch(error) {
+                lastError = error;
+                console.error(`[fetchPriceMapForCex] ${upper} - Attempt ${attempt}/${MAX_RETRIES} failed:`, error.message);
+
+                // Show warning for retry
+                if (attempt < MAX_RETRIES) {
+                    if (typeof toast !== 'undefined' && toast.warning) {
+                        toast.warning(
+                            `⚠️ Fetch harga ${upper} gagal (attempt ${attempt}/${MAX_RETRIES})\n` +
+                            `Error: ${error.message}\n` +
+                            `Mencoba lagi...`,
+                            { duration: 3000 }
+                        );
+                    }
+
+                    // Wait before retry (exponential backoff)
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    // Final attempt failed - show error
+                    if (typeof toast !== 'undefined' && toast.error) {
+                        toast.error(
+                            `❌ Gagal fetch harga ${upper} setelah ${MAX_RETRIES} percobaan\n` +
+                            `Error: ${error.message}\n` +
+                            `Harga tidak akan ditampilkan untuk ${upper}`,
+                            { duration: 8000 }
+                        );
+                    }
+                }
+            }
         }
+        // =====================================
+
+        // All retries failed - return empty map
+        console.error(`[fetchPriceMapForCex] ${upper} - All ${MAX_RETRIES} attempts failed. Last error:`, lastError?.message);
+        PRICE_CACHE.set(upper, { map: new Map(), ts: now });
+        return new Map();
     }
 
     async function saveToSnapshot(chainKey, tokens) {
@@ -559,7 +730,7 @@
                                     symbol_in: symbol,
                                     token_name: existing?.token_name || item.tokenName || '',
                                     sc_in: contractAddress, // Use contract address from CEX API
-                                    tradeable: true, // Default value, not available from wallet API
+                                    tradeable: item.trading !== undefined ? !!item.trading : true, // Use trading status dari CEX API, fallback true jika tidak ada
                                     decimals: existing?.des_in || existing?.decimals || '',
                                     des_in: existing?.des_in || existing?.decimals || '',
                                     deposit: item.depositEnable ? '1' : '0',
@@ -615,7 +786,7 @@
     // ====================
 
     // Enhanced validate token data with database optimization
-    async function validateTokenData(token, snapshotMap, symbolLookupMap, chainKey, progressCallback, errorCount) {
+    async function validateTokenData(token, snapshotMap, symbolLookupMap, chainKey, progressCallback, errorCount, web3Cache = null) {
         let sc = String(token.sc_in || '').toLowerCase().trim();
         const symbol = String(token.symbol_in || '').toUpperCase();
         const cexUp = String(token.cex || token.exchange || '').toUpperCase();
@@ -705,7 +876,7 @@
 
             try {
                 // console.log(`🔍 ${symbol}: Fetching decimals from Web3 for ${sc}`);
-                const web3Data = await fetchWeb3TokenData(sc, chainKey);
+                const web3Data = await fetchWeb3TokenData(sc, chainKey, web3Cache);
 
                 if (web3Data && web3Data.decimals && web3Data.decimals > 0) {
                     token.des_in = web3Data.decimals;
@@ -786,11 +957,36 @@
     }
 
     // Fetch token data from web3 (decimals, symbol, name)
-    async function fetchWeb3TokenData(contractAddress, chainKey) {
+    async function fetchWeb3TokenData(contractAddress, chainKey, web3Cache = null) {
         const chainConfig = CONFIG_CHAINS[chainKey];
         if (!chainConfig) {
             throw new Error(`No config for chain ${chainKey}`);
         }
+
+        const contract = String(contractAddress || '').toLowerCase().trim();
+
+        if (!contract || contract === '0x') {
+            return null;
+        }
+
+        // ========== CHECK PERSISTENT CACHE FIRST ==========
+        if (web3Cache) {
+            const cached = getWeb3CacheEntry(web3Cache, contract, chainKey);
+            if (cached) {
+                console.log(`[Web3 Cache] HIT for ${contract} on ${chainKey}`);
+                return cached;
+            }
+        }
+        // ==================================================
+
+        // ========== REQUEST DEDUPLICATION ==========
+        // If there's already a pending request for this contract+chain, reuse it
+        const requestKey = `${chainKey}:${contract}`;
+        if (WEB3_PENDING_REQUESTS.has(requestKey)) {
+            console.log(`[Web3 Dedup] Waiting for pending request: ${contract} on ${chainKey}`);
+            return await WEB3_PENDING_REQUESTS.get(requestKey);
+        }
+        // ===========================================
 
         try {
             // Use RPCManager for RPC access (auto fallback to defaults)
@@ -802,79 +998,98 @@
                 throw new Error(`No RPC configured for chain ${chainKey}`);
             }
 
-            const contract = String(contractAddress || '').toLowerCase().trim();
+            // Create fetch promise and store it for deduplication
+            const fetchPromise = (async () => {
+                try {
+                    // Log RPC source for debugging
+                    const rpcSource = (typeof getRPC === 'function' && getRPC(chainKey) !== chainConfig.RPC)
+                        ? 'SETTING_SCANNER (Custom RPC)'
+                        : 'CONFIG_CHAINS (Default RPC)';
 
-            if (!contract || contract === '0x') {
-                return null;
-            }
+                  //  console.log(`[Web3] Fetching data for ${contract} on ${chainKey} via ${rpc} (${rpcSource})`);
 
-            // Log RPC source for debugging
-            const rpcSource = (typeof getRPC === 'function' && getRPC(chainKey) !== chainConfig.RPC)
-                ? 'SETTING_SCANNER (Custom RPC)'
-                : 'CONFIG_CHAINS (Default RPC)';
+                    // ABI method signatures for ERC20
+                    const decimalsData = '0x313ce567'; // decimals()
+                    const symbolData = '0x95d89b41';   // symbol()
+                    const nameData = '0x06fdde03';     // name()
 
-            // console.log(`[Web3] Fetching data for ${contract} on ${chainKey} via ${rpc} (${rpcSource})`);
+                    // Batch RPC call with timeout and AbortController
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-            // ABI method signatures for ERC20
-            const decimalsData = '0x313ce567'; // decimals()
-            const symbolData = '0x95d89b41';   // symbol()
-            const nameData = '0x06fdde03';     // name()
+                    try {
+                        const batchResponse = await fetch(rpc, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify([
+                                { jsonrpc: '2.0', method: 'eth_call', params: [{ to: contract, data: decimalsData }, 'latest'], id: 1 },
+                                { jsonrpc: '2.0', method: 'eth_call', params: [{ to: contract, data: symbolData }, 'latest'], id: 2 },
+                                { jsonrpc: '2.0', method: 'eth_call', params: [{ to: contract, data: nameData }, 'latest'], id: 3 }
+                            ]),
+                            signal: controller.signal
+                        });
 
-            // Batch RPC call
-            const batchResponse = await fetch(rpc, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify([
-                    { jsonrpc: '2.0', method: 'eth_call', params: [{ to: contract, data: decimalsData }, 'latest'], id: 1 },
-                    { jsonrpc: '2.0', method: 'eth_call', params: [{ to: contract, data: symbolData }, 'latest'], id: 2 },
-                    { jsonrpc: '2.0', method: 'eth_call', params: [{ to: contract, data: nameData }, 'latest'], id: 3 }
-                ])
-            });
+                        clearTimeout(timeoutId);
 
-            if (!batchResponse.ok) {
-                throw new Error(`RPC batch request failed: ${batchResponse.status}`);
-            }
+                        if (!batchResponse.ok) {
+                            throw new Error(`RPC batch request failed: ${batchResponse.status}`);
+                        }
 
-            const results = await batchResponse.json();
-            if (!Array.isArray(results)) {
-                throw new Error('RPC batch response is not an array');
-            }
+                        const results = await batchResponse.json();
 
-            const decimalsResult = results.find(r => r.id === 1)?.result;
-            const symbolResult = results.find(r => r.id === 2)?.result;
-            const nameResult = results.find(r => r.id === 3)?.result;
+                        if (!Array.isArray(results)) {
+                            throw new Error('RPC batch response is not an array');
+                        }
 
-            // Fetch decimals
-            let decimals = 18; // default
-            if (decimalsResult && decimalsResult !== '0x' && !results.find(r => r.id === 1)?.error) {
-                decimals = parseInt(decimalsResult, 16);
-            } else {
-                // console.warn(`Failed to fetch decimals for ${contract}`);
-            }
+                        const decimalsResult = results.find(r => r.id === 1)?.result;
+                        const symbolResult = results.find(r => r.id === 2)?.result;
+                        const nameResult = results.find(r => r.id === 3)?.result;
 
-            // Fetch symbol
-            let symbol = '';
-            if (symbolResult && symbolResult !== '0x' && !results.find(r => r.id === 2)?.error) {
-                symbol = decodeAbiString(symbolResult);
-            } else {
-                // console.warn(`Failed to fetch symbol for ${contract}`);
-            }
+                        // Fetch decimals
+                        let decimals = 18; // default
+                        if (decimalsResult && decimalsResult !== '0x' && !results.find(r => r.id === 1)?.error) {
+                            decimals = parseInt(decimalsResult, 16);
+                        }
 
-            // Fetch name
-            let name = '';
-            if (nameResult && nameResult !== '0x' && !results.find(r => r.id === 3)?.error) {
-                name = decodeAbiString(nameResult);
-            } else {
-                // console.warn(`Failed to fetch name for ${contract}`);
-            }
+                        // Fetch symbol
+                        let symbol = '';
+                        if (symbolResult && symbolResult !== '0x' && !results.find(r => r.id === 2)?.error) {
+                            symbol = decodeAbiString(symbolResult);
+                        }
 
-            // console.log(`Web3 data fetched for ${contract}:`, { decimals, symbol, name });
+                        // Fetch name
+                        let name = '';
+                        if (nameResult && nameResult !== '0x' && !results.find(r => r.id === 3)?.error) {
+                            name = decodeAbiString(nameResult);
+                        }
 
-            return {
-                decimals,
-                symbol,
-                name
-            };
+                        const result = { decimals, symbol, name };
+
+                        // ========== SAVE TO CACHE ==========
+                        if (web3Cache) {
+                            setWeb3CacheEntry(web3Cache, contract, chainKey, result);
+                           // console.log(`[Web3 Cache] SAVED for ${contract} on ${chainKey}`);
+                        }
+                        // ===================================
+
+                        return result;
+                    } catch(fetchError) {
+                        clearTimeout(timeoutId);
+                        if (fetchError.name === 'AbortError') {
+                            throw new Error(`Web3 RPC timeout after 30s for ${contract}`);
+                        }
+                        throw fetchError;
+                    }
+                } finally {
+                    // Remove from pending requests when done
+                    WEB3_PENDING_REQUESTS.delete(requestKey);
+                }
+            })();
+
+            // Store promise for deduplication
+            WEB3_PENDING_REQUESTS.set(requestKey, fetchPromise);
+
+            return await fetchPromise;
         } catch(error) {
             // Show toast for critical RPC/network errors
             const isNetworkError = error.message && (
@@ -956,6 +1171,11 @@
         }
 
         try {
+            // ========== LOAD WEB3 CACHE ==========
+            const web3Cache = await loadWeb3Cache();
+            //console.log('[Web3 Cache] Loaded cache with', Object.keys(web3Cache).length, 'entries');
+            // =====================================
+
             // Load existing snapshot data
             const existingData = await snapshotDbGet(SNAPSHOT_DB_CONFIG.snapshotKey) || {};
             const keyLower = String(chainKey || '').toLowerCase();
@@ -988,6 +1208,8 @@
 
         // Process each CEX - INDODAX terakhir untuk lookup TOKEN database
         let allTokens = [];
+        const cexResults = new Map(); // Track hasil per CEX
+        const failedCexList = []; // Track CEX yang gagal
 
         // Pisahkan INDODAX dari CEX lain
         const regularCex = selectedCex.filter(c => String(c).toUpperCase() !== 'INDODAX');
@@ -1015,6 +1237,29 @@
 
             // Fetch CEX data (deposit/withdraw status from wallet API)
             let cexTokens = await fetchCexData(chainKey, cex);
+
+            // ========== VALIDASI HASIL FETCH CEX ==========
+            if (!cexTokens || cexTokens.length === 0) {
+                failedCexList.push(cexUpper);
+                cexResults.set(cexUpper, { success: false, count: 0 });
+
+                // Show warning in overlay
+                if (window.SnapshotOverlay) {
+                    window.SnapshotOverlay.updateMessage(
+                        `Update Snapshot ${chainDisplay}`,
+                        `⚠️ ${cexUpper}: Tidak ada data atau gagal fetch`
+                    );
+                }
+
+                // Log error untuk debugging
+               // console.warn(`[${cexUpper}] Failed to fetch data or returned empty array`);
+
+                // Lanjut ke CEX berikutnya
+                continue;
+            }
+
+            // CEX berhasil
+            cexResults.set(cexUpper, { success: true, count: cexTokens.length });
 
             // Special handling untuk INDODAX: lookup TOKEN database
             if (isIndodax && cexTokens.length > 0) {
@@ -1045,6 +1290,14 @@
                     const mergedList = Array.from(tokenMap.values());
                     await saveToSnapshot(chainKey, mergedList);
 
+                    // Show success message
+                    if (window.SnapshotOverlay) {
+                        window.SnapshotOverlay.updateMessage(
+                            `Update Snapshot ${chainDisplay}`,
+                            `✅ ${cexUpper}: ${cexTokens.length} koin berhasil`
+                        );
+                    }
+
                     // console.log(`✅ Auto-saved ${cexTokens.length} tokens from ${cex}`);
                 } catch(saveErr) {
                     // console.error(`Failed to auto-save ${cex}:`, saveErr);
@@ -1052,6 +1305,61 @@
             }
 
             await sleep(100); // Small delay between CEX
+        }
+
+        // ========== VALIDASI HASIL AKHIR SEMUA CEX ==========
+        const successCount = orderedCex.length - failedCexList.length;
+
+        // Jika SEMUA CEX GAGAL, hentikan proses
+        if (failedCexList.length === orderedCex.length) {
+            const errorMsg = `Semua CEX gagal mengambil data!\n\nCEX yang gagal: ${failedCexList.join(', ')}\n\nKemungkinan penyebab:\n- API Key tidak valid atau expired\n- Network/koneksi bermasalah\n- Rate limit dari CEX\n- Service CEX sedang down\n\nSilakan cek API Key di menu Setting dan coba lagi.`;
+
+            // Show error in overlay
+            if (window.SnapshotOverlay) {
+                window.SnapshotOverlay.showError(errorMsg, 0); // 0 = no auto-hide
+            }
+
+            // Show toast error
+            if (typeof toast !== 'undefined' && toast.error) {
+                toast.error(`❌ Semua CEX gagal! Cek API Key di Setting.`, {
+                    duration: 8000,
+                    position: 'top-center'
+                });
+            }
+
+            // Throw error untuk dihentikan di catch block
+            throw new Error(`Semua CEX gagal fetch data: ${failedCexList.join(', ')}`);
+        }
+
+        // Jika SEBAGIAN CEX GAGAL, tampilkan warning tapi lanjut proses
+        if (failedCexList.length > 0) {
+            const warningMsg = `⚠️ ${failedCexList.length} CEX gagal mengambil data\n\nGagal: ${failedCexList.join(', ')}\nBerhasil: ${successCount} CEX (${allTokens.length} koin)\n\nProses dilanjutkan dengan CEX yang berhasil.`;
+
+            // Show warning toast
+            if (typeof toast !== 'undefined' && toast.warning) {
+                toast.warning(warningMsg, {
+                    duration: 6000,
+                    position: 'top-center'
+                });
+            }
+
+            // Update overlay dengan warning
+            if (window.SnapshotOverlay) {
+                window.SnapshotOverlay.updateMessage(
+                    `Update Snapshot ${chainDisplay}`,
+                    `⚠️ ${failedCexList.length} CEX gagal | Lanjut dengan ${successCount} CEX`
+                );
+            }
+
+            console.warn(`[Snapshot] Partial success: ${successCount}/${orderedCex.length} CEX succeeded`, {
+                failed: failedCexList,
+                tokens: allTokens.length
+            });
+        }
+
+        // Jika tidak ada token sama sekali (edge case)
+        if (allTokens.length === 0) {
+            throw new Error('Tidak ada data koin yang berhasil diambil dari semua CEX');
         }
 
         // Validate & enrich data with PARALLEL batch processing
@@ -1114,8 +1422,8 @@
                     const hadDecimals = token.des_in && token.des_in > 0;
                     const hadCachedData = snapshotMap[String(token.sc_in || '').toLowerCase()];
 
-                    // Validate token (pass errorTracking for toast throttling)
-                    const validated = await validateTokenData(token, snapshotMap, snapshotSymbolMap, chainKey, progressCallback, errorTracking);
+                    // Validate token (pass errorTracking for toast throttling + web3Cache)
+                    const validated = await validateTokenData(token, snapshotMap, snapshotSymbolMap, chainKey, progressCallback, errorTracking, web3Cache);
 
                     return {
                         validated,
@@ -1390,6 +1698,18 @@
                 cexSources: selectedCex
             };
         } finally {
+            // ========== SAVE WEB3 CACHE ==========
+            // Save cache after all processing (success or error)
+            try {
+                if (web3Cache) {
+                    await saveWeb3Cache(web3Cache);
+                    console.log('[Web3 Cache] Saved cache with', Object.keys(web3Cache).length, 'entries');
+                }
+            } catch(e) {
+                console.warn('[Web3 Cache] Failed to save cache:', e);
+            }
+            // =====================================
+
             // Re-enable all form inputs
             document.querySelectorAll(formElementsSelector).forEach(el => el.disabled = false);
         }

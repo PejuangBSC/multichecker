@@ -663,29 +663,97 @@
                 // console.log('[IMPORT CSV] Parsed tokens:', tokenData.length);
                 // console.log('[IMPORT CSV] Sample token:', tokenData[0]);
 
-                // Simpan ke storage (IndexedDB KV)
-                const chainLabel = getActiveChainLabel();
-                saveToLocalStorage(getActiveTokenKeyLocal(), tokenData);
+                // ========== AUTO-DETECT CHAIN dari CSV ==========
+                // Deteksi chain dari kolom 'chain' di data pertama
+                let detectedChain = null;
+                let targetKey = null;
+                let chainLabel = null;
+
+                if (tokenData.length > 0 && tokenData[0].chain) {
+                    detectedChain = String(tokenData[0].chain).toLowerCase().trim();
+
+                    // Validasi: pastikan semua token memiliki chain yang sama
+                    const allSameChain = tokenData.every(t =>
+                        String(t.chain || '').toLowerCase().trim() === detectedChain
+                    );
+
+                    if (!allSameChain) {
+                        throw new Error(`CSV contains mixed chains. Please use separate CSV files for each chain.`);
+                    }
+
+                    // Validasi: pastikan chain ada di CONFIG_CHAINS
+                    const chainExists = (typeof CONFIG_CHAINS !== 'undefined' && CONFIG_CHAINS[detectedChain]);
+
+                    if (!chainExists) {
+                        throw new Error(`Chain "${detectedChain}" not found in CONFIG_CHAINS. Available chains: ${Object.keys(CONFIG_CHAINS || {}).join(', ')}`);
+                    }
+
+                    // Set target storage key
+                    targetKey = `TOKEN_${detectedChain.toUpperCase()}`;
+                    chainLabel = detectedChain.toUpperCase();
+
+                    // Konfirmasi dengan user
+                    const confirmMsg = `📦 Deteksi Chain: ${chainLabel}\n\n` +
+                                      `File CSV berisi ${tokenData.length} token untuk chain ${chainLabel}.\n\n` +
+                                      `Data akan disimpan ke: ${targetKey}\n\n` +
+                                      `Lanjutkan import?`;
+
+                    const confirmed = confirm(confirmMsg);
+                    if (!confirmed) {
+                        if (typeof toast !== 'undefined' && toast.info) {
+                            toast.info('Import dibatalkan oleh user');
+                        }
+                        return; // Cancel import
+                    }
+                } else {
+                    // Fallback: gunakan chain dari URL parameter (backward compatibility)
+                    targetKey = getActiveTokenKeyLocal();
+                    chainLabel = getActiveChainLabel();
+
+                    const confirmMsg = `⚠️ Chain tidak terdeteksi dari CSV\n\n` +
+                                      `Data akan disimpan ke: ${chainLabel}\n` +
+                                      `(berdasarkan halaman saat ini)\n\n` +
+                                      `Total: ${tokenData.length} token\n\n` +
+                                      `Lanjutkan?`;
+
+                    const confirmed = confirm(confirmMsg);
+                    if (!confirmed) {
+                        if (typeof toast !== 'undefined' && toast.info) {
+                            toast.info('Import dibatalkan oleh user');
+                        }
+                        return;
+                    }
+                }
+
+                // Simpan ke storage dengan target key yang sudah ditentukan
+                saveToLocalStorage(targetKey, tokenData);
 
                 // Hitung jumlah token yang diimport
                 let jumlahToken = Array.isArray(tokenData) ? tokenData.length : 0;
 
                 // Notifikasi sukses + tetap tampil setelah reload
-                try { setLastAction(`IMPORT DATA KOIN`, 'success', { count: jumlahToken }); } catch(_) {}
+                try { setLastAction(`IMPORT DATA KOIN`, 'success', { count: jumlahToken, chain: chainLabel }); } catch(_) {}
+
+                // Redirect ke halaman chain yang sesuai setelah import
+                const redirectUrl = detectedChain ? `?chain=${detectedChain}` : window.location.search;
+                const successMsg = `✅ BERHASIL IMPORT ${jumlahToken} TOKEN ke ${chainLabel} 📦`;
+
                 try {
                     if (typeof reloadWithNotify === 'function') {
-                        reloadWithNotify('success', `✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
+                        reloadWithNotify('success', successMsg);
                     } else if (typeof notifyAfterReload === 'function') {
-                        notify('success', `✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`, null, { persist: true });
-                        location.reload();
+                        notify('success', successMsg, null, { persist: true });
+                        window.location.href = redirectUrl;
                     } else if (typeof toast !== 'undefined' && toast.success) {
-                        toast.success(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
-                        location.reload();
+                        toast.success(successMsg);
+                        setTimeout(() => { window.location.href = redirectUrl; }, 1000);
                     } else {
-                        alert(`✅ BERHASIL IMPORT ${jumlahToken} TOKEN 📦`);
-                        location.reload();
+                        alert(successMsg);
+                        window.location.href = redirectUrl;
                     }
-                } catch(_) { try { location.reload(); } catch(_){} }
+                } catch(_) {
+                    try { window.location.href = redirectUrl; } catch(_){}
+                }
 
             } catch (error) {
                 // console.error("Error parsing CSV:", error);
