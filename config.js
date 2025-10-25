@@ -2,7 +2,7 @@
 const CONFIG_APP = {
     APP: {
         NAME: "MULTICHECKER",
-        VERSION: "2.1",        
+        VERSION: "3.0",        
         SCAN_LIMIT:false,
     }
 };
