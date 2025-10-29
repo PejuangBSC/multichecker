@@ -6,7 +6,7 @@
 // Main Process Flow:
 // 1. Fetch data wallet exchanger dari CEX APIs (via services/cex.js)
 // 2. Enrichment data dengan Web3 untuk decimals/SC
-// 3. Fetch harga real-time dari orderbook CEX
+// 3. Fetch harga real-time dari orderbook CEX (menggunakan getPriceCEX dari services/cex.js)
 // 4. Save to unified IndexedDB snapshot storage
 // 5. Tampilkan di tabel dengan progress tracking
 //
@@ -15,6 +15,20 @@
 // - fetchCexData(): Fetch wallet status from CEX APIs
 // - validateTokenData(): Validate and enrich token with decimals/SC
 // - saveToSnapshot(): Save to IndexedDB snapshot storage
+//
+// Price Fetching:
+// - PRIORITY 1: getPriceCEX() dari services/cex.js (orderbook-based, lebih akurat)
+// - FALLBACK: fetchPriceMapForCex() dengan ticker API (jika services/cex.js tidak tersedia)
+//
+// Sumber Harga Rate:
+// - Orderbook API dari masing-masing CEX (via services/cex.js::getPriceCEX)
+//   * BINANCE: api.binance.me/api/v3/depth
+//   * GATE: api.gateio.ws/api/v4/spot/order_book
+//   * MEXC: api.mexc.com/api/v3/depth
+//   * KUCOIN: api.kucoin.com/api/v1/market/orderbook/level2_20
+//   * BITGET: api.bitget.com/api/v2/spot/market/orderbook
+//   * BYBIT: api.bybit.com/v5/market/orderbook
+//   * INDODAX: indodax.com/api/depth
 //
 // Used by:
 // - Modal "Sinkronisasi Koin" (sync-modal)
@@ -785,7 +799,7 @@
     // WEB3 VALIDATION
     // ====================
 
-    // Enhanced validate token data with database optimization
+    // Enhanced validate token data with database optimization + AUTO-SAVE per-koin
     async function validateTokenData(token, snapshotMap, symbolLookupMap, chainKey, progressCallback, errorCount, web3Cache = null) {
         let sc = String(token.sc_in || '').toLowerCase().trim();
         const symbol = String(token.symbol_in || '').toUpperCase();
@@ -953,6 +967,47 @@
             }
         }
 
+        // ========== AUTO-SAVE PER-KOIN JIKA DATA LENGKAP ==========
+        // Cek apakah token sudah lengkap (symbol, sc, des)
+        const isComplete = token.symbol_in &&
+                          token.sc_in &&
+                          token.sc_in !== '0x' &&
+                          token.des_in &&
+                          Number.isFinite(token.des_in) &&
+                          token.des_in > 0;
+
+        if (isComplete) {
+            try {
+                // Load existing snapshot
+                const snapshotMapFull = await snapshotDbGet(SNAPSHOT_DB_CONFIG.snapshotKey) || {};
+                const keyLower = String(chainKey || '').toLowerCase();
+                const existingTokensFull = Array.isArray(snapshotMapFull[keyLower]) ? snapshotMapFull[keyLower] : [];
+
+                // Create token map
+                const tokenMap = new Map();
+                existingTokensFull.forEach(existingToken => {
+                    const key = `${existingToken.cex}_${existingToken.symbol_in}_${existingToken.sc_in || 'NOSC'}`;
+                    tokenMap.set(key, existingToken);
+                });
+
+                // Add/update THIS token
+                const tokenKey = `${token.cex}_${token.symbol_in}_${token.sc_in || 'NOSC'}`;
+                tokenMap.set(tokenKey, token);
+
+                // Convert map back to array
+                const mergedList = Array.from(tokenMap.values());
+
+                // Save to database
+                await saveToSnapshot(chainKey, mergedList);
+
+                // console.log(`💾 [AUTO-SAVE] ${symbol}: Saved to database (SC: ${token.sc_in.slice(0, 8)}..., DES: ${token.des_in})`);
+            } catch(saveErr) {
+                console.error(`❌ [AUTO-SAVE] ${symbol}: Failed to save -`, saveErr.message);
+                // Don't throw error, just log - continue processing other tokens
+            }
+        }
+        // ==========================================================
+
         return token;
     }
 
@@ -1032,13 +1087,27 @@
                         clearTimeout(timeoutId);
 
                         if (!batchResponse.ok) {
-                            throw new Error(`RPC batch request failed: ${batchResponse.status}`);
+                            const errorText = await batchResponse.text().catch(() => 'Unknown error');
+                            throw new Error(`RPC batch request failed (${batchResponse.status}): ${errorText.substring(0, 200)}`);
                         }
 
-                        const results = await batchResponse.json();
+                        let results;
+                        try {
+                            results = await batchResponse.json();
+                        } catch(jsonErr) {
+                            throw new Error(`RPC response is not valid JSON: ${jsonErr.message}`);
+                        }
 
                         if (!Array.isArray(results)) {
-                            throw new Error('RPC batch response is not an array');
+                            // Log actual response untuk debugging
+                            console.error(`[RPC ERROR] Expected array, got:`, typeof results, results);
+
+                            // Check jika response adalah error object
+                            if (results && results.error) {
+                                throw new Error(`RPC Error: ${results.error.message || JSON.stringify(results.error)}`);
+                            }
+
+                            throw new Error(`GAGAL MENDAPATKAN DESIMAL KOIN, SILAKAN COBA GANTI RPC`);
                         }
 
                         const decimalsResult = results.find(r => r.id === 1)?.result;
@@ -1206,6 +1275,7 @@
                 }
             });
 
+        // ========== PHASE 1: FETCH CEX DATA (WALLET STATUS) ==========
         // Process each CEX - INDODAX terakhir untuk lookup TOKEN database
         let allTokens = [];
         const cexResults = new Map(); // Track hasil per CEX
@@ -1226,7 +1296,7 @@
             if (window.SnapshotOverlay) {
                 window.SnapshotOverlay.updateMessage(
                     `Update Snapshot ${chainDisplay}`,
-                    `Mengambil data dari ${cex}...`
+                    `Mengambil data wallet dari ${cex}...`
                 );
                 window.SnapshotOverlay.updateProgress(
                     i,
@@ -1236,23 +1306,49 @@
             }
 
             // Fetch CEX data (deposit/withdraw status from wallet API)
-            let cexTokens = await fetchCexData(chainKey, cex);
+            let cexTokens;
+            let fetchError = null;
+
+            try {
+                cexTokens = await fetchCexData(chainKey, cex);
+            } catch(error) {
+                fetchError = error;
+                cexTokens = null;
+            }
 
             // ========== VALIDASI HASIL FETCH CEX ==========
-            if (!cexTokens || cexTokens.length === 0) {
+            if (!cexTokens || cexTokens.length === 0 || fetchError) {
                 failedCexList.push(cexUpper);
-                cexResults.set(cexUpper, { success: false, count: 0 });
+                cexResults.set(cexUpper, { success: false, count: 0, error: fetchError?.message || 'No data returned' });
 
-                // Show warning in overlay
+                const errorDetail = fetchError?.message || 'Tidak ada data yang dikembalikan dari API';
+
+                // Show error in overlay
                 if (window.SnapshotOverlay) {
                     window.SnapshotOverlay.updateMessage(
                         `Update Snapshot ${chainDisplay}`,
-                        `⚠️ ${cexUpper}: Tidak ada data atau gagal fetch`
+                        `❌ ${cexUpper}: Gagal fetch data - ${errorDetail}`
                     );
                 }
 
                 // Log error untuk debugging
-               // console.warn(`[${cexUpper}] Failed to fetch data or returned empty array`);
+                console.error(`❌ [${cexUpper}] Failed to fetch wallet data:`, errorDetail);
+
+                // Show toast error immediately untuk setiap CEX yang gagal
+                if (typeof toast !== 'undefined' && toast.error) {
+                    toast.error(
+                        `❌ ${cexUpper} gagal fetch data!\n\n` +
+                        `Error: ${errorDetail}\n\n` +
+                        `Silakan cek:\n` +
+                        `- API Key di menu Setting\n` +
+                        `- Koneksi internet\n` +
+                        `- Status API ${cexUpper}`,
+                        {
+                            duration: 10000,
+                            position: 'top-center'
+                        }
+                    );
+                }
 
                 // Lanjut ke CEX berikutnya
                 continue;
@@ -1268,77 +1364,78 @@
 
             allTokens = allTokens.concat(cexTokens);
 
-            // Auto-save setiap CEX selesai
-            if (cexTokens.length > 0) {
-                try {
-                    // Merge dengan existing tokens
-                    const snapshotMapFull = await snapshotDbGet(SNAPSHOT_DB_CONFIG.snapshotKey) || {};
-                    const existingTokensFull = Array.isArray(snapshotMapFull[keyLower]) ? snapshotMapFull[keyLower] : [];
-
-                    const tokenMap = new Map();
-                    existingTokensFull.forEach(token => {
-                        const key = `${token.cex}_${token.symbol_in}_${token.sc_in || 'NOSC'}`;
-                        tokenMap.set(key, token);
-                    });
-
-                    // Add/update tokens dari CEX ini
-                    cexTokens.forEach(token => {
-                        const key = `${token.cex}_${token.symbol_in}_${token.sc_in || 'NOSC'}`;
-                        tokenMap.set(key, token);
-                    });
-
-                    const mergedList = Array.from(tokenMap.values());
-                    await saveToSnapshot(chainKey, mergedList);
-
-                    // Show success message
-                    if (window.SnapshotOverlay) {
-                        window.SnapshotOverlay.updateMessage(
-                            `Update Snapshot ${chainDisplay}`,
-                            `✅ ${cexUpper}: ${cexTokens.length} koin berhasil`
-                        );
-                    }
-
-                    // console.log(`✅ Auto-saved ${cexTokens.length} tokens from ${cex}`);
-                } catch(saveErr) {
-                    // console.error(`Failed to auto-save ${cex}:`, saveErr);
-                }
-            }
-
             await sleep(100); // Small delay between CEX
         }
 
         // ========== VALIDASI HASIL AKHIR SEMUA CEX ==========
         const successCount = orderedCex.length - failedCexList.length;
 
-        // Jika SEMUA CEX GAGAL, hentikan proses
+        // Jika SEMUA CEX GAGAL, hentikan proses dengan detail error
         if (failedCexList.length === orderedCex.length) {
-            const errorMsg = `Semua CEX gagal mengambil data!\n\nCEX yang gagal: ${failedCexList.join(', ')}\n\nKemungkinan penyebab:\n- API Key tidak valid atau expired\n- Network/koneksi bermasalah\n- Rate limit dari CEX\n- Service CEX sedang down\n\nSilakan cek API Key di menu Setting dan coba lagi.`;
+            // Build detail error message dengan info dari setiap CEX
+            let errorDetails = '';
+            failedCexList.forEach(cexName => {
+                const result = cexResults.get(cexName);
+                const errorMsg = result?.error || 'Unknown error';
+                errorDetails += `\n• ${cexName}: ${errorMsg}`;
+            });
 
-            // Show error in overlay
+            const errorMsg = `❌ SEMUA CEX GAGAL MENGAMBIL DATA KOIN!\n\nCEX yang gagal: ${failedCexList.join(', ')}${errorDetails}\n\n` +
+                            `Kemungkinan penyebab:\n` +
+                            `- API Key tidak valid atau expired\n` +
+                            `- Network/koneksi bermasalah\n` +
+                            `- Rate limit dari CEX terlampaui\n` +
+                            `- Service CEX sedang down/maintenance\n\n` +
+                            `LANGKAH SELANJUTNYA:\n` +
+                            `1. Cek API Key di menu Setting\n` +
+                            `2. Pastikan koneksi internet stabil\n` +
+                            `3. Tunggu beberapa menit (rate limit)\n` +
+                            `4. Klik tombol Update lagi untuk retry`;
+
+            // Show error in overlay (persistent - tidak auto hide)
             if (window.SnapshotOverlay) {
                 window.SnapshotOverlay.showError(errorMsg, 0); // 0 = no auto-hide
             }
 
-            // Show toast error
+            // Show toast error dengan instruksi retry
             if (typeof toast !== 'undefined' && toast.error) {
-                toast.error(`❌ Semua CEX gagal! Cek API Key di Setting.`, {
-                    duration: 8000,
-                    position: 'top-center'
-                });
+                toast.error(
+                    `❌ PROSES DIHENTIKAN!\n\n` +
+                    `Semua CEX gagal mengambil data.\n` +
+                    `Silakan cek API Key dan coba lagi.`,
+                    {
+                        duration: 15000,
+                        position: 'top-center'
+                    }
+                );
             }
 
             // Throw error untuk dihentikan di catch block
-            throw new Error(`Semua CEX gagal fetch data: ${failedCexList.join(', ')}`);
+            throw new Error(`Semua CEX gagal fetch data wallet: ${failedCexList.join(', ')}`);
         }
 
-        // Jika SEBAGIAN CEX GAGAL, tampilkan warning tapi lanjut proses
+        // Jika SEBAGIAN CEX GAGAL, tampilkan warning detail tapi lanjut proses
         if (failedCexList.length > 0) {
-            const warningMsg = `⚠️ ${failedCexList.length} CEX gagal mengambil data\n\nGagal: ${failedCexList.join(', ')}\nBerhasil: ${successCount} CEX (${allTokens.length} koin)\n\nProses dilanjutkan dengan CEX yang berhasil.`;
+            // Build detail error message untuk CEX yang gagal
+            let errorDetails = '';
+            failedCexList.forEach(cexName => {
+                const result = cexResults.get(cexName);
+                const errorMsg = result?.error || 'Unknown error';
+                errorDetails += `\n• ${cexName}: ${errorMsg}`;
+            });
 
-            // Show warning toast
+            const warningMsg = `⚠️ ${failedCexList.length} CEX GAGAL MENGAMBIL DATA\n\n` +
+                              `Gagal: ${failedCexList.join(', ')}${errorDetails}\n\n` +
+                              `Berhasil: ${successCount} CEX (${allTokens.length} koin)\n\n` +
+                              `CATATAN:\n` +
+                              `- Proses dilanjutkan dengan CEX yang berhasil\n` +
+                              `- CEX yang gagal akan di-skip\n` +
+                              `- Anda bisa retry nanti untuk CEX yang gagal`;
+
+            // Show warning toast dengan detail
             if (typeof toast !== 'undefined' && toast.warning) {
                 toast.warning(warningMsg, {
-                    duration: 6000,
+                    duration: 10000,
                     position: 'top-center'
                 });
             }
@@ -1353,12 +1450,25 @@
 
             console.warn(`[Snapshot] Partial success: ${successCount}/${orderedCex.length} CEX succeeded`, {
                 failed: failedCexList,
+                failedDetails: Array.from(cexResults.entries()).filter(([, v]) => !v.success),
                 tokens: allTokens.length
             });
         }
 
         // Jika tidak ada token sama sekali (edge case)
         if (allTokens.length === 0) {
+            const errorMsg = `❌ TIDAK ADA DATA KOIN!\n\n` +
+                           `Semua CEX berhasil fetch tapi tidak mengembalikan data koin.\n\n` +
+                           `Kemungkinan:\n` +
+                           `- Chain "${chainKey}" tidak match dengan data CEX\n` +
+                           `- Filter chain terlalu ketat\n` +
+                           `- CEX tidak support chain ini\n\n` +
+                           `Silakan cek konfigurasi chain dan coba lagi.`;
+
+            if (window.SnapshotOverlay) {
+                window.SnapshotOverlay.showError(errorMsg, 0);
+            }
+
             throw new Error('Tidak ada data koin yang berhasil diambil dari semua CEX');
         }
 
@@ -1515,7 +1625,89 @@
             // console.log(`   🌐 From Web3: ${web3FetchCount}`);
             // console.log(`   ❌ Errors: ${errorCount}`);
 
-            // PHASE: Fetch real-time prices
+            // ========== PHASE 3: FETCH HARGA CEX ==========
+        // Setelah semua data token lengkap & tersimpan, fetch harga untuk semua koin
+        if (window.SnapshotOverlay) {
+            window.SnapshotOverlay.updateMessage(
+                `Fetch Harga ${chainDisplay}`,
+                `Mengambil harga dari ${selectedCex.length} exchanger...`
+            );
+        }
+
+        const priceMapsByCex = new Map(); // Store price maps for each CEX
+        const failedPriceFetchList = [];
+
+        // Get unique CEX list from enrichedTokens
+        const activeCexList = [...new Set(enrichedTokens.map(t => String(t.cex || '').toUpperCase()))].filter(c => c);
+
+        for (let i = 0; i < activeCexList.length; i++) {
+            const cexUpper = activeCexList[i];
+
+            if (window.SnapshotOverlay) {
+                window.SnapshotOverlay.updateMessage(
+                    `Fetch Harga ${chainDisplay}`,
+                    `Mengambil harga dari ${cexUpper}...`
+                );
+                window.SnapshotOverlay.updateProgress(
+                    i + 1,
+                    activeCexList.length,
+                    `Harga ${cexUpper} (${i + 1}/${activeCexList.length})`
+                );
+            }
+
+            try {
+                // Fetch price map untuk CEX ini (semua pair sekaligus)
+                const priceMap = await fetchPriceMapForCex(cexUpper);
+
+                if (!priceMap || priceMap.size === 0) {
+                    throw new Error(`Price map kosong untuk ${cexUpper}`);
+                }
+
+                priceMapsByCex.set(cexUpper, {
+                    map: priceMap,
+                    timestamp: Date.now()
+                });
+
+                console.log(`✅ [${cexUpper}] Berhasil fetch ${priceMap.size} harga`);
+
+                if (window.SnapshotOverlay) {
+                    window.SnapshotOverlay.updateMessage(
+                        `Fetch Harga ${chainDisplay}`,
+                        `✅ ${cexUpper}: ${priceMap.size} pair harga`
+                    );
+                }
+
+            } catch(error) {
+                console.error(`❌ [${cexUpper}] Gagal fetch harga:`, error.message);
+                failedPriceFetchList.push(cexUpper);
+
+                if (window.SnapshotOverlay) {
+                    window.SnapshotOverlay.updateMessage(
+                        `Fetch Harga ${chainDisplay}`,
+                        `❌ ${cexUpper}: Gagal fetch harga`
+                    );
+                }
+            }
+
+            await sleep(100); // Delay antar CEX
+        }
+
+        // Warning jika SEBAGIAN CEX gagal fetch harga (tapi lanjut proses)
+        if (failedPriceFetchList.length > 0) {
+            const warningMsg = `⚠️ ${failedPriceFetchList.length} CEX gagal fetch harga\n\nGagal: ${failedPriceFetchList.join(', ')}\nBerhasil: ${activeCexList.length - failedPriceFetchList.length} CEX\n\nHarga untuk CEX yang gagal akan diset ke 0.`;
+
+            if (typeof toast !== 'undefined' && toast.warning) {
+                toast.warning(warningMsg, {
+                    duration: 6000,
+                    position: 'top-center'
+                });
+            }
+        }
+
+        console.log(`📊 [Fetch Harga] ${priceMapsByCex.size}/${activeCexList.length} CEX berhasil fetch harga`);
+
+        // ========== PHASE 4: ASSIGN HARGA KE TOKEN ==========
+        // Gunakan priceMap yang sudah di-fetch di PHASE 3
         const priceEligibleTokens = enrichedTokens.filter(token => {
             const base = String(token.symbol_in || '').trim();
             const cexName = String(token.cex || '').trim();
@@ -1525,8 +1717,8 @@
         if (priceEligibleTokens.length > 0) {
             if (window.SnapshotOverlay) {
                 window.SnapshotOverlay.updateMessage(
-                    `Harga Real-Time ${chainDisplay}`,
-                    'Mengambil harga dari exchanger...'
+                    `Assign Harga ${chainDisplay}`,
+                    'Menetapkan harga ke token...'
                 );
             }
 
@@ -1543,48 +1735,101 @@
             for (const [cexName, tokenList] of tokensByCex.entries()) {
                 if (window.SnapshotOverlay) {
                     window.SnapshotOverlay.updateMessage(
-                        `Harga Real-Time ${chainDisplay}`,
-                        `Mengambil harga dari ${cexName}...`
+                        `Assign Harga ${chainDisplay}`,
+                        `Menetapkan harga dari ${cexName}...`
                     );
                 }
 
-                const priceMap = await fetchPriceMapForCex(cexName);
-                const priceTimestamp = Date.now();
+                // Ambil priceMap yang sudah di-fetch di PHASE 1
+                const priceData = priceMapsByCex.get(cexName);
 
-                tokenList.forEach(token => {
-                    processedPriceCount += 1;
-                    const cexUpper = String(cexName || '').toUpperCase();
+                if (!priceData || !priceData.map) {
+                    // CEX ini gagal fetch harga di PHASE 1, skip
+                    console.warn(`[${cexName}] No price data available (failed in PHASE 1), skipping price assignment`);
 
-                    // Set quote symbol based on CEX - INDODAX always uses IDR
-                    const quoteSymbol = (cexUpper === 'INDODAX') ? 'IDR' : (String(token.symbol_out || '').trim() || 'USDT');
+                    // Set semua token di CEX ini ke harga 0
+                    tokenList.forEach(token => {
+                        const cexUpper = String(cexName || '').toUpperCase();
+                        const quoteSymbol = (cexUpper === 'INDODAX') ? 'IDR' : (String(token.symbol_out || '').trim() || 'USDT');
 
-                    if (window.SnapshotOverlay) {
-                        window.SnapshotOverlay.updateProgress(
-                            processedPriceCount,
-                            totalPriceCount,
-                            `${token.symbol_in || 'Unknown'} (${processedPriceCount}/${totalPriceCount})`
-                        );
-                    }
-                    const price = resolvePriceFromMap(cexName, priceMap, token.symbol_in, quoteSymbol);
-                    if (Number.isFinite(price) && price > 0) {
-                        token.current_price = Number(price);
-                        token.price_currency = quoteSymbol; // Save currency for display
-                    } else {
                         token.current_price = 0;
                         token.price_currency = quoteSymbol;
-                    }
-                    token.price_timestamp = priceTimestamp;
-                    if (typeof perTokenCallback === 'function') {
-                        try {
-                            token.__notified = true;
-                            perTokenCallback({ ...token });
-                        } catch(cbErr) {
-                            // console.error('perTokenCallback failed:', cbErr);
+                        token.price_timestamp = Date.now();
+                    });
+
+                    continue;
+                }
+
+                const priceMap = priceData.map;
+                const priceTimestamp = priceData.timestamp;
+
+                // Assign harga ke setiap token (TIDAK ADA API REQUEST)
+                // Use for loop untuk bisa yield control ke UI dengan setTimeout
+                const assignPrices = async () => {
+                    const CHUNK_SIZE = 100; // Process 100 tokens at a time
+
+                    for (let i = 0; i < tokenList.length; i++) {
+                        const token = tokenList[i];
+                        processedPriceCount += 1;
+                        const cexUpper = String(cexName || '').toUpperCase();
+
+                        // Set quote symbol based on CEX - INDODAX always uses IDR
+                        const quoteSymbol = (cexUpper === 'INDODAX') ? 'IDR' : (String(token.symbol_out || '').trim() || 'USDT');
+
+                        // Update progress LEBIH SERING untuk banyak token
+                        const updateInterval = totalPriceCount > 1000 ? 50 : 10;
+                        if (window.SnapshotOverlay && processedPriceCount % updateInterval === 0) {
+                            window.SnapshotOverlay.updateProgress(
+                                processedPriceCount,
+                                totalPriceCount,
+                                `${cexName}: ${processedPriceCount}/${totalPriceCount}`
+                            );
+                        }
+
+                        // Lookup harga dari priceMap (SUDAH DI MEMORY, CEPAT)
+                        const price = resolvePriceFromMap(cexName, priceMap, token.symbol_in, quoteSymbol);
+
+                        if (Number.isFinite(price) && price > 0) {
+                            token.current_price = Number(price);
+                            token.price_currency = quoteSymbol;
+                        } else {
+                            token.current_price = 0;
+                            token.price_currency = quoteSymbol;
+                        }
+                        token.price_timestamp = priceTimestamp;
+
+                        // Callback untuk update UI - DIBATASI untuk performa
+                        if (typeof perTokenCallback === 'function' && i % 10 === 0) {
+                            try {
+                                token.__notified = true;
+                                perTokenCallback({ ...token });
+                            } catch(cbErr) {
+                                // console.error('perTokenCallback failed:', cbErr);
+                            }
+                        }
+
+                        // Yield control ke UI setiap CHUNK_SIZE tokens
+                        if (i > 0 && i % CHUNK_SIZE === 0) {
+                            await sleep(1); // Yield to browser UI thread
                         }
                     }
-                });
+                };
+
+                await assignPrices();
+
+                console.log(`✅ [${cexName}] Assigned harga ke ${tokenList.length} token`);
             }
 
+            // Final progress update
+            if (window.SnapshotOverlay) {
+                window.SnapshotOverlay.updateProgress(
+                    totalPriceCount,
+                    totalPriceCount,
+                    `Selesai (${totalPriceCount} token)`
+                );
+            }
+
+            // Callback untuk token yang belum di-notify
             if (typeof perTokenCallback === 'function') {
                 enrichedTokens.forEach(token => {
                     if (token.__notified) return;
@@ -1597,6 +1842,7 @@
                 });
             }
 
+            // Cleanup notification flag
             enrichedTokens.forEach(token => {
                 if (token && token.__notified) {
                     try { delete token.__notified; } catch(_) {}
@@ -1604,23 +1850,36 @@
             });
         }
 
-            // Merge enriched data with existing snapshot (update, not replace)
+            // ========== PHASE 5: UPDATE HARGA DI DATABASE ==========
+            // Update database dengan harga yang sudah di-assign
             if (enrichedTokens.length > 0) {
                 if (window.SnapshotOverlay) {
                     window.SnapshotOverlay.updateMessage(
-                        `Menyimpan Data ${chainDisplay}`,
-                        'Menyimpan ke database...'
+                        `Update Database ${chainDisplay}`,
+                        `Menyimpan ${enrichedTokens.length} koin ke database...`
                     );
                     window.SnapshotOverlay.updateProgress(
-                        enrichedTokens.length,
-                        enrichedTokens.length,
-                        'Saving...'
+                        0,
+                        100,
+                        'Loading existing data...'
                     );
                 }
+
+                console.log(`📦 [Database] Loading existing tokens for ${chainKey}...`);
 
                 // Load all existing tokens for this chain
                 const snapshotMapFull = await snapshotDbGet(SNAPSHOT_DB_CONFIG.snapshotKey) || {};
                 const existingTokensFull = Array.isArray(snapshotMapFull[keyLower]) ? snapshotMapFull[keyLower] : [];
+
+                if (window.SnapshotOverlay) {
+                    window.SnapshotOverlay.updateProgress(
+                        30,
+                        100,
+                        `Merging ${enrichedTokens.length} tokens...`
+                    );
+                }
+
+                console.log(`📦 [Database] Existing tokens: ${existingTokensFull.length}, New tokens: ${enrichedTokens.length}`);
 
                 // Create map by unique key: CEX + symbol_in + sc_in
                 const tokenMap = new Map();
@@ -1629,20 +1888,41 @@
                     tokenMap.set(key, token);
                 });
 
-                // Update or add enriched tokens
+                // Update tokens dengan harga terbaru
                 enrichedTokens.forEach(token => {
                     const key = `${token.cex}_${token.symbol_in}_${token.sc_in || 'NOSC'}`;
-                    tokenMap.set(key, token); // This will update existing or add new
+                    tokenMap.set(key, token); // This will update existing with latest price
                 });
 
                 // Convert map back to array
                 mergedTokens = Array.from(tokenMap.values());
 
-                // Save merged data
+                if (window.SnapshotOverlay) {
+                    window.SnapshotOverlay.updateProgress(
+                        60,
+                        100,
+                        `Saving ${mergedTokens.length} tokens...`
+                    );
+                }
+
+                console.log(`📦 [Database] Saving ${mergedTokens.length} total tokens to IndexedDB...`);
+
+                // Save merged data with updated prices
                 await saveToSnapshot(chainKey, mergedTokens);
 
+                if (window.SnapshotOverlay) {
+                    window.SnapshotOverlay.updateProgress(
+                        100,
+                        100,
+                        'Database updated!'
+                    );
+                }
+
                 const summaryMsg = `Snapshot updated: ${enrichedTokens.length} tokens refreshed (Cache: ${cachedCount}, Web3: ${web3FetchCount}, Errors: ${errorCount}), total ${mergedTokens.length} tokens in database`;
-                // console.log(summaryMsg);
+                console.log(`✅ [Database] ${summaryMsg}`);
+
+                // Small delay untuk memastikan save selesai
+                await sleep(500);
 
                 // Show success message
                 if (window.SnapshotOverlay) {

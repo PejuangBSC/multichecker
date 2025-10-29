@@ -1038,9 +1038,8 @@ body.dark-mode {
 .filter-groups-inline label {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
     margin: 0;
-    padding: 3px 8px;
+    padding: 2px 5px;
     background: rgba(255, 255, 255, 0.6);
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 6px;
@@ -1360,11 +1359,7 @@ body.dark-mode .wallet-cex-header:hover {
 body.dark-mode .wallet-cex-table-wrapper {
     border-color: rgba(255, 255, 255, 0.1);
 }
-
-body.dark-mode .wallet-cex-table thead {
-    /* Background color akan diset oleh inline style dari JavaScript menggunakan warna chain */
-    /* Tidak ada override untuk dark mode agar warna chain tetap terlihat */
-}
+ 
 
 body.dark-mode .wallet-cex-table th,
 body.dark-mode .wallet-cex-table td {

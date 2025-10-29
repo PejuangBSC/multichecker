@@ -626,10 +626,22 @@
   <!-- Kolom kiri (lebih kecil) -->
   <div class="uk-width-1-3@m">
     <div class="uk-card uk-card-default uk-card-body uk-padding-small">
-      <h6 class="uk-heading-bullet uk-margin-small">1. Exchanger</h6>
+      <h6 class="uk-heading-bullet uk-margin-small uk-text-bolder">1. Exchanger</h6>
       <div id="sync-filter-cex" class="uk-flex uk-flex-wrap" style="gap:6px; max-height:200px; overflow:auto;"></div>
 
-      <h6 class="uk-heading-bullet uk-margin-small">2. Pair DEX</h6>
+      <h6 class="uk-heading-bullet uk-margin-small">Filter Harga</h6>
+      <div id="sync-price-filter-container" class="uk-flex uk-flex-row" style="gap:8px;">
+        <label class="uk-margin-remove">
+          <input type="radio" name="sync-price-filter" value="all" class="uk-radio" checked disabled> Semua
+        </label>
+        <label class="uk-margin-remove">
+          <input type="radio" name="sync-price-filter" value="with-price" class="uk-radio" disabled> Berharga
+        </label>
+        <label class="uk-margin-remove">
+          <input type="radio" name="sync-price-filter" value="no-price" class="uk-radio" disabled> Tanpa Harga
+        </label>
+      </div>
+      <h6 class="uk-heading-bullet uk-margin-small  uk-text-bolder">2. Pair DEX</h6>
       <div id="sync-filter-pair" class="uk-flex uk-flex-wrap" style="gap:6px; max-height:200px; overflow:auto;"></div>
 
       <div id="sync-non-config" class="uk-card uk-card-default uk-card-body uk-padding-small uk-margin-small-top" style="display:none;">
@@ -648,7 +660,7 @@
         </div>
       </div>
 
-      <h6 class="uk-heading-bullet uk-margin-small">3. DEX &amp; Modal <span class="uk-text-meta"></span></h6>
+      <h6 class="uk-heading-bullet uk-margin-small  uk-text-bolder">3. DEX &amp; Modal <span class="uk-text-meta"></span></h6>
       <div id="sync-dex-config" class="uk-flex uk-flex-column" style="gap:6px; max-height:300px; overflow:auto;"></div>
     </div>
   </div>
@@ -657,10 +669,10 @@
   <div class="uk-width-2-3@m">
     <div class="uk-card uk-card-default uk-card-body uk-padding-small">
       <div class="uk-flex uk-flex-between uk-flex-middle uk-margin-small">
-        <h6 class="uk-margin-remove">4. Pilih Koin [ <span id="sync-selected-count" class="uk-text-small uk-badge">0</span> ]</h6>
+        <h6 class="uk-margin-remove  uk-text-bolder">4. Pilih Koin [ <span id="sync-selected-count" class="uk-text-small uk-badge">0</span> ]</h6>
 
         <div class="uk-flex uk-flex-middle" style="gap:8px;">
-          <span class="uk-text-small uk-text-bold">Pilih:</span>
+          <span class="uk-text-small uk-text-bold">Pilihan:</span>
           <label class="uk-margin-remove"><input type="radio" name="sync-pick-mode" value="all" class="uk-radio"> Semua</label>
           <label class="uk-margin-remove"><input type="radio" name="sync-pick-mode" value="selected" class="uk-radio"> Dipilih</label>
           <label class="uk-margin-remove"><input type="radio" name="sync-pick-mode" value="snapshot" class="uk-radio"> Snapshot</label>

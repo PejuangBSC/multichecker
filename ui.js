@@ -595,10 +595,26 @@ function form_off() {
     try {
         // refactor: dark mode toggle juga ikut nonaktif saat scan
         $('#stopSCAN, #reload, #autoScrollCheckbox, #toggleScanLog').prop('disabled', false);
+
+        // Explicitly disable management buttons during scan
+        $('#ManajemenKoin, #UpdateWalletCEX').css({
+            'opacity': '0.5',
+            'pointer-events': 'none',
+            'cursor': 'not-allowed'
+        });
     } catch(_) {}
 }
 
 /** Enable primary inputs (except textareas) globally. */
 function form_on() {
     $('input, select, button').prop('disabled', false);
+
+    // Re-enable management buttons when scan stops
+    try {
+        $('#ManajemenKoin, #UpdateWalletCEX').css({
+            'opacity': '1',
+            'pointer-events': 'auto',
+            'cursor': 'pointer'
+        });
+    } catch(_) {}
 }

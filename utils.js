@@ -1239,6 +1239,10 @@ function setScanUIGating(isRunning) {
             // Allow only reload (dark mode toggle ikut dinonaktifkan saat scan)
             $('#reload').css({ pointerEvents: 'auto', opacity: 1 });
             // Allow chain selection icons remain active during scan (including their img.icon children)
+            // Disable "Manajemen Koin" and "Update Wallet" icons
+            $('#ManajemenKoin').css({ pointerEvents: 'none', opacity: 0.4 });
+            $('#UpdateWalletCEX').css({ pointerEvents: 'none', opacity: 0.4 });
+
             $('#chain-links-container a, #chain-links-container .chain-link, #chain-links-container .icon, #multichain_scanner, #multichain_scanner .icon')
                 .css({ pointerEvents: 'auto', opacity: 1 });
             // Disable scanner config controls and filter card inputs
